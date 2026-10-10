@@ -1,0 +1,54 @@
+# NeuroDrive — Glossary (plain language)
+
+Add a term the first time a task uses it. Keep definitions short and concrete.
+
+| Term | Meaning |
+|---|---|
+| Neuron | Multiplies each input by a weight, adds them up, adds a bias, then passes the total through an activation function. |
+| Weight | How strongly (and in which direction) one input pushes a neuron. |
+| Bias | A constant added to the weighted sum; shifts when the neuron "switches on". |
+| Activation function | The squashing or bending function applied to the weighted sum (tanh, sigmoid, ReLU). It makes networks nonlinear. |
+| tanh | Activation with outputs from −1 to +1; zero in the middle. Good for steering. |
+| Sigmoid | Activation with outputs from 0 to 1. Never negative. |
+| ReLU | Activation that outputs 0 for negative inputs and the input itself otherwise. |
+| Layer | A group of neurons that all read the same inputs. |
+| Forward propagation | Computing the output by passing values layer by layer from inputs to outputs. |
+| Parameters | All weights and biases of a network. |
+| Initialisation | How the parameters are set before learning starts. |
+| Observation | The numbers the car's network receives each step (rays, speed, heading error). |
+| Action | The numbers the network outputs (steer, throttle). |
+| Policy | Any rule that turns observations into actions. A network is one kind of policy. |
+| Episode | One drive from start until crash, time limit, stall or finish. |
+| Loss | A number measuring how wrong predictions are; supervised learning makes it smaller. |
+| MSE | Mean squared error: the average of (prediction − target)². |
+| Derivative / gradient | How much an output changes when an input or parameter changes a tiny bit. |
+| Chain rule | To find how A affects C through B, multiply (how A affects B) × (how B affects C). |
+| Backpropagation | Applying the chain rule backwards through the network to get every parameter's gradient. |
+| Gradient check | Comparing backprop's gradients with ones estimated by nudging each parameter; catches bugs. |
+| Gradient descent | Repeatedly moving parameters a small step opposite to the gradient to reduce the loss. |
+| Learning rate | The size of each gradient-descent step. |
+| Epoch | One pass through the whole training dataset. |
+| Minibatch | A small random subset of the data used for one update. |
+| Momentum / RMSProp / Adam | Gradient-descent variants that smooth or rescale steps to learn faster and more stably. |
+| Overfitting | Doing well on training data but badly on new data. |
+| Imitation learning (behavioural cloning) | Supervised learning where the targets are an expert's actions. |
+| Distribution shift | The learner ends up in situations the expert never showed it, so errors compound. |
+| DAgger | Let the learner drive, ask the expert what it *should* have done there, add that to the data, retrain. |
+| Fitness | One score for a whole drive, used by evolutionary methods. |
+| Genome | All of a network's parameters laid out as one list of numbers. |
+| Selection / crossover / mutation | Pick the better drivers / mix two parents' genomes / add small random changes. |
+| Elitism | Copy the best few drivers unchanged into the next generation. |
+| Evolution Strategies (ES) | Estimate which direction improves fitness by trying many random nudges, then step that way. |
+| NEAT | Neuroevolution that evolves the network's structure as well as its weights. |
+| Reward | A small score given after each step in reinforcement learning. |
+| Return | The (discounted) sum of future rewards from a moment onward. |
+| Discount factor (γ) | How much future rewards count compared with immediate ones. |
+| Policy gradient | Make actions that led to higher return more likely. |
+| Value function / critic | A network that predicts the expected return from a state. |
+| Advantage | How much better an action turned out than the critic expected. |
+| PPO | A policy-gradient method that limits how much the policy changes per update, for stability. |
+| Seed | The starting number for a random generator; the same seed gives the same "random" numbers. |
+| Driving Exam | The fixed test (tracks, starts, limits, metrics) that every network takes, however it was trained. |
+| Held-out track | A track never used during training or tuning; it tests generalisation. |
+| Median / IQR | The middle value / the range covering the middle half of results. |
+| Checkpoint | A saved snapshot of a network at a moment during training. |

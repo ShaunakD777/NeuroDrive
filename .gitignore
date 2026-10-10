@@ -1,0 +1,73 @@
+# ── Secrets and local environment (never commit) ─────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+id_rsa*
+id_ed25519*
+secrets/
+credentials*.json
+*.token
+
+# ── NeuroDrive outputs (regenerable, can be large) ──────────
+runs/
+data/
+recordings/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.npz
+# tracks/ and configs/ ARE committed; *.npz is only produced under runs/ and data/
+!tests/fixtures/**/*.npz
+
+# ── Python ──────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.hypothesis/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+
+# ── Web (Node / Vite / Playwright) ──────────────────────────
+web/node_modules/
+node_modules/
+web/dist/
+web/.vite/
+web/coverage/
+web/test-results/
+web/playwright-report/
+web/blob-report/
+*.tsbuildinfo
+
+# ── Claude Code (keep commands and shared settings) ─────────
+.claude/settings.local.json
+
+# ── Editors and OS ──────────────────────────────────────────
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Logs and scratch ────────────────────────────────────────
+*.log
+logs/
+tmp/
+scratch/
