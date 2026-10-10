@@ -59,4 +59,8 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Test runner | A tool (pytest) that finds functions named `test_…`, runs them and reports pass or fail. |
 | Smoke test | A minimal test that only checks the project starts and imports; it proves wiring, not correctness. |
 | Entry point | A line in `pyproject.toml` that turns a Python function into a terminal command (`nd`). |
+| Pseudo-random generator | A machine that produces random-looking numbers by a fixed recipe set by its seed; same seed, same numbers. |
+| Stream | The sequence of numbers one generator produces. |
+| Child stream | A generator derived from a parent's seed plus a name ("init", "mutation"); independent of the parent's usage and of other children. |
+| Seed sequence | NumPy's way of expanding one seed number into a well-mixed starting state for a generator. |
 | Linter / formatter | Tools (ruff) that flag likely mistakes and rewrite code into one consistent style. |

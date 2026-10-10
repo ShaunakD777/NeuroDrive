@@ -23,3 +23,17 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   blocks inside Markdown files.
 - Open question: `pyproject.toml` says what we want, `uv.lock` says what we got — how strict
   should we be about upgrading the lock, given that results must stay reproducible?
+
+### 2026-10-10 — Task 0.2 Seeded randomness module
+- Concept: a pseudo-random generator follows a fixed recipe set by its seed; each sub-component
+  gets its own named child stream so changing one never shifts another.
+- Key equation(s) in words: child stream = f(master seed, family-tree position, name). It does
+  not depend on how many numbers the parent has produced or on the order children are requested.
+- What we observed: seed 42 gives 0.774, 0.439, 0.859 every time; seed 43 gives 0.652, 0.044,
+  0.020; the child "init" of seed 42 gives 0.890, 0.832, 0.118 even after the parent has drawn
+  1000 numbers. A planted `np.random.rand` in the source was caught by the scan test.
+- Surprise or difficulty: asking twice for the same child name returns identical streams, by
+  design; a component must keep its child, not re-ask. Also, one test I first wrote could not
+  fail, so it was removed: a test must be able to fail to prove anything.
+- Open question: when evolution runs many seeds in parallel processes, how will each worker
+  get its generator without sharing state?

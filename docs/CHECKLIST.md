@@ -11,7 +11,7 @@ released, add its tag (e.g. `phase-1`) to the phase's header row.
 | — | GitHub repo created, planning docs committed to `main` (user) | ✅ | 2026-10-10 | Commit `e7f2ce2` on `origin/main` |
 | **Phase 0** | **Foundations** | | | |
 | 0.1 | Python project skeleton | ✅ | 2026-10-10 | uv + hatchling, Python 3.12; pytest 1 passed, `nd --help` lists `version`, ruff clean |
-| 0.2 | Seeded randomness module | ☐ | | |
+| 0.2 | Seeded randomness module | ✅ | 2026-10-10 | Name-keyed child streams; 17 tests incl. no-global-RNG source scan (planted violation caught); full suite 18 passed |
 | 0.3 | Server skeleton | ☐ | | |
 | 0.4 | Web skeleton with three panels | ☐ | | |
 | 0.5 | Docs and conventions check | ☐ | | |
