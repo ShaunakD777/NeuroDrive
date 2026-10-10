@@ -37,3 +37,17 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   fail, so it was removed: a test must be able to fail to prove anything.
 - Open question: when evolution runs many seeds in parallel processes, how will each worker
   get its generator without sharing state?
+
+### 2026-10-11 — Task 0.3 Server skeleton
+- Concept: REST is request and response; a WebSocket is a connection that stays open so the server
+  can push messages (live driving needs this). A health endpoint answers "are you up, and which
+  version?".
+- Key equation(s) in words: none, plumbing task.
+- What we observed: `nd serve` starts on port 8000; `/api/health` returns status ok and the
+  version; a WebSocket client receives `hello` first, then gets back whatever it sends.
+- Surprise or difficulty: the in-process test client never touches Uvicorn, so it would pass even
+  if the real server could not accept WebSockets (plain Uvicorn needs a WebSocket library). We
+  added `websockets` up front and confirmed with a real running server, not just the tests.
+  Starlette also now deprecates `httpx` for its test client in favour of `httpx2`.
+- Open question: when the web app on port 5173 starts calling REST on port 8000, should we allow
+  that with CORS or hide the difference behind a Vite proxy?

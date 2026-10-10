@@ -63,4 +63,9 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Stream | The sequence of numbers one generator produces. |
 | Child stream | A generator derived from a parent's seed plus a name ("init", "mutation"); independent of the parent's usage and of other children. |
 | Seed sequence | NumPy's way of expanding one seed number into a well-mixed starting state for a generator. |
+| Client / server | The client (the browser) asks for things; the server (our Python program) answers and holds the real data. |
+| REST | Request and response: the client asks once, the server answers once, the conversation ends. |
+| WebSocket | A connection that stays open so either side can send messages at any time; used for live driving. |
+| Endpoint | One address on the server (such as `/api/health`) that does one job. |
+| Health check | An endpoint whose only job is to say "I am running" (and which version). |
 | Linter / formatter | Tools (ruff) that flag likely mistakes and rewrite code into one consistent style. |
