@@ -52,3 +52,11 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Held-out track | A track never used during training or tuning; it tests generalisation. |
 | Median / IQR | The middle value / the range covering the middle half of results. |
 | Checkpoint | A saved snapshot of a network at a moment during training. |
+| Package | A folder of Python files that can be imported by name (`import neurodrive`). |
+| Virtual environment (venv) | A private copy of Python and libraries for one project (`.venv/`), so projects cannot break each other. |
+| Dependency | A library our code needs; listed in `pyproject.toml`. |
+| Lock file | `uv.lock`: the exact version of every installed library, so every machine installs the same thing. |
+| Test runner | A tool (pytest) that finds functions named `test_…`, runs them and reports pass or fail. |
+| Smoke test | A minimal test that only checks the project starts and imports; it proves wiring, not correctness. |
+| Entry point | A line in `pyproject.toml` that turns a Python function into a terminal command (`nd`). |
+| Linter / formatter | Tools (ruff) that flag likely mistakes and rewrite code into one consistent style. |

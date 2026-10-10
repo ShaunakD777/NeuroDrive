@@ -8,9 +8,9 @@ released, add its tag (e.g. `phase-1`) to the phase's header row.
 | ID | Task | Status | Verified on | Notes |
 |---|---|---|---|---|
 | — | Planning docs (CLAUDE.md, docs/*) | ✅ | 2026-10-10 | Python core + web viewer (ADR-001); revised ADR-003/004/007; ADR-014 |
-| — | GitHub repo created, planning docs committed to `main` (user) | ☐ | | |
+| — | GitHub repo created, planning docs committed to `main` (user) | ✅ | 2026-10-10 | Commit `e7f2ce2` on `origin/main` |
 | **Phase 0** | **Foundations** | | | |
-| 0.1 | Python project skeleton | ☐ | | |
+| 0.1 | Python project skeleton | ✅ | 2026-10-10 | uv + hatchling, Python 3.12; pytest 1 passed, `nd --help` lists `version`, ruff clean |
 | 0.2 | Seeded randomness module | ☐ | | |
 | 0.3 | Server skeleton | ☐ | | |
 | 0.4 | Web skeleton with three panels | ☐ | | |
