@@ -103,7 +103,9 @@ The repository is public-safe at all times (ADR-014, `docs/ARCHITECTURE.md` §11
   databases, recordings, `node_modules/` or build output.
 - **Secrets:** NeuroDrive needs none. Never write a token, password, API key, private key or
   personal data (e-mail, absolute paths with user names) into code, configs, docs, tests, logs or
-  run folders. Never read `.env` files. If a secret is ever needed, read it from an `ND_`-prefixed
+  run folders. Never read real `.env` files (`.env`, `.env.local`, `.env.production`, ...); the
+  placeholder files `.env.example` and `.env.local.example` may be read and edited, and must
+  never hold a real value. If a secret is ever needed, read it from an `ND_`-prefixed
   environment variable and add only a placeholder to `.env.example`, after an ADR.
 - **If a secret is found in a commit:** stop, tell the user, do not push. A pushed secret must be
   revoked first; history cleaning comes second.
