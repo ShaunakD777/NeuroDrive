@@ -9,16 +9,44 @@ simulator with three linked views: **Environment**, **Neural Network** and **Exp
 ## Status
 Planning complete. Implementation starts at task 0.1 (see `docs/CHECKLIST.md`).
 
-## Getting started
-1. Create an **empty** GitHub repository (no auto-generated README, .gitignore or licence).
-2. Clone it, copy these planning files into it, and make the first commit on `main`:
-   `docs: planning documents`. Push.
-3. In the repository's **Settings → Code security**, turn on secret scanning and push protection
-   where available.
-4. Open the folder in Claude Code. It reads `CLAUDE.md` automatically.
-5. Run `/do-task 0.1`. Claude Code creates the `phase-0-foundations` branch and starts there.
+## Prerequisites
+- [uv](https://docs.astral.sh/uv/) for Python. It downloads Python 3.12 by itself; your system
+  Python is not touched.
+- [Node.js](https://nodejs.org/) with npm (tested with Node 24) for the web viewer.
+- Git.
+
+## Setup (once per clone)
+1. `uv sync`: create `.venv/` and install the Python dependencies exactly as pinned in `uv.lock`.
+2. `uv run python -m pre_commit install`: install the git hooks that check every commit.
+3. `cd web && npm ci`: install the web dependencies exactly as pinned in `package-lock.json`.
+4. `cd web && npx playwright install chromium`: download the browser used by the smoke test
+   (only needed for `npm run e2e`).
+
+## Everyday commands
+| What | Command |
+|---|---|
+| Python tests | `uv run pytest` |
+| Lint and format | `uv run ruff check . && uv run ruff format .` |
+| Start the server (port 8000) | `uv run nd serve` |
+| Start the web viewer (port 5173) | `cd web && npm run dev`, then open http://127.0.0.1:5173 |
+| Web unit tests / browser smoke test | `cd web && npm run test` / `npm run e2e` |
+| Regenerate TypeScript types after changing `server/schemas.py` | `cd web && npm run gen:types` |
+| Run every commit check on all files | `uv run python -m pre_commit run --all-files` |
+
+The full list, including commands that later phases add, is in `CLAUDE.md` §6.
+
+## Contribution rules
+- Work happens on a phase branch (`phase-<N>-<short-name>`), never directly on `main`.
+- One commit per verified task, with the message `task X.Y: <summary>`; documentation-only commits
+  use `docs: <summary>`.
+- Run `git status` first and stage files **by name**. Never `git add -A` or `git add .`.
+- Never bypass a failing hook with `--no-verify`: fix the cause and commit again.
+- Never force-push, rewrite pushed history, or move or delete a tag.
+- Every random number comes from an explicitly seeded generator (`neurodrive.core.rng`); no ML
+  frameworks inside `src/neurodrive` (NumPy only).
 
 ## Working with Claude Code
+Open the folder in Claude Code; it reads `CLAUDE.md` automatically.
 - `/status`: where we are
 - `/brief 0.1`: explanation and plan for a task, without changes
 - `/do-task 0.1`: build, verify, explain and commit one task, then stop
@@ -36,8 +64,16 @@ Planning complete. Implementation starts at task 0.1 (see `docs/CHECKLIST.md`).
 - NeuroDrive needs no secrets. If one is ever needed, it lives in a git-ignored `.env`; only
   placeholders go in `.env.example`.
 - `.gitignore` keeps out run outputs, databases, recordings, dependencies, keys and local settings.
-- From task 0.6: pre-commit hooks (secret scan, private-key detection, large-file check) run before
-  every commit, and GitHub Actions repeats the checks on every push.
+- Pre-commit hooks run before every commit: gitleaks (secret scan), private-key detection, a
+  1000 KB large-file check, whitespace fixers, YAML syntax, and ruff. A commit that fails a check
+  is refused.
+- GitHub Actions (`.github/workflows/ci.yml`) runs on every push: Python lint and tests, the web
+  build and unit tests, a check that the generated TypeScript types are up to date, and a gitleaks
+  scan of the full history.
+- In the repository's **Settings → Code security**, secret scanning and push protection should be
+  on (where GitHub offers them).
+- **Windows note:** if Smart App Control is on, it may block the `pre-commit.exe` launcher. Use
+  `uv run python -m pre_commit ...` as shown above; the installed git hook already works this way.
 
 ## Documents
 - `docs/PROJECT_CONCEPT.md`: vision and the three feedback channels

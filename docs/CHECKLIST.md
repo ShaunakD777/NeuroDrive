@@ -16,7 +16,7 @@ released, add its tag (e.g. `phase-1`) to the phase's header row.
 | 0.4 | Web skeleton with three panels | ✅ | 2026-10-12 | Vite 8 + React 19 + TS; Vitest 3 passed; `npm run build` clean; Playwright 2 passed; kill/restart reconnect checked; ADR-015 (dev proxy) |
 | 0.4b | Views as pages + companion drawer + layout switch | ✅ | 2026-10-12 | ADR-017; hash routing, layout store; Vitest 14 passed; Playwright 6 passed (incl. no reload / no reconnect on page change); screenshots light, dark, phone |
 | 0.5 | Docs and conventions check | ✅ | 2026-10-12 | All runnable §6 commands run; 8 doc mismatches fixed + stale web lock file; open: pre-commit.exe blocked by Windows policy, `.env.example` vars unused, README stale (see journal) |
-| 0.6 | Version control safety net + release `phase-0` | ☐ | | ADR-014 |
+| 0.6 | Version control safety net + release `phase-0` | ☑ | | ADR-014; local checks pass, planted secret blocked; ✅ after CI is green on GitHub |
 | **Phase 1** | **Milestone 1: One neuron can drive** | | | |
 | 1.1 | Activations and the single neuron | ☐ | | |
 | 1.2 | Track model | ☐ | | |

@@ -1,0 +1,38 @@
+# Checks that run on every `git commit` (ADR-014). Install once per clone:
+#   uv run python -m pre_commit install
+# Run on every file by hand:
+#   uv run python -m pre_commit run --all-files
+# (The `python -m` form works even where Windows Smart App Control blocks the pre-commit.exe
+# launcher.) Never bypass a failing hook with --no-verify: fix the cause instead.
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+        args: [--maxkb=1000]
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: check-yaml
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
+  # Ruff runs through uv so the hook uses exactly the ruff version pinned in uv.lock, the same
+  # one CI uses. A separate ruff hook repository would pin a second version that could disagree.
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check --force-exclude
+        language: system
+        types_or: [python, pyi]
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format --force-exclude
+        language: system
+        types_or: [python, pyi]

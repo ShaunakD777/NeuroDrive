@@ -132,12 +132,15 @@ These are created in Phase 0. If a task changes a command, update this section i
 | Rebuild / check the SQLite mirror | `uv run nd db rebuild` / `uv run nd db check` |
 | Web unit tests / smoke test | `cd web && npm run test` / `npm run e2e` |
 | Regenerate TypeScript types from the Python message models | `cd web && npm run gen:types` |
-| Run all pre-commit hooks | `uv run pre-commit run --all-files` |
-| Install the git hooks (once per clone) | `uv run pre-commit install` |
+| Run all pre-commit hooks | `uv run python -m pre_commit run --all-files` |
+| Install the git hooks (once per clone) | `uv run python -m pre_commit install` |
+
+The pre-commit commands use `python -m pre_commit` because Windows Smart App Control can block the
+generated `pre-commit.exe` launcher; the installed git hook already calls Python this way.
 
 **Not available yet** (the command is listed so its final form is fixed; running it today gives
-"No such command" or a missing-config error): `nd train` arrives in task 4.6, `nd sweep` in 4.7,
-`nd exam` in 5.4, `nd db` in 5.5b, and the two `pre-commit` commands in 0.6.
+"No such command"): `nd train` arrives in task 4.6, `nd sweep` in 4.7, `nd exam` in 5.4 and
+`nd db` in 5.5b.
 
 ## 7. Project slash commands
 

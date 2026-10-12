@@ -81,4 +81,9 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Hash (URL fragment) | The part of a web address after `#`, such as `#/network`; changing it never reloads the page. |
 | Focus + context | A layout with one large main view and a small linked view beside it, so both stay visible. |
 | Local storage | A small per-browser store a web page can save settings in; it can be unavailable, so the app must work without it. |
+| Pre-commit hook | A check git runs just before recording a commit; if it fails, the commit is refused. |
+| Secret scanning | Searching text for things shaped like passwords, tokens or keys before they are published. |
+| Continuous integration (CI) | A fresh machine (here GitHub Actions) that re-runs the tests and checks on every push. |
+| Pinning (versions) | Naming an exact tool version so a check behaves the same today and later. |
+| Checksum | A fingerprint of a file; comparing it with the published one proves a download was not altered. |
 | Linter / formatter | Tools (ruff) that flag likely mistakes and rewrite code into one consistent style. |

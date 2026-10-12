@@ -113,4 +113,3 @@ Save study reports in `docs/studies/<ID>.md` and figures in `docs/studies/figure
 
 **Going back to a version:** any completed phase can be inspected by checking out its tag
 (`phase-<N>`) in a separate worktree or a temporary branch. Never move or delete a tag.
-

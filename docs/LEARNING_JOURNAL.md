@@ -101,3 +101,19 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   instead of breaking the page.
 - Open question: on a phone-width screen the open drawer is cramped; should it start closed there,
   or slide over the page instead of sitting beside it?
+
+### 2026-10-12 — Task 0.6 Version control safety net
+- Concept: a pre-commit hook is a gate git runs before recording a commit; secret scanning looks
+  for key-shaped text; CI re-runs every check on a fresh machine for every push; pinning versions
+  keeps checks stable over time.
+- Key equation(s) in words: none, plumbing task.
+- What we observed: a random GitHub-token-shaped string was caught by gitleaks (rule
+  `github-pat`); a real `git commit` of a fake private key was refused by `detect-private-key` and
+  gitleaks, and HEAD did not move. A full-history gitleaks scan of all 9 commits found no leaks.
+  Every command CI runs passed locally.
+- Surprise or difficulty: Smart App Control blocked the `pre-commit.exe` launcher but none of the
+  hooks: the installed git hook calls Python directly, and even the gitleaks program that
+  pre-commit built from source (downloading Go by itself) was allowed to run. Ruff runs through
+  `uv run` so the hook and CI use one ruff version.
+- Open question: should the Playwright smoke test also run in CI, given it needs a browser
+  download and both servers?
