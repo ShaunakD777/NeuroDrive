@@ -1,34 +1,116 @@
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 
 import { connectLive, type ConnectionStatus } from "./api/ws";
-import { ConnectionBadge } from "./components/ConnectionBadge";
+import { CompanionDrawer } from "./components/CompanionDrawer";
+import { TopBar } from "./components/TopBar";
 import { ViewPanel } from "./components/ViewPanel";
+import { useRoute } from "./nav/route";
+import { VIEWS, viewInfo, type ViewId } from "./nav/views";
+import { effectivePartner, useLayout } from "./state/layout";
 
 export function App() {
+  // The connection belongs to the app, not to a page, so it survives page changes.
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
-
   useEffect(() => connectLive(setStatus), []);
+
+  const current = useRoute();
+  const { mode, setMode } = useLayout();
 
   return (
     <div className="app">
-      <header className="app-header">
-        <h1>NeuroDrive</h1>
-        <ConnectionBadge status={status} />
-      </header>
-      <Group orientation="horizontal" className="panels">
-        <Panel id="panel-environment" defaultSize="34" minSize="15">
-          <ViewPanel title="Environment" comingIn="task 1.8" />
-        </Panel>
-        <Separator className="separator" />
-        <Panel id="panel-network" defaultSize="33" minSize="15">
-          <ViewPanel title="Neural Network" comingIn="task 1.9 and Phase 2" />
-        </Panel>
-        <Separator className="separator" />
-        <Panel id="panel-experiment" defaultSize="33" minSize="15">
-          <ViewPanel title="Experiment" comingIn="Phase 4 and later" />
-        </Panel>
-      </Group>
+      <TopBar current={current} mode={mode} onModeChange={setMode} status={status} />
+      <main className="workspace">
+        {mode === "page" && <PageLayout current={current} />}
+        {mode === "split" && <SplitLayout current={current} />}
+        {mode === "all" && <AllLayout current={current} />}
+      </main>
     </div>
+  );
+}
+
+function MainView({ id, headerExtra }: { id: ViewId; headerExtra?: ReactNode }) {
+  const v = viewInfo(id);
+  return <ViewPanel title={v.title} comingIn={v.comingIn} headerExtra={headerExtra} />;
+}
+
+/** One view, full size, with its companion drawer. */
+function PageLayout({ current }: { current: ViewId }) {
+  const open = useLayout((s) => s.drawerOpen[current]);
+  const toggleDrawer = useLayout((s) => s.toggleDrawer);
+  return (
+    <div className="page" data-testid={`page-${current}`}>
+      <div className="page-main">
+        <MainView id={current} />
+      </div>
+      <CompanionDrawer page={current} open={open} onToggle={() => toggleDrawer(current)} />
+    </div>
+  );
+}
+
+/** The current view on the left, a chosen partner on the right. */
+function SplitLayout({ current }: { current: ViewId }) {
+  const splitPartner = useLayout((s) => s.splitPartner);
+  const setSplitPartner = useLayout((s) => s.setSplitPartner);
+  const partner = effectivePartner(current, splitPartner);
+
+  const picker = (
+    <label className="picker">
+      <span className="visually-hidden">Second view</span>
+      <select value={partner} onChange={(e) => setSplitPartner(e.target.value as ViewId)}>
+        {VIEWS.filter((v) => v.id !== current).map((v) => (
+          <option key={v.id} value={v.id}>
+            {v.title}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+
+  return (
+    <Group orientation="horizontal" className="panels">
+      <Panel id={`split-${current}`} defaultSize="50" minSize="20">
+        <MainView id={current} />
+      </Panel>
+      <Separator className="separator" />
+      <Panel id={`split-${partner}`} defaultSize="50" minSize="20">
+        <MainView id={partner} headerExtra={picker} />
+      </Panel>
+    </Group>
+  );
+}
+
+/** All three views side by side; the current one is outlined. */
+function AllLayout({ current }: { current: ViewId }) {
+  return (
+    <Group orientation="horizontal" className="panels">
+      {VIEWS.map((v, i) => (
+        <AllPanel key={v.id} id={v.id} isCurrent={v.id === current} withSeparator={i > 0} />
+      ))}
+    </Group>
+  );
+}
+
+function AllPanel({
+  id,
+  isCurrent,
+  withSeparator,
+}: {
+  id: ViewId;
+  isCurrent: boolean;
+  withSeparator: boolean;
+}) {
+  return (
+    <>
+      {withSeparator && <Separator className="separator" />}
+      <Panel
+        id={`panel-${id}`}
+        defaultSize={id === "environment" ? "34" : "33"}
+        minSize="15"
+        className={isCurrent ? "panel-current" : undefined}
+      >
+        <MainView id={id} />
+      </Panel>
+    </>
   );
 }

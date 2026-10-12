@@ -77,4 +77,8 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Documentation drift | Docs slowly stop matching the code because the code changed and the docs did not; fixed by re-running and re-reading them. |
 | Launcher (.exe) | The small program a tool installs so you can type its name (such as `pre-commit`) in a terminal; it starts the real Python code. |
 | Application Control | A Windows security policy that can stop unapproved programs (here, an unsigned launcher) from running. |
+| Client-side routing | Changing which page is shown by changing the address (here the part after `#`) without reloading the document, so app state survives and back/forward work. |
+| Hash (URL fragment) | The part of a web address after `#`, such as `#/network`; changing it never reloads the page. |
+| Focus + context | A layout with one large main view and a small linked view beside it, so both stay visible. |
+| Local storage | A small per-browser store a web page can save settings in; it can be unavailable, so the app must work without it. |
 | Linter / formatter | Tools (ruff) that flag likely mistakes and rewrite code into one consistent style. |

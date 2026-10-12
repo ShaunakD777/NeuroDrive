@@ -145,7 +145,8 @@ neurodrive/
 │  ├─ e2e/                       Playwright smoke tests (playwright.config.ts starts both servers)
 │  ├─ scripts/                   gen-types.mjs: Pydantic JSON Schema → TypeScript (`npm run gen:types`)
 │  ├─ src/api/                   REST client, WebSocket client, generated types (committed)
-│  ├─ src/state/                 selection store, playback clock
+│  ├─ src/nav/                   the views table and hash routing (#/environment, #/network, #/experiment)
+│  ├─ src/state/                 selection store, layout store (Page/Split/All, drawers), playback clock
 │  ├─ src/views/environment/     canvas renderer, trails, HUD, population mode
 │  ├─ src/views/network/         SVG diagram, output inspector, what-if panel, diff
 │  ├─ src/views/experiment/      run list, timeline, charts, comparison page, toy lab

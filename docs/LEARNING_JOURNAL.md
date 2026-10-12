@@ -86,3 +86,18 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
 - Open question: for 0.6, how should git hooks run on a machine that blocks the `.exe` launcher?
   Options are using `python -m pre_commit` in the documented commands, asking for the launcher
   to be allowed, or relying on CI for the checks.
+
+### 2026-10-12 — Task 0.4b Views as pages, with a companion drawer and a layout switch
+- Concept: client-side routing (the address hash names the page, and changing it never reloads
+  the document) and focus + context (one large view plus a compact linked view in a drawer).
+- Key equation(s) in words: none, plumbing task.
+- What we observed: the app opens at `#/environment`; tabs and the back button switch pages;
+  Split and All work and the choice survives a reload. Switching pages kept the same document
+  (a marker set on the window survived) and opened no new WebSocket, which is the proof that the
+  selection store and the live connection survive page changes.
+- Surprise or difficulty: layout got its own store rather than joining the selection store,
+  because "how the screen is arranged" and "what the user picked" change for different reasons.
+  Saved settings are validated on load, so a stale or hand-edited value falls back to defaults
+  instead of breaking the page.
+- Open question: on a phone-width screen the open drawer is cramped; should it start closed there,
+  or slide over the page instead of sitting beside it?
