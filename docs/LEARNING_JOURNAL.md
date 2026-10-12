@@ -68,3 +68,21 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   log shows two connections per page load.
 - Open question: when the generated types are committed, what is the cheapest check that stops
   them going stale when someone edits `schemas.py`? (Task 0.6's CI is a natural place.)
+
+### 2026-10-12 — Task 0.5 Docs and conventions check
+- Concept: documentation is a contract that goes stale; test it the way you test code, by
+  running every documented command and comparing every described file with the real tree.
+- Key equation(s) in words: none, plumbing task.
+- What we observed: every §6 command that exists today runs (`uv sync`, pytest, ruff, `nd serve`,
+  `npm install`/`dev`/`test`/`e2e`/`gen:types`); the Vite proxy forwards `/api/health` to the
+  server; `nd train`, `sweep`, `exam`, `db` correctly do not exist yet.
+- Surprise or difficulty: (1) running `npm install` as documented modified a committed file,
+  `web/package-lock.json`, because I had changed the web version after creating it in 0.4;
+  fixed here. (2) `uv run pre-commit` fails on this machine: Windows Application Control blocks
+  the `pre-commit.exe` launcher ("Permission denied"), although the Python package itself is
+  fine (`python -m pre_commit --version` works). This affects task 0.6, which installs git hooks.
+  (3) `.env.example` lists `ND_SERVER_PORT` and `ND_RUNS_DIR`, but nothing reads them yet.
+  (4) README still says "Planning complete" and does not mention installing uv or Node.
+- Open question: for 0.6, how should git hooks run on a machine that blocks the `.exe` launcher?
+  Options are using `python -m pre_commit` in the documented commands, asking for the launcher
+  to be allowed, or relying on CI for the checks.

@@ -14,7 +14,7 @@ released, add its tag (e.g. `phase-1`) to the phase's header row.
 | 0.2 | Seeded randomness module | ✅ | 2026-10-10 | Name-keyed child streams; 17 tests incl. no-global-RNG source scan (planted violation caught); full suite 18 passed |
 | 0.3 | Server skeleton | ✅ | 2026-10-11 | `/api/health` + `/ws/live` hello and echo; `nd serve` checked against a real server; 21 tests passed; added websockets, httpx2 (dev) |
 | 0.4 | Web skeleton with three panels | ✅ | 2026-10-12 | Vite 8 + React 19 + TS; Vitest 3 passed; `npm run build` clean; Playwright 2 passed; kill/restart reconnect checked; ADR-015 (dev proxy) |
-| 0.5 | Docs and conventions check | ☐ | | |
+| 0.5 | Docs and conventions check | ✅ | 2026-10-12 | All runnable §6 commands run; 8 doc mismatches fixed + stale web lock file; open: pre-commit.exe blocked by Windows policy, `.env.example` vars unused, README stale (see journal) |
 | 0.6 | Version control safety net + release `phase-0` | ☐ | | ADR-014 |
 | **Phase 1** | **Milestone 1: One neuron can drive** | | | |
 | 1.1 | Activations and the single neuron | ☐ | | |

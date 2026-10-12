@@ -140,9 +140,11 @@ neurodrive/
 │  └─ cli.py                     `nd serve | train | sweep | exam | demo-record | ...`
 ├─ tests/                        mirrors src/neurodrive (core/, env/, learn/, experiment/, explain/, server/)
 ├─ reference/                    optional PyTorch cross-checks (never imported by src)
-├─ scripts/                      one-off scripts: track generation, study figure export
+├─ scripts/                      one-off scripts: schema export for type generation, track generation, study figure export
 ├─ web/
-│  ├─ src/api/                   REST client, WebSocket client, generated types
+│  ├─ e2e/                       Playwright smoke tests (playwright.config.ts starts both servers)
+│  ├─ scripts/                   gen-types.mjs: Pydantic JSON Schema → TypeScript (`npm run gen:types`)
+│  ├─ src/api/                   REST client, WebSocket client, generated types (committed)
 │  ├─ src/state/                 selection store, playback clock
 │  ├─ src/views/environment/     canvas renderer, trails, HUD, population mode
 │  ├─ src/views/network/         SVG diagram, output inspector, what-if panel, diff
@@ -300,7 +302,7 @@ crashed, lap times, mean speed, smoothness, time to crash), and aggregates per t
 ## 7. Server API (api v1)
 
 REST (`/api/...`):
-- `GET health`
+- `GET health` → `{status: "ok", version}` (`version` is the NeuroDrive package version)
 - `GET tracks`, `GET tracks/{name}` (geometry for drawing)
 - `GET runs`, `GET runs/{id}` (config, meta, metrics), `GET runs/{id}/checkpoints`
 - `GET runs/{id}/checkpoints/{unit}`: network as JSON
@@ -316,7 +318,11 @@ WebSocket `/ws/live`:
   `set_param` (e.g. neuron weights in Phase 1), `key_state` (manual driving)
 - server → client: `hello`, `scenario` (track + cars), `frame` (all cars: pose, alive, action;
   selected car: rays, observation, ForwardTrace), `episode_end`, `error`
+- `hello` is sent first, on connect: `{type: "hello", version, api}` (`api` is the message-contract
+  version, currently `"v1"`). Until task 1.7 the socket then simply echoes any text it receives.
 - Frames are throttled to at most 30 per second.
+- In development the browser reaches both REST and WebSocket through the Vite dev server, which
+  forwards `/api` and `/ws` to the Python server on port 8000 (ADR-015).
 
 WebSocket `/ws/runs`: `metrics`, `checkpoint`, `exam_done`, `run_status` events.
 

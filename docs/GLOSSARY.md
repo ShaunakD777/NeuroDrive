@@ -74,4 +74,7 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Generated types | TypeScript type definitions produced automatically from the Python message models, so both sides agree on every message shape. |
 | JSON Schema | A standard, machine-readable description of what a JSON message must look like (field names and types). |
 | Smoke test (end-to-end) | A test that opens the real app in a real browser and checks the main things work together. |
+| Documentation drift | Docs slowly stop matching the code because the code changed and the docs did not; fixed by re-running and re-reading them. |
+| Launcher (.exe) | The small program a tool installs so you can type its name (such as `pre-commit`) in a terminal; it starts the real Python code. |
+| Application Control | A Windows security policy that can stop unapproved programs (here, an unsigned launcher) from running. |
 | Linter / formatter | Tools (ruff) that flag likely mistakes and rewrite code into one consistent style. |

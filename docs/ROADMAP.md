@@ -48,7 +48,9 @@ green, and `main` is pushed with tag `phase-0`.
 **0.3 Server skeleton**
 - Concept: client/server, REST vs WebSocket (request/response vs a continuous stream).
 - Files: `server/app.py` (health endpoint, `/ws/live` echo), `server/schemas.py` (hello message),
-  `cli.py` (`nd serve`), `tests/server/test_health.py`.
+  `cli.py` (`nd serve`), `tests/server/test_health.py`. As built: also `server/__init__.py`, and
+  the dependencies `websockets` (runtime; Uvicorn needs it to serve WebSockets) and `httpx2`
+  (dev; FastAPI's test client).
 - Verify: test client gets health OK; the WebSocket echo test passes.
 
 **0.4 Web skeleton with three panels**
@@ -56,7 +58,9 @@ green, and `main` is pushed with tag `phase-0`.
 - Files: `web/` (Vite + React + TS), `web/src/App.tsx` (three resizable panels: Environment,
   Network, Experiment), `web/src/state/selection.ts` (empty Zustand store with the fields in
   ARCHITECTURE §8.1), `web/src/api/ws.ts` (connect + status), type generation script
-  `npm run gen:types`, Playwright smoke test.
+  `npm run gen:types`, Playwright smoke test. As built: the generator is `web/scripts/gen-types.mjs`
+  plus `scripts/export_schemas.py` (Python side), the models are listed in `WIRE_MODELS` in
+  `server/schemas.py`, and `vite.config.ts` proxies `/api` and `/ws` to the server (ADR-015).
 - Verify: `npm run dev` shows three panels plus a green "connected" badge when `nd serve` runs;
   `npm run e2e` passes.
 

@@ -113,11 +113,14 @@ The repository is public-safe at all times (ADR-014, `docs/ARCHITECTURE.md` §11
 
 These are created in Phase 0. If a task changes a command, update this section in that task.
 
+**Prerequisites (once per machine):** `uv` (it fetches Python 3.12 by itself), Node.js with npm
+(tested with Node 24), and, for the web smoke test, `cd web && npx playwright install chromium`.
+
 | Purpose | Command |
 |---|---|
 | Install Python deps | `uv sync` |
 | All Python tests | `uv run pytest` |
-| One area, quiet | `uv run pytest tests/env -q` |
+| One area, quiet | `uv run pytest tests/core -q` |
 | Lint and format | `uv run ruff check . && uv run ruff format .` |
 | Start backend (port 8000) | `uv run nd serve` |
 | Start web app (port 5173) | `cd web && npm install && npm run dev` |
@@ -130,6 +133,10 @@ These are created in Phase 0. If a task changes a command, update this section i
 | Run all pre-commit hooks | `uv run pre-commit run --all-files` |
 | Install the git hooks (once per clone) | `uv run pre-commit install` |
 
+**Not available yet** (the command is listed so its final form is fixed; running it today gives
+"No such command" or a missing-config error): `nd train` arrives in task 4.6, `nd sweep` in 4.7,
+`nd exam` in 5.4, `nd db` in 5.5b, and the two `pre-commit` commands in 0.6.
+
 ## 7. Project slash commands
 
 - `/brief <task-id>` — produce the task Brief only, no file changes.
@@ -141,5 +148,5 @@ These are created in Phase 0. If a task changes a command, update this section i
 
 ## 8. Where we are
 
-See `docs/CHECKLIST.md`. The first task is **0.1**, after the user has created the GitHub repository and committed
-these planning files to `main`. Start Phase 0 by creating the branch `phase-0-foundations`.
+See `docs/CHECKLIST.md` for the current task and every task's status. Each phase is built on its own
+branch `phase-<N>-<short-name>` (the first is `phase-0-foundations`), as described in §5.
