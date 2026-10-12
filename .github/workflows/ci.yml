@@ -1,0 +1,89 @@
+# Continuous integration (ADR-014): every push and pull request is checked on a fresh machine.
+# Versions are pinned so a check behaves the same today and next year.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Python (ruff + pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          enable-cache: true
+      # --locked fails if uv.lock is out of date with pyproject.toml, instead of silently updating it.
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pytest
+
+  web:
+    name: Web (build + Vitest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npm run test
+
+  types:
+    name: Generated types are up to date
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          enable-cache: true
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: uv sync --locked
+      - run: npm ci
+        working-directory: web
+      - run: npm run gen:types
+        working-directory: web
+      # If someone changed server/schemas.py but forgot `npm run gen:types`, this shows the difference.
+      - name: Fail if generated.ts changed
+        run: git diff --exit-code -- web/src/api/generated.ts
+
+  secrets:
+    name: Secret scan (gitleaks, full history)
+    runs-on: ubuntu-latest
+    env:
+      GITLEAKS_VERSION: 8.30.1
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0 # the whole history, not just the latest commit
+      - name: Download gitleaks and verify its checksum
+        run: |
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfL -o "$archive" "$base/$archive"
+          curl -sSfL -o checksums.txt "$base/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          grep " ${archive}\$" checksums.txt | sha256sum --check -
+          tar -xzf "$archive" gitleaks
+      - name: Scan every commit
+        run: ./gitleaks git --redact --verbose .

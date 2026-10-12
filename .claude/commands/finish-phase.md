@@ -8,7 +8,7 @@ Finish NeuroDrive phase **$ARGUMENTS** following `docs/WORKFLOW.md` §7 ("Per ph
    phase's "Phase done when" criteria in `docs/ROADMAP.md` are met. If anything is missing, list it
    and stop.
 2. **Check health.** Run the full Python test suite, the web tests that exist so far, and
-   `uv run pre-commit run --all-files`. All must pass.
+   `uv run python -m pre_commit run --all-files`. All must pass.
 3. **Check safety.** Run `git status` and review `git diff main...HEAD --stat`: no `runs/`,
    `data/`, databases, `.env` files, keys, large binaries or personal paths may be included.
 4. **Update docs:** add the tag `phase-$ARGUMENTS` to the phase header row in the checklist, add a

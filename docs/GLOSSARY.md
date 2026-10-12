@@ -52,3 +52,38 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Held-out track | A track never used during training or tuning; it tests generalisation. |
 | Median / IQR | The middle value / the range covering the middle half of results. |
 | Checkpoint | A saved snapshot of a network at a moment during training. |
+| Package | A folder of Python files that can be imported by name (`import neurodrive`). |
+| Virtual environment (venv) | A private copy of Python and libraries for one project (`.venv/`), so projects cannot break each other. |
+| Dependency | A library our code needs; listed in `pyproject.toml`. |
+| Lock file | `uv.lock`: the exact version of every installed library, so every machine installs the same thing. |
+| Test runner | A tool (pytest) that finds functions named `test_…`, runs them and reports pass or fail. |
+| Smoke test | A minimal test that only checks the project starts and imports; it proves wiring, not correctness. |
+| Entry point | A line in `pyproject.toml` that turns a Python function into a terminal command (`nd`). |
+| Pseudo-random generator | A machine that produces random-looking numbers by a fixed recipe set by its seed; same seed, same numbers. |
+| Stream | The sequence of numbers one generator produces. |
+| Child stream | A generator derived from a parent's seed plus a name ("init", "mutation"); independent of the parent's usage and of other children. |
+| Seed sequence | NumPy's way of expanding one seed number into a well-mixed starting state for a generator. |
+| Client / server | The client (the browser) asks for things; the server (our Python program) answers and holds the real data. |
+| REST | Request and response: the client asks once, the server answers once, the conversation ends. |
+| WebSocket | A connection that stays open so either side can send messages at any time; used for live driving. |
+| Endpoint | One address on the server (such as `/api/health`) that does one job. |
+| Health check | An endpoint whose only job is to say "I am running" (and which version). |
+| Selection store | One shared object in the web app that remembers what the user picked (car, neuron, checkpoint, ...), so every view can react to a click in another. |
+| Proxy (dev) | The web dev server passing requests for `/api` and `/ws` on to the Python server, so the browser sees only one address. |
+| CORS | A browser rule that blocks a page from one address (port 5173) calling a server at another (port 8000) unless the server allows it. |
+| Generated types | TypeScript type definitions produced automatically from the Python message models, so both sides agree on every message shape. |
+| JSON Schema | A standard, machine-readable description of what a JSON message must look like (field names and types). |
+| Smoke test (end-to-end) | A test that opens the real app in a real browser and checks the main things work together. |
+| Documentation drift | Docs slowly stop matching the code because the code changed and the docs did not; fixed by re-running and re-reading them. |
+| Launcher (.exe) | The small program a tool installs so you can type its name (such as `pre-commit`) in a terminal; it starts the real Python code. |
+| Application Control | A Windows security policy that can stop unapproved programs (here, an unsigned launcher) from running. |
+| Client-side routing | Changing which page is shown by changing the address (here the part after `#`) without reloading the document, so app state survives and back/forward work. |
+| Hash (URL fragment) | The part of a web address after `#`, such as `#/network`; changing it never reloads the page. |
+| Focus + context | A layout with one large main view and a small linked view beside it, so both stay visible. |
+| Local storage | A small per-browser store a web page can save settings in; it can be unavailable, so the app must work without it. |
+| Pre-commit hook | A check git runs just before recording a commit; if it fails, the commit is refused. |
+| Secret scanning | Searching text for things shaped like passwords, tokens or keys before they are published. |
+| Continuous integration (CI) | A fresh machine (here GitHub Actions) that re-runs the tests and checks on every push. |
+| Pinning (versions) | Naming an exact tool version so a check behaves the same today and later. |
+| Checksum | A fingerprint of a file; comparing it with the published one proves a download was not altered. |
+| Linter / formatter | Tools (ruff) that flag likely mistakes and rewrite code into one consistent style. |

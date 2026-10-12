@@ -140,10 +140,13 @@ neurodrive/
 │  └─ cli.py                     `nd serve | train | sweep | exam | demo-record | ...`
 ├─ tests/                        mirrors src/neurodrive (core/, env/, learn/, experiment/, explain/, server/)
 ├─ reference/                    optional PyTorch cross-checks (never imported by src)
-├─ scripts/                      one-off scripts: track generation, study figure export
+├─ scripts/                      one-off scripts: schema export for type generation, track generation, study figure export
 ├─ web/
-│  ├─ src/api/                   REST client, WebSocket client, generated types
-│  ├─ src/state/                 selection store, playback clock
+│  ├─ e2e/                       Playwright smoke tests (playwright.config.ts starts both servers)
+│  ├─ scripts/                   gen-types.mjs: Pydantic JSON Schema → TypeScript (`npm run gen:types`)
+│  ├─ src/api/                   REST client, WebSocket client, generated types (committed)
+│  ├─ src/nav/                   the views table and hash routing (#/environment, #/network, #/experiment)
+│  ├─ src/state/                 selection store, layout store (Page/Split/All, drawers), playback clock
 │  ├─ src/views/environment/     canvas renderer, trails, HUD, population mode
 │  ├─ src/views/network/         SVG diagram, output inspector, what-if panel, diff
 │  ├─ src/views/experiment/      run list, timeline, charts, comparison page, toy lab
@@ -297,10 +300,10 @@ Exam spec version, list of tracks, per-episode metrics (track, start index, prog
 crashed, lap times, mean speed, smoothness, time to crash), and aggregates per track and overall
 (median, IQR, completion rate). See `EXPERIMENT_PROTOCOL.md`.
 
-## 7. Server API (api v1)
+## 7. Server API (api v1.1, ADR-016)
 
 REST (`/api/...`):
-- `GET health`
+- `GET health` → `{status: "ok", version}` (`version` is the NeuroDrive package version)
 - `GET tracks`, `GET tracks/{name}` (geometry for drawing)
 - `GET runs`, `GET runs/{id}` (config, meta, metrics), `GET runs/{id}/checkpoints`
 - `GET runs/{id}/checkpoints/{unit}`: network as JSON
@@ -316,7 +319,11 @@ WebSocket `/ws/live`:
   `set_param` (e.g. neuron weights in Phase 1), `key_state` (manual driving)
 - server → client: `hello`, `scenario` (track + cars), `frame` (all cars: pose, alive, action;
   selected car: rays, observation, ForwardTrace), `episode_end`, `error`
+- `hello` is sent first, on connect: `{type: "hello", version, api}` (`api` is the message-contract
+  version, currently `"v1.1"`). Until task 1.7 the socket then simply echoes any text it receives.
 - Frames are throttled to at most 30 per second.
+- In development the browser reaches both REST and WebSocket through the Vite dev server, which
+  forwards `/api` and `/ws` to the Python server on port 8000 (ADR-015).
 
 WebSocket `/ws/runs`: `metrics`, `checkpoint`, `exam_done`, `run_status` events.
 
@@ -324,6 +331,16 @@ All message shapes are Pydantic models in `server/schemas.py`. TypeScript types 
 them (`npm run gen:types`), so the two sides cannot drift apart.
 
 ## 8. Web app
+
+### 8.0 Navigation and layout (ADR-017, built in task 0.4b)
+- **Page layout (default):** one full page per view (Environment, Network, Experiment), each with its
+  own address (`#/environment`, `#/network`, `#/experiment`), switched with tabs in the top bar.
+- **Companion drawer:** every page has a collapsible side drawer showing a compact version of a
+  linked view (for example a mini network beside the track), so cause and effect stay visible.
+- **Layout switch:** Page (default), Split (any two views side by side, resizable) and All (the
+  three panels). The choice is remembered per browser.
+- The selection store (§8.1) and the live connection belong to the app, not to a page, so they
+  survive page changes; the linking rules in §8.2 apply in every layout.
 
 ### 8.1 Selection store (single source of UI truth)
 `mode` (live | replay), `runId`, `unit` (checkpoint), `carId`, `neuron` {layer, index},
@@ -366,7 +383,8 @@ See `EXPERIMENT_PROTOCOL.md` §1 for the component verification table.
 **What is committed:** source code, tests, docs, configs, track files, `.claude/commands/`,
 `.claude/settings.json`, study reports and small figures (< 1 MB each).
 
-**What is never committed:** `.env` and any `.env.*` except `.env.example`; keys and certificates
+**What is never committed:** `.env` and any `.env.*` except the placeholder files `.env.example`
+and `.env.local.example`; keys and certificates
 (`*.pem`, `*.key`, `*.p12`, `id_rsa*`); tokens or passwords in any form; `runs/` (run folders,
 checkpoints, recordings, SQLite database); `data/` (recorded demonstrations); `node_modules/`,
 build output and caches; `.claude/settings.local.json`; editor and OS files.

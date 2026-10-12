@@ -103,7 +103,9 @@ The repository is public-safe at all times (ADR-014, `docs/ARCHITECTURE.md` §11
   databases, recordings, `node_modules/` or build output.
 - **Secrets:** NeuroDrive needs none. Never write a token, password, API key, private key or
   personal data (e-mail, absolute paths with user names) into code, configs, docs, tests, logs or
-  run folders. Never read `.env` files. If a secret is ever needed, read it from an `ND_`-prefixed
+  run folders. Never read real `.env` files (`.env`, `.env.local`, `.env.production`, ...); the
+  placeholder files `.env.example` and `.env.local.example` may be read and edited, and must
+  never hold a real value. If a secret is ever needed, read it from an `ND_`-prefixed
   environment variable and add only a placeholder to `.env.example`, after an ADR.
 - **If a secret is found in a commit:** stop, tell the user, do not push. A pushed secret must be
   revoked first; history cleaning comes second.
@@ -113,11 +115,14 @@ The repository is public-safe at all times (ADR-014, `docs/ARCHITECTURE.md` §11
 
 These are created in Phase 0. If a task changes a command, update this section in that task.
 
+**Prerequisites (once per machine):** `uv` (it fetches Python 3.12 by itself), Node.js with npm
+(tested with Node 24), and, for the web smoke test, `cd web && npx playwright install chromium`.
+
 | Purpose | Command |
 |---|---|
 | Install Python deps | `uv sync` |
 | All Python tests | `uv run pytest` |
-| One area, quiet | `uv run pytest tests/env -q` |
+| One area, quiet | `uv run pytest tests/core -q` |
 | Lint and format | `uv run ruff check . && uv run ruff format .` |
 | Start backend (port 8000) | `uv run nd serve` |
 | Start web app (port 5173) | `cd web && npm install && npm run dev` |
@@ -126,8 +131,16 @@ These are created in Phase 0. If a task changes a command, update this section i
 | Driving Exam on a checkpoint | `uv run nd exam --run runs/<run_id> --unit <n>` |
 | Rebuild / check the SQLite mirror | `uv run nd db rebuild` / `uv run nd db check` |
 | Web unit tests / smoke test | `cd web && npm run test` / `npm run e2e` |
-| Run all pre-commit hooks | `uv run pre-commit run --all-files` |
-| Install the git hooks (once per clone) | `uv run pre-commit install` |
+| Regenerate TypeScript types from the Python message models | `cd web && npm run gen:types` |
+| Run all pre-commit hooks | `uv run python -m pre_commit run --all-files` |
+| Install the git hooks (once per clone) | `uv run python -m pre_commit install` |
+
+The pre-commit commands use `python -m pre_commit` because Windows Smart App Control can block the
+generated `pre-commit.exe` launcher; the installed git hook already calls Python this way.
+
+**Not available yet** (the command is listed so its final form is fixed; running it today gives
+"No such command"): `nd train` arrives in task 4.6, `nd sweep` in 4.7, `nd exam` in 5.4 and
+`nd db` in 5.5b.
 
 ## 7. Project slash commands
 
@@ -140,5 +153,5 @@ These are created in Phase 0. If a task changes a command, update this section i
 
 ## 8. Where we are
 
-See `docs/CHECKLIST.md`. The first task is **0.1**, after the user has created the GitHub repository and committed
-these planning files to `main`. Start Phase 0 by creating the branch `phase-0-foundations`.
+See `docs/CHECKLIST.md` for the current task and every task's status. Each phase is built on its own
+branch `phase-<N>-<short-name>` (the first is `phase-0-foundations`), as described in §5.

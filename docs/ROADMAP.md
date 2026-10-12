@@ -21,7 +21,7 @@ seeded randomness, and a safe, versioned GitHub repository.
 control keeps every stage recoverable.
 **Depends on:** nothing. **Enables:** everything.
 **Phase done when:** `uv run pytest` passes, `nd serve` and `npm run dev` start, the browser shows
-three panels and a "connected" indicator, the determinism test passes, pre-commit hooks and CI are
+the three views (as pages with a layout switch, ADR-017) and a "connected" indicator, the determinism test passes, pre-commit hooks and CI are
 green, and `main` is pushed with tag `phase-0`.
 **Risks:** over-building the skeleton. Keep it minimal.
 
@@ -48,7 +48,9 @@ green, and `main` is pushed with tag `phase-0`.
 **0.3 Server skeleton**
 - Concept: client/server, REST vs WebSocket (request/response vs a continuous stream).
 - Files: `server/app.py` (health endpoint, `/ws/live` echo), `server/schemas.py` (hello message),
-  `cli.py` (`nd serve`), `tests/server/test_health.py`.
+  `cli.py` (`nd serve`), `tests/server/test_health.py`. As built: also `server/__init__.py`, and
+  the dependencies `websockets` (runtime; Uvicorn needs it to serve WebSockets) and `httpx2`
+  (dev; FastAPI's test client).
 - Verify: test client gets health OK; the WebSocket echo test passes.
 
 **0.4 Web skeleton with three panels**
@@ -56,9 +58,24 @@ green, and `main` is pushed with tag `phase-0`.
 - Files: `web/` (Vite + React + TS), `web/src/App.tsx` (three resizable panels: Environment,
   Network, Experiment), `web/src/state/selection.ts` (empty Zustand store with the fields in
   ARCHITECTURE §8.1), `web/src/api/ws.ts` (connect + status), type generation script
-  `npm run gen:types`, Playwright smoke test.
+  `npm run gen:types`, Playwright smoke test. As built: the generator is `web/scripts/gen-types.mjs`
+  plus `scripts/export_schemas.py` (Python side), the models are listed in `WIRE_MODELS` in
+  `server/schemas.py`, and `vite.config.ts` proxies `/api` and `/ws` to the server (ADR-015).
 - Verify: `npm run dev` shows three panels plus a green "connected" badge when `nd serve` runs;
   `npm run e2e` passes.
+
+**0.4b Views as pages, with a companion drawer and a layout switch** (added 2026-10-12, ADR-017)
+- Concept: navigation (one page per view, each with its own address) versus seeing two things at
+  once; focus + context as a way to keep linked views visible without crowding the screen.
+- Files: `web/src/App.tsx` (page shell), a small router (`web/src/nav/`) mapping `#/environment`,
+  `#/network`, `#/experiment` to pages, a top bar with view tabs and a layout switch
+  (Page / Split / All), a collapsible companion drawer shell on each page (placeholder content
+  until 1.8, 1.9 and 2.7 fill it), the layout choice remembered in the browser,
+  `web/e2e/smoke.spec.ts` updated, Vitest tests for the routing and layout logic.
+- Verify: the app opens on the Environment page; tabs and the browser back button switch pages;
+  the drawer opens and closes; Split shows two chosen views and All shows the three panels; the
+  connection badge and the selection store survive page changes; `npm run test` and
+  `npm run e2e` pass.
 
 **0.5 Docs and conventions check**
 - Concept: decision records, checklists, learning journal.
@@ -72,7 +89,11 @@ green, and `main` is pushed with tag `phase-0`.
   `pre-commit autoupdate`), `.github/workflows/ci.yml` (Python job: `uv sync`, ruff, pytest; web
   job: `npm ci`, build, Vitest; secret-scan job: gitleaks over the full history), `README.md`
   (setup + contribution rules).
-- Verify: `uv run pre-commit run --all-files` passes; a deliberately planted fake key in a scratch
+- Decided 2026-10-12: Windows Smart App Control on the development machine blocks the generated
+  `pre-commit.exe` launcher, and it stays on. Document `uv run python -m pre_commit ...` for manual
+  runs, install the git hooks normally and verify they actually run; if a hook's own binary (for
+  example gitleaks) is blocked, run that check in CI instead and say so in the README.
+- Verify: `uv run python -m pre_commit run --all-files` passes; a deliberately planted fake key in a scratch
   file is blocked by the hook (then deleted, never committed); CI is green on GitHub; the user has
   enabled secret scanning and push protection in the repository settings where available.
 - Release: run `/finish-phase 0` → merge into `main`, tag `phase-0`, push after confirmation.
