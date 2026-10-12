@@ -1,4 +1,4 @@
-"""Message shapes sent between the server and the browser (api v1).
+"""Message shapes sent between the server and the browser (api v1.1, ADR-016).
 
 Every shape is a Pydantic model, and the TypeScript types for the web app are generated from
 these (task 0.4), so the two sides cannot drift apart.
@@ -8,7 +8,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-API_VERSION = "v1"
+API_VERSION = "v1.1"
 
 
 class WireModel(BaseModel):

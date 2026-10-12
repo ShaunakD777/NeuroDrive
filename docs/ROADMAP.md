@@ -64,6 +64,19 @@ green, and `main` is pushed with tag `phase-0`.
 - Verify: `npm run dev` shows three panels plus a green "connected" badge when `nd serve` runs;
   `npm run e2e` passes.
 
+**0.4b Views as pages, with a companion drawer and a layout switch** (added 2026-10-12, ADR-017)
+- Concept: navigation (one page per view, each with its own address) versus seeing two things at
+  once; focus + context as a way to keep linked views visible without crowding the screen.
+- Files: `web/src/App.tsx` (page shell), a small router (`web/src/nav/`) mapping `#/environment`,
+  `#/network`, `#/experiment` to pages, a top bar with view tabs and a layout switch
+  (Page / Split / All), a collapsible companion drawer shell on each page (placeholder content
+  until 1.8, 1.9 and 2.7 fill it), the layout choice remembered in the browser,
+  `web/e2e/smoke.spec.ts` updated, Vitest tests for the routing and layout logic.
+- Verify: the app opens on the Environment page; tabs and the browser back button switch pages;
+  the drawer opens and closes; Split shows two chosen views and All shows the three panels; the
+  connection badge and the selection store survive page changes; `npm run test` and
+  `npm run e2e` pass.
+
 **0.5 Docs and conventions check**
 - Concept: decision records, checklists, learning journal.
 - Files: confirm `docs/*` and `CLAUDE.md` commands match reality; fix any mismatch.
@@ -76,7 +89,11 @@ green, and `main` is pushed with tag `phase-0`.
   `pre-commit autoupdate`), `.github/workflows/ci.yml` (Python job: `uv sync`, ruff, pytest; web
   job: `npm ci`, build, Vitest; secret-scan job: gitleaks over the full history), `README.md`
   (setup + contribution rules).
-- Verify: `uv run pre-commit run --all-files` passes; a deliberately planted fake key in a scratch
+- Decided 2026-10-12: Windows Smart App Control on the development machine blocks the generated
+  `pre-commit.exe` launcher, and it stays on. Document `uv run python -m pre_commit ...` for manual
+  runs, install the git hooks normally and verify they actually run; if a hook's own binary (for
+  example gitleaks) is blocked, run that check in CI instead and say so in the README.
+- Verify: `uv run python -m pre_commit run --all-files` passes; a deliberately planted fake key in a scratch
   file is blocked by the hook (then deleted, never committed); CI is green on GitHub; the user has
   enabled secret scanning and push protection in the repository settings where available.
 - Release: run `/finish-phase 0` → merge into `main`, tag `phase-0`, push after confirmation.
