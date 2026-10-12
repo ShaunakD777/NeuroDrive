@@ -86,3 +86,10 @@ Alternatives considered · Consequences. Add new records at the bottom. Never de
 - **Alternatives:** (a) commit straight to `main`: simpler, but an unfinished phase would break the "last good version"; (b) tags only, without phase branches: fine for a solo project, but harder to abandon a failed approach; (c) relying only on `.gitignore`: does not catch a key pasted into source code.
 - **Consequences:** a new task 0.6 (pre-commit, CI, first push). Claude Code stages files by name after checking `git status`, never uses `git add -A` or `git add .`, never force-pushes, and never rewrites history that has been pushed. If a secret is ever committed, it must be treated as leaked: revoke it first, then clean the history.
 
+
+### ADR-015 — The web dev server forwards `/api` and `/ws` to the Python server
+- **Status:** accepted (2026-10-12)
+- **Context:** The browser loads the page from the Vite dev server (port 5173) but the Python server listens on port 8000. A browser treats these as two different origins and blocks REST calls between them unless the Python server explicitly allows it (CORS). Task 0.3 left this question open.
+- **Decision:** In development, Vite forwards every request under `/api` and `/ws` to `127.0.0.1:8000` (configured only in `web/vite.config.ts`). The browser talks to a single origin, and the web app builds its WebSocket address from the page's own address. The Python server needs no CORS configuration.
+- **Alternatives:** (a) enable CORS in `server/app.py`: also works, but adds server configuration that must stay in step with the web app's address and loosens what the server accepts; (b) hard-code `localhost:8000` in the web app: couples the web code to one development setup.
+- **Consequences:** `nd serve` must be running for `/api` and `/ws` to work in development (Vite logs a proxy error when it is not). If the app is ever served by the Python server itself, no web code changes are needed because the addresses are already relative. Reversible: removing the proxy and adding CORS touches only `vite.config.ts` and `server/app.py`.

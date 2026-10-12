@@ -126,6 +126,7 @@ These are created in Phase 0. If a task changes a command, update this section i
 | Driving Exam on a checkpoint | `uv run nd exam --run runs/<run_id> --unit <n>` |
 | Rebuild / check the SQLite mirror | `uv run nd db rebuild` / `uv run nd db check` |
 | Web unit tests / smoke test | `cd web && npm run test` / `npm run e2e` |
+| Regenerate TypeScript types from the Python message models | `cd web && npm run gen:types` |
 | Run all pre-commit hooks | `uv run pre-commit run --all-files` |
 | Install the git hooks (once per clone) | `uv run pre-commit install` |
 

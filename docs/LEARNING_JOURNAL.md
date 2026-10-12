@@ -51,3 +51,20 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   Starlette also now deprecates `httpx` for its test client in favour of `httpx2`.
 - Open question: when the web app on port 5173 starts calling REST on port 8000, should we allow
   that with CORS or hide the difference behind a Vite proxy?
+
+### 2026-10-12 — Task 0.4 Web skeleton with three panels
+- Concept: the UI is split into views that share one selection store (what the user picked); the
+  TypeScript types are generated from the Python message models, so the two sides cannot drift.
+- Key equation(s) in words: none, plumbing task.
+- What we observed: three resizable panels and a badge that turns green only after the server's
+  `hello` message arrives; stopping the Python server turns it red, restarting turns it green
+  again within seconds (reconnect every 2 seconds).
+- Surprise or difficulty: the first generated types were wrong in two ways (a field named
+  `version` produced two clashing type names, and fields with defaults came out optional). Both
+  were fixed on the Python side (a shared base model, and dropping per-field titles). Several
+  tools had new major versions (TypeScript 7, Vite 8, react-resizable-panels 4), so I read their
+  installed APIs instead of relying on memory. React's development mode opens each socket twice
+  on purpose (it mounts, unmounts and remounts to expose cleanup bugs), which is why the server
+  log shows two connections per page load.
+- Open question: when the generated types are committed, what is the cheapest check that stops
+  them going stale when someone edits `schemas.py`? (Task 0.6's CI is a natural place.)

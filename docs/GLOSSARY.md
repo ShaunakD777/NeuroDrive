@@ -68,4 +68,10 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | WebSocket | A connection that stays open so either side can send messages at any time; used for live driving. |
 | Endpoint | One address on the server (such as `/api/health`) that does one job. |
 | Health check | An endpoint whose only job is to say "I am running" (and which version). |
+| Selection store | One shared object in the web app that remembers what the user picked (car, neuron, checkpoint, ...), so every view can react to a click in another. |
+| Proxy (dev) | The web dev server passing requests for `/api` and `/ws` on to the Python server, so the browser sees only one address. |
+| CORS | A browser rule that blocks a page from one address (port 5173) calling a server at another (port 8000) unless the server allows it. |
+| Generated types | TypeScript type definitions produced automatically from the Python message models, so both sides agree on every message shape. |
+| JSON Schema | A standard, machine-readable description of what a JSON message must look like (field names and types). |
+| Smoke test (end-to-end) | A test that opens the real app in a real browser and checks the main things work together. |
 | Linter / formatter | Tools (ruff) that flag likely mistakes and rewrite code into one consistent style. |

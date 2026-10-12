@@ -13,7 +13,7 @@ released, add its tag (e.g. `phase-1`) to the phase's header row.
 | 0.1 | Python project skeleton | ✅ | 2026-10-10 | uv + hatchling, Python 3.12; pytest 1 passed, `nd --help` lists `version`, ruff clean |
 | 0.2 | Seeded randomness module | ✅ | 2026-10-10 | Name-keyed child streams; 17 tests incl. no-global-RNG source scan (planted violation caught); full suite 18 passed |
 | 0.3 | Server skeleton | ✅ | 2026-10-11 | `/api/health` + `/ws/live` hello and echo; `nd serve` checked against a real server; 21 tests passed; added websockets, httpx2 (dev) |
-| 0.4 | Web skeleton with three panels | ☐ | | |
+| 0.4 | Web skeleton with three panels | ✅ | 2026-10-12 | Vite 8 + React 19 + TS; Vitest 3 passed; `npm run build` clean; Playwright 2 passed; kill/restart reconnect checked; ADR-015 (dev proxy) |
 | 0.5 | Docs and conventions check | ☐ | | |
 | 0.6 | Version control safety net + release `phase-0` | ☐ | | ADR-014 |
 | **Phase 1** | **Milestone 1: One neuron can drive** | | | |
