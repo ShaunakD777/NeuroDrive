@@ -117,3 +117,18 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   `uv run` so the hook and CI use one ruff version.
 - Open question: should the Playwright smoke test also run in CI, given it needs a browser
   download and both servers?
+
+### 2026-10-12 — Phase 0 complete (tag `phase-0`)
+- What was built: a uv-managed Python package (`nd` CLI); seeded, name-keyed random streams with a
+  guard against global randomness; a FastAPI server with a health check and a live WebSocket
+  (api v1.1); a React + TypeScript viewer with three views as pages (companion drawer, Split and
+  All layouts) and a live connection badge; TypeScript types generated from the Python models;
+  commit hooks (gitleaks, key detection, large files, ruff) and CI (Python, web, type drift,
+  full-history secret scan). 21 Python tests, 14 web unit tests, 6 browser tests.
+- What was learned: reproducibility starts before any maths (lock files, seeds, pinned tools);
+  tests only prove what they check (an in-process test client never touches the real server, and
+  a test that cannot fail proves nothing); documentation drifts unless it is run like code;
+  security tooling must be checked by planting a fake secret, not assumed.
+- Decisions: ADR-015 (dev proxy), ADR-016 (api v1.1), ADR-017 (views as pages).
+- Open questions: run the Playwright smoke test in CI? How strictly to upgrade lock files? Should
+  the companion drawer start closed on narrow screens?

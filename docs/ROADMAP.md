@@ -21,7 +21,7 @@ seeded randomness, and a safe, versioned GitHub repository.
 control keeps every stage recoverable.
 **Depends on:** nothing. **Enables:** everything.
 **Phase done when:** `uv run pytest` passes, `nd serve` and `npm run dev` start, the browser shows
-three panels and a "connected" indicator, the determinism test passes, pre-commit hooks and CI are
+the three views (as pages with a layout switch, ADR-017) and a "connected" indicator, the determinism test passes, pre-commit hooks and CI are
 green, and `main` is pushed with tag `phase-0`.
 **Risks:** over-building the skeleton. Keep it minimal.
 
