@@ -19,7 +19,7 @@ released, add its tag (e.g. `phase-1`) to the phase's header row.
 | 0.6 | Version control safety net + release `phase-0` | ✅ | 2026-10-12 | ADR-014; planted secret blocked; CI green on GitHub (all 4 jobs, first run); secret scanning + push protection enabled by user |
 | **Phase 1** | **Milestone 1: One neuron can drive** | | | |
 | 1.1 | Activations and the single neuron | ✅ | 2026-10-13 | `uv run pytest` 44 passed (23 new); hand values (tanh(0.2)=0.19738) match to 1e-9; sigmoid safe at ±1000; ruff clean |
-| 1.2 | Track model | ☐ | | |
+| 1.2 | Track model | ✅ | 2026-10-13 | `uv run pytest` 70 passed (26 new in tests/env); circle: L=314.14 vs 314.16, e=+3.00 left / −3.00 right; train_loop_01 L=731 m, min bend radius 22.5 m, edges do not cross |
 | 1.3 | Car physics (batched) | ☐ | | |
 | 1.4 | Raycast sensors | ☐ | | |
 | 1.5 | Progress, crash, termination | ☐ | | |

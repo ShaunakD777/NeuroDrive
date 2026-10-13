@@ -90,3 +90,11 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Weighted sum (z) | A neuron's total before squashing: each input times its weight, all added up, plus the bias. |
 | Linear activation | The "do nothing" activation: the output equals the weighted sum, with no limit on its range. |
 | Output range | The set of values an activation can produce (tanh −1..1, sigmoid 0..1, ReLU 0..∞); weights cannot change it. |
+| Centreline | The line down the middle of the road; the track is this line plus a width. |
+| Arc length (s) | Distance travelled along the road from its starting point, like a kilometre marker. |
+| Tangent | The unit-length direction the road points at a given place. |
+| Normal | A unit-length direction at right angles to the tangent; the left normal points to the left of the direction of travel. |
+| Offset curve | A curve made by pushing every point of another curve sideways by a fixed distance; the road edges are offsets of the centreline. |
+| Lateral offset (e) | How far a point is to the side of the centreline: positive on the left, negative on the right. |
+| Projection (onto the track) | Finding the nearest centreline point to a position, which gives its arc length s and lateral offset e. |
+| Catmull-Rom spline | A smooth curve that passes exactly through a list of corner points. |

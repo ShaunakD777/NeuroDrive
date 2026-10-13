@@ -145,3 +145,19 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   computed from e^(−|z|) instead; a test at ±1000 with warnings turned into errors guards this.
 - Open question: when do we need the derivatives (Phase 3), and will names alone stay enough once
   networks mix activations per layer?
+
+### 2026-10-13 — Task 1.2 Track model
+- Concept: a road is a centreline plus a width; arc length s is the distance along it, the tangent
+  its direction, and the edges are the centreline pushed sideways by half the width along the
+  left normal. Projecting a point gives s (how far along) and e (how far to the left).
+- Key equation(s) in words: left edge = centreline point + (w/2) times the left normal; e is the
+  sideways distance from the nearest centreline point, positive on the left.
+- What we observed: a 50 m radius circular road has length 314.14 m (true 314.16 m); a point 3 m
+  inside gives e = +3.00 and 3 m outside gives −3.00. train_loop_01 is a 731 m kidney-shaped loop
+  whose tightest bend has a 22.5 m radius.
+- Surprise or difficulty: my first corner points made a 15 m bend and the "wider than the bend"
+  test I first wrote did not fire, because a circle whose half-width exceeds its radius just
+  flips into a smaller circle without crossing itself. So the loader now also checks the bend
+  radius against half the width, and a dumbbell-shaped road shows the edge-crossing check works.
+- Open question: is a 22.5 m minimum radius gentle enough for a one-neuron driver at the speeds
+  task 1.3 will allow?
