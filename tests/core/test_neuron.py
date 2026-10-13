@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from neurodrive.core.neuron import Neuron
+from neurodrive.core.rng import make_rng
 
 # Roadmap example: inputs [2, 1], weights [0.5, -1], bias 0.2 -> z = 1.0 - 1.0 + 0.2 = 0.2
 X = [2.0, 1.0]
@@ -39,7 +40,7 @@ def test_default_activation_is_tanh():
 
 
 def test_batch_equals_single_calls():
-    rng = np.random.default_rng(0)  # test-only generator, explicitly seeded
+    rng = make_rng(0)
     batch = rng.normal(size=(5, 2))
     neuron = Neuron(W, B, "sigmoid")
     together = neuron.forward(batch)
@@ -50,7 +51,7 @@ def test_batch_equals_single_calls():
 
 def test_sigmoid_neuron_can_never_output_negative():
     # The Milestone 1 lesson: whatever the weights, sigmoid output is >= 0.
-    rng = np.random.default_rng(1)
+    rng = make_rng(1)
     for _ in range(20):
         neuron = Neuron(rng.normal(scale=10, size=2), rng.normal(scale=10), "sigmoid")
         assert np.all(neuron.forward(rng.normal(scale=10, size=(50, 2))) >= 0.0)
