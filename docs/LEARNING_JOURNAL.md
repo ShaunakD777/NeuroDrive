@@ -132,3 +132,16 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
 - Decisions: ADR-015 (dev proxy), ADR-016 (api v1.1), ADR-017 (views as pages).
 - Open questions: run the Playwright smoke test in CI? How strictly to upgrade lock files? Should
   the companion drawer start closed on narrow screens?
+
+### 2026-10-13 — Task 1.1 Activations and the single neuron
+- Concept: a neuron is a weighted sum plus a bias, squashed by an activation function; the
+  activation alone fixes the range of possible outputs.
+- Key equation(s) in words: z is each input times its weight, added up, plus the bias; the output
+  is f of z. tanh gives −1..1, sigmoid 0..1, ReLU 0 upwards, linear anything.
+- What we observed: inputs [2, 1], weights [0.5, −1], bias 0.2 give z = 0.2 and tanh 0.19738,
+  sigmoid 0.54983, ReLU 0.2. Random sigmoid neurons with huge weights never produced a negative
+  output, previewing the Milestone 1 sigmoid failure.
+- Surprise or difficulty: the obvious sigmoid formula overflows for very negative sums, so it is
+  computed from e^(−|z|) instead; a test at ±1000 with warnings turned into errors guards this.
+- Open question: when do we need the derivatives (Phase 3), and will names alone stay enough once
+  networks mix activations per layer?

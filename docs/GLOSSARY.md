@@ -87,3 +87,6 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Pinning (versions) | Naming an exact tool version so a check behaves the same today and later. |
 | Checksum | A fingerprint of a file; comparing it with the published one proves a download was not altered. |
 | Linter / formatter | Tools (ruff) that flag likely mistakes and rewrite code into one consistent style. |
+| Weighted sum (z) | A neuron's total before squashing: each input times its weight, all added up, plus the bias. |
+| Linear activation | The "do nothing" activation: the output equals the weighted sum, with no limit on its range. |
+| Output range | The set of values an activation can produce (tanh −1..1, sigmoid 0..1, ReLU 0..∞); weights cannot change it. |

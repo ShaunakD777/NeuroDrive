@@ -18,7 +18,7 @@ released, add its tag (e.g. `phase-1`) to the phase's header row.
 | 0.5 | Docs and conventions check | ✅ | 2026-10-12 | All runnable §6 commands run; 8 doc mismatches fixed + stale web lock file; open: pre-commit.exe blocked by Windows policy, `.env.example` vars unused, README stale (see journal) |
 | 0.6 | Version control safety net + release `phase-0` | ✅ | 2026-10-12 | ADR-014; planted secret blocked; CI green on GitHub (all 4 jobs, first run); secret scanning + push protection enabled by user |
 | **Phase 1** | **Milestone 1: One neuron can drive** | | | |
-| 1.1 | Activations and the single neuron | ☐ | | |
+| 1.1 | Activations and the single neuron | ✅ | 2026-10-13 | `uv run pytest` 44 passed (23 new); hand values (tanh(0.2)=0.19738) match to 1e-9; sigmoid safe at ±1000; ruff clean |
 | 1.2 | Track model | ☐ | | |
 | 1.3 | Car physics (batched) | ☐ | | |
 | 1.4 | Raycast sensors | ☐ | | |
