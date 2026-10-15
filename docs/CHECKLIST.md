@@ -22,7 +22,7 @@ released, add its tag (e.g. `phase-1`) to the phase's header row.
 | 1.2 | Track model | ✅ | 2026-10-13 | `uv run pytest` 70 passed (26 new in tests/env); circle: L=314.14 vs 314.16, e=+3.00 left / −3.00 right; train_loop_01 L=731 m, min bend radius 22.5 m, edges do not cross |
 | 1.3 | Car physics (batched) | ✅ | 2026-10-15 | `uv run pytest` 87 passed (17 new in tests/env/test_car.py); hand step v=10.2333, psi=−0.029316; v_max reached in 4.7 s; batch N=3 bit-identical to 3 single runs; grip limit holds at all speeds; §6.3 values kept unchanged |
 | 1.4 | Raycast sensors | ✅ | 2026-10-15 | `uv run pytest` 105 passed (18 new in tests/env/test_sensors.py); wall 10 m ahead → 0.2; no hit → 1.0; Hypothesis: batched = scalar reference to 1e-9 (60 track + 150 random-wall cases); two planted bugs were caught; ~21 ms for 100 cars |
-| 1.5 | Progress, crash, termination | ✅ | 2026-10-15 | `uv run pytest` 128 passed (23 new in tests/env/test_world.py); scripted driver laps train_loop_01: P=731.02 vs L=730.74, FINISHED at 76 s; backwards P<0; crash at \|e\|>5 m; stall at exactly 60 steps; wrap bug planted → 3 tests failed; batch = single-car worlds |
+| 1.5 | Progress, crash, termination | ✅ | 2026-10-15 | `uv run pytest` 128 passed (23 new in tests/env/test_world.py); scripted driver laps train_loop_01: P=731.02 vs L=730.74, FINISHED at 76 s; backwards P<0; crash at \|e\|>5 m; stall at exactly 60 steps; wrap bug planted → 3 tests failed; batch = single-car worlds; follow-up 2026-10-15: defaults now 2 laps / 90 s, seeded random starts in `reset` (135 tests passed) |
 | 1.6 | Policies, episode runner, recording | ☐ | | |
 | 1.7 | Live session over WebSocket | ☐ | | |
 | 1.8 | Environment view v1 | ☐ | | |

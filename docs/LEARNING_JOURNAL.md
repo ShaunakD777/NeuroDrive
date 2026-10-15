@@ -214,3 +214,14 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   global searches may pick different neighbours there; arc length and offset still agree.
 - Open question: should reset accept a seeded random start offset (the Driving Exam uses fixed
   starts, but training may want variety), and which seed would it use?
+
+### 2026-10-15 — Task 1.5 follow-up: 2 laps, 90 s, seeded random starts
+- Concept: episode rules and start positions are choices, so they live in config and in a seeded
+  generator passed in by the caller, never in hidden global state.
+- What we observed: defaults are now 2 laps and a 90 s limit (matching the Driving Exam). `reset`
+  can draw random start positions along the loop, sideways offsets and heading offsets from a
+  seeded generator: the same seed gives the same starts, a different seed differs, and without
+  randomness the generator is not used at all.
+- Surprise or difficulty: the repo's guard test bans the text "np.random" everywhere except
+  `core/rng.py`, even in type hints, so `core/rng.py` now exports a type alias `Rng` for hints.
+- Open question: should training use random starts by default while exams keep fixed ones?

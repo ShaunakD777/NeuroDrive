@@ -224,8 +224,9 @@ for every method.
 - **Progress:** Δs wrapped into (−L_track/2, L_track/2]; cumulative progress P += Δs (driving
   backwards reduces P); laps = floor(P / L_track).
 - **Crash:** |e| > width/2 − car half-width.
-- **Episode ends** for a car when it crashes, reaches the time limit (config; default 60 s), stalls
-  (progress < 2 m over the last 3 s, checked after the first 2 s), or completes the target laps.
+- **Episode ends** for a car when it crashes, reaches the time limit (config; default 90 s), stalls
+  (progress < 2 m over the last 3 s, checked after the first 2 s), or completes the target laps
+  (config; default 2).
 
 ### 6.7 Feedback taps (feedback v1)
 - **Teacher label** `teacher(state) → action`. The scripted expert sees the *privileged full

@@ -27,6 +27,7 @@ from enum import IntEnum
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
+from neurodrive.core.rng import Rng
 from neurodrive.env.car import DEFAULT_PARAMS, DT, CarParams, CarState, step_cars
 from neurodrive.env.track import Track
 
@@ -49,8 +50,8 @@ class Status(IntEnum):
 class WorldConfig:
     """Episode rules. Defaults follow ARCHITECTURE §6.6."""
 
-    time_limit: float = 60.0  # seconds
-    target_laps: int = 1  # the episode ends successfully after this many completed laps
+    time_limit: float = 90.0  # seconds
+    target_laps: int = 2  # the episode ends successfully after this many completed laps
     stall_distance: float = 2.0  # metres of progress required ...
     stall_window: float = 3.0  # ... in every window of this many seconds ...
     stall_grace: float = 2.0  # ... checked only once this many seconds have passed
@@ -133,6 +134,10 @@ class World:
         lateral: ArrayLike = 0.0,
         heading_offset: ArrayLike = 0.0,
         speed: ArrayLike = 0.0,
+        rng: Rng | None = None,
+        random_s0: bool = False,
+        lateral_jitter: float = 0.0,
+        heading_jitter: float = 0.0,
     ) -> None:
         """Place N cars on the road and clear all progress.
 
@@ -141,13 +146,38 @@ class World:
         heading equal to the road direction plus ``heading_offset[i]`` radians, and speed
         ``speed[i]``. Scalars apply to every car; ``n`` defaults to the length of the longest
         array argument (1 if all are scalars).
+
+        Seeded random starts: pass a generator ``rng`` (from ``core/rng.py``) and any of
+
+        * ``random_s0=True``: every car (that was not given an explicit ``s0``) starts at an
+          arc length drawn uniformly from [0, L_track);
+        * ``lateral_jitter`` (j, metres): a number drawn uniformly from [-j, +j] is added to
+          each car's sideways offset;
+        * ``heading_jitter`` (h, radians): likewise added to each car's heading offset.
+
+        Draws happen in that order (arc length, lateral, heading), N numbers each, only for the
+        options used, so the same seed and arguments always give the same start. Asking for
+        randomness without an ``rng`` raises an error.
         """
+        wants_random = random_s0 or lateral_jitter != 0.0 or heading_jitter != 0.0
+        if wants_random and rng is None:
+            raise ValueError("random_s0 / jitter need an rng (a seeded generator from core/rng)")
+        if lateral_jitter < 0.0 or heading_jitter < 0.0:
+            raise ValueError("jitter ranges must not be negative")
+        explicit_s0 = s0 is not None
         arrays = [
             np.atleast_1d(np.asarray(a, float))
             for a in (self.track.start_s0 if s0 is None else s0, lateral, heading_offset, speed)
         ]
         count = n if n is not None else max(len(a) for a in arrays)
         s_start, lat, dpsi, v = (np.broadcast_to(a, (count,)).copy() for a in arrays)
+        if rng is not None:
+            if random_s0 and not explicit_s0:
+                s_start = rng.uniform(0.0, self.track.length, size=count)
+            if lateral_jitter > 0.0:
+                lat = lat + rng.uniform(-lateral_jitter, lateral_jitter, size=count)
+            if heading_jitter > 0.0:
+                dpsi = dpsi + rng.uniform(-heading_jitter, heading_jitter, size=count)
 
         x, y, road = self.track.point_at(s_start)
         x = x - lat * np.sin(road)  # the left normal of heading h is (-sin h, cos h)

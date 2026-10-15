@@ -306,3 +306,68 @@ def test_step_before_reset_and_bad_config_are_rejected(loop):
     with pytest.raises(ValueError, match="target_laps"):
         WorldConfig(target_laps=0)
     assert math.isclose(World(loop).crash_offset, 5.0)
+
+
+# ── defaults and seeded random starts ───────────────────────────────────────────────────────
+
+
+def test_default_rules_are_two_laps_and_ninety_seconds(loop):
+    config = WorldConfig()
+    assert config.target_laps == 2 and config.time_limit == 90.0
+    assert World(loop).limit_steps == 2700  # 90 s at 30 steps per second
+
+
+def test_random_start_positions_follow_the_seed(loop):
+    def starts(seed: int):
+        world = World(loop)
+        world.reset(n=6, rng=make_rng(seed), random_s0=True, lateral_jitter=2.0, heading_jitter=0.2)
+        return world
+
+    a, b, c = starts(1), starts(1), starts(2)
+    assert np.array_equal(a.cars.x, b.cars.x) and np.array_equal(a.cars.psi, b.cars.psi)
+    assert not np.array_equal(a.cars.x, c.cars.x)
+    assert len(set(np.round(a.s, 3))) == 6  # six different start positions
+    assert np.all((a.s >= 0.0) & (a.s < loop.length))
+    assert np.all(np.abs(a.lateral_offset) <= 2.0 + 0.05)
+    assert np.all(np.abs(wrap(a.cars.psi - a.road_heading)) <= 0.2 + 1e-3)
+    assert a.lateral_offset.std() > 0.3 and wrap(a.cars.psi - a.road_heading).std() > 0.02
+
+
+def test_random_starts_spread_over_the_whole_loop(loop):
+    world = World(loop)
+    world.reset(n=400, rng=make_rng(3), random_s0=True)
+    counts, _ = np.histogram(world.s, bins=4, range=(0.0, loop.length))
+    assert counts.min() > 60  # each quarter of the loop gets roughly 100 of the 400 starts
+
+
+def test_explicit_s0_is_kept_when_only_jitter_is_requested(loop):
+    world = World(loop)
+    world.reset(s0=[100.0, 200.0], rng=make_rng(4), lateral_jitter=1.0)
+    assert world.s == pytest.approx([100.0, 200.0], abs=0.05)
+    assert np.all(np.abs(world.lateral_offset) <= 1.05) and np.all(world.lateral_offset != 0.0)
+    world.reset(s0=[100.0, 200.0], rng=make_rng(4), random_s0=True)  # explicit s0 wins
+    assert world.s == pytest.approx([100.0, 200.0], abs=0.05)
+
+
+def test_no_randomness_means_the_rng_is_not_touched(loop):
+    rng, reference = make_rng(9), make_rng(9)
+    World(loop).reset(n=3, rng=rng)
+    assert rng.random() == reference.random()
+
+
+def test_randomness_without_an_rng_is_rejected(loop):
+    world = World(loop)
+    with pytest.raises(ValueError, match="need an rng"):
+        world.reset(random_s0=True)
+    with pytest.raises(ValueError, match="need an rng"):
+        world.reset(lateral_jitter=1.0)
+    with pytest.raises(ValueError, match="must not be negative"):
+        world.reset(rng=make_rng(0), lateral_jitter=-1.0)
+
+
+def test_cars_started_at_random_positions_still_drive_and_score(loop):
+    world = World(loop)
+    world.reset(n=5, rng=make_rng(12), random_s0=True, lateral_jitter=1.0, speed=8.0)
+    for _ in range(60):
+        drive(world)
+    assert np.all(world.progress[world.running] > 5.0)
