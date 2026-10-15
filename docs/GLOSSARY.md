@@ -124,3 +124,9 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Action | The two numbers a policy outputs each step: steer and throttle, each between -1 and 1. |
 | Episode recording | A saved episode: the start, every action, and the resulting states, enough to replay it exactly. |
 | Replay | Re-running a recording's actions from its start; with no hidden randomness it reproduces the original trajectory exactly. |
+| WebSocket | A connection that stays open so the server and browser can send each other messages at any moment, which live driving needs. |
+| Live session | One browser connection's own simulation: a loaded track and driver, a clock, a speed and a selected car. |
+| Frame (live) | One snapshot of every car sent to the browser: positions, speeds, actions and, for the selected car, rays and observation. |
+| Speed factor | How much faster or slower than real time the simulation runs; it changes steps per second, never the size of a step. |
+| Column arrays | Sending one list per quantity (all x, all y, ...) instead of one object per car; compact and fast to loop over. |
+| API version | A number (now v1.2) recording the shape of the messages between server and browser; new messages bump the minor number. |

@@ -241,3 +241,20 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   against T), a classic off-by-one worth writing down.
 - Open question: should the network view's per-step ForwardTrace live inside the same file or in
   a companion file once Phase 2 adds it?
+
+### 2026-10-15 — Task 1.7 Live session over WebSocket
+- Concept: a simulation loop that keeps running on a clock while commands arrive at any moment;
+  the clock decides how many fixed physics steps are due, the speed factor scales that number, and
+  a frame is sent once max(1, speed) steps are due.
+- Key equation(s) in words: steps due per real second is 30 times the speed; frames per second is
+  the smaller of 30 and 30 times the speed.
+- What we observed: with a hand-driven clock, speeds 0.5, 1, 2 and 8 all advanced 30 times speed
+  steps per second with at most 30 frames per second; against the real server, 2 seconds at
+  speed 1 gave 60 frames and 60 steps, and speed 4 gave about 118 steps in a second. Planting two
+  bugs (removing the frame limit, ignoring set_speed) made five tests fail.
+- Surprise or difficulty: on Windows the timer rounds a 1/60 s sleep up to about 31 ms, which
+  halved the frame rate to 16 per second until the loop's tick was shortened and frames were tied
+  to due steps instead of to the gap since the last frame. Also, a constant-throttle car drives
+  straight off the curving road within about 7 s, so speed tests must stay short.
+- Open question: when 1.8 draws these frames, will 30 per second look smooth enough, or should
+  the browser interpolate between frames?

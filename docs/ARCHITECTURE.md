@@ -309,11 +309,13 @@ Exam spec version, list of tracks, per-episode metrics (track, start index, prog
 crashed, lap times, mean speed, smoothness, time to crash), and aggregates per track and overall
 (median, IQR, completion rate). See `EXPERIMENT_PROTOCOL.md`.
 
-## 7. Server API (api v1.1, ADR-016)
+## 7. Server API (api v1.2, ADR-016, ADR-018)
 
 REST (`/api/...`):
 - `GET health` → `{status: "ok", version}` (`version` is the NeuroDrive package version)
-- `GET tracks`, `GET tracks/{name}` (geometry for drawing)
+- `GET tracks` → `{tracks: [{name, split}]}`; `GET tracks/{name}` → geometry for drawing:
+  `{name, split, width, length, start_s0, centerline, left, right}` (the last three are lists of
+  [x, y] points in metres rounded to 2 decimals; the loops are closed without repeating the first point)
 - `GET runs`, `GET runs/{id}` (config, meta, metrics), `GET runs/{id}/checkpoints`
 - `GET runs/{id}/checkpoints/{unit}`: network as JSON
 - `GET runs/{id}/checkpoints/{unit}/diff?from={unit}`: per-weight change
@@ -323,14 +325,37 @@ REST (`/api/...`):
 - `POST explain/response` {run, units, output, input, range} → response curves
 - `POST compare` {run_ids} → aligned exam and budget tables
 
-WebSocket `/ws/live`:
-- client → server: `load_scenario`, `play`, `pause`, `step`, `set_speed`, `reset`, `select_car`,
-  `set_param` (e.g. neuron weights in Phase 1), `key_state` (manual driving)
-- server → client: `hello`, `scenario` (track + cars), `frame` (all cars: pose, alive, action;
-  selected car: rays, observation, ForwardTrace), `episode_end`, `error`
+WebSocket `/ws/live` (one independent session per connection):
 - `hello` is sent first, on connect: `{type: "hello", version, api}` (`api` is the message-contract
-  version, currently `"v1.1"`). Until task 1.7 the socket then simply echoes any text it receives.
-- Frames are throttled to at most 30 per second.
+  version, currently `"v1.2"`).
+- client → server (each has a `type` field):
+  - `load_scenario {track, policy, n_cars, seed}`: `policy` is `"keyboard"` or `"constant"` (more
+    arrive with later tasks); `n_cars` 1 to 100 (default 1); `seed` is an integer for a seeded
+    random start or null for the track's fixed start. Loads paused at step 0.
+  - `play`, `pause`, `step` (exactly one physics step, even while paused), `reset` (back to
+    step 0 with the same scenario and seed; stays paused or playing as before),
+    `set_speed {speed}` (0.1 to 8, default 1), `select_car {index}` (default 0),
+    `key_state {steer, throttle}` (each −1..1; used by the keyboard policy, ignored otherwise).
+  - `set_param` (neuron weights) arrives with task 1.9.
+- server → client:
+  - `scenario {track, policy, n_cars, seed, dt, time_limit, target_laps, v_max, wheelbase,
+    car_half_width, ray_angles, ray_range}`: no geometry (use `GET tracks/{name}`).
+  - `frame {step, time, playing, speed, cars, selected}`: `cars` holds one array per quantity, one
+    entry per car: `x`, `y`, `psi`, `v`, `alive`, `progress`, `status` (0 running, 1 crashed,
+    2 finished, 3 stalled, 4 timeout), `action` (a [steer, throttle] pair per car; the last action
+    applied, [0, 0] before the first step). `selected` is `{index, rays, observation}` for the
+    selected car (rays in metres, five numbers; observation is the 7-number vector) or null.
+    Numbers are rounded: positions, speed and progress to 3 decimals, angles and the observation
+    to 4.
+  - `episode_end {step, time, status, progress, laps}`: sent once when every car has stopped; the
+    session then pauses. `status` holds a name per car (`crashed`, `finished`, `stalled`,
+    `timeout`).
+  - `error {message}`: a bad message or a command that cannot be run; the connection stays open.
+- The world advances in fixed physics steps of 1/30 s. `set_speed` changes how many steps run per
+  second of real time (speed 2 = 60 steps per second), never the step size. While playing, one
+  frame is sent per max(1, speed) steps, so at most 30 frames per second on average (at speed 2
+  each frame covers two steps; at speed 0.5 there are 15 frames per second); `step` and `reset`
+  always answer with a frame.
 - In development the browser reaches both REST and WebSocket through the Vite dev server, which
   forwards `/api` and `/ws` to the Python server on port 8000 (ADR-015).
 

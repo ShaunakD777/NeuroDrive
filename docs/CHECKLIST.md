@@ -24,7 +24,7 @@ released, add its tag (e.g. `phase-1`) to the phase's header row.
 | 1.4 | Raycast sensors | ✅ | 2026-10-15 | `uv run pytest` 105 passed (18 new in tests/env/test_sensors.py); wall 10 m ahead → 0.2; no hit → 1.0; Hypothesis: batched = scalar reference to 1e-9 (60 track + 150 random-wall cases); two planted bugs were caught; ~21 ms for 100 cars |
 | 1.5 | Progress, crash, termination | ✅ | 2026-10-15 | `uv run pytest` 128 passed (23 new in tests/env/test_world.py); scripted driver laps train_loop_01: P=731.02 vs L=730.74, FINISHED at 76 s; backwards P<0; crash at \|e\|>5 m; stall at exactly 60 steps; wrap bug planted → 3 tests failed; batch = single-car worlds; follow-up 2026-10-15: defaults now 2 laps / 90 s, seeded random starts in `reset` (135 tests passed) |
 | 1.6 | Policies, episode runner, recording | ✅ | 2026-10-15 | `uv run pytest` 156 passed (21 new in tests/env/test_episode.py); save → load identical; replay of 4-car random-start run identical bit for bit (also after save/load); obs o1–o6 in [0,1], o7 in (−1,1]; touched world.py (`start`, `ready`) and §6.11 note |
-| 1.7 | Live session over WebSocket | ☐ | | |
+| 1.7 | Live session over WebSocket | ✅ | 2026-10-15 | `uv run pytest` 183 passed (27 new in tests/server/test_live.py; echo test removed); fake-clock runs at speeds 0.5/1/2/8: ≤30 frames/s, 30×speed steps/s; real `nd serve` check: 60 frames and 60 steps in 2 s at speed 1; types regenerated, Vitest 14, build, Playwright 6 pass; ADR-018, api v1.2; two planted bugs caught |
 | 1.8 | Environment view v1 | ☐ | | |
 | 1.9 | Neuron policy and Neuron view | ☐ | | |
 | 1.10 | Milestone 1 experiments (S1) | ☐ | | |
