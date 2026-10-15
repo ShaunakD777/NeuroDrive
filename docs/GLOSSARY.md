@@ -104,3 +104,9 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Curvature (kappa) | How sharply a path bends: 1 divided by the turn radius, in 1/metres. |
 | Grip limit | The cap on sideways acceleration (v squared times curvature); beyond it the car cannot turn tighter and runs wide. |
 | Drag | A slowing effect proportional to speed; with no throttle, speed shrinks by a fixed fraction each step. |
+| Raycast | Firing an imaginary line (a ray) from a point in a direction and finding the first thing it hits. |
+| Ray reading | The distance a ray travelled before hitting a wall, divided by the 50 m range, so it lies between 0 (wall touching) and 1 (nothing in range). |
+| Normalisation | Rescaling a number to a standard range (here 0 to 1) so every network input is on a similar scale. |
+| Cross product (2-D) | For vectors p and q, p_x*q_y - p_y*q_x; its sign says which side of p the vector q lies on. |
+| Property-based test (Hypothesis) | A test that checks a rule on many automatically generated inputs, including awkward ones, instead of a few hand-picked cases. |
+| Reference implementation | A slow, obviously correct version of an algorithm, used only in tests to check the fast version. |

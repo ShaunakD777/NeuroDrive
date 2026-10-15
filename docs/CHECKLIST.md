@@ -21,7 +21,7 @@ released, add its tag (e.g. `phase-1`) to the phase's header row.
 | 1.1 | Activations and the single neuron | ✅ | 2026-10-13 | `uv run pytest` 44 passed (23 new); hand values (tanh(0.2)=0.19738) match to 1e-9; sigmoid safe at ±1000; ruff clean |
 | 1.2 | Track model | ✅ | 2026-10-13 | `uv run pytest` 70 passed (26 new in tests/env); circle: L=314.14 vs 314.16, e=+3.00 left / −3.00 right; train_loop_01 L=731 m, min bend radius 22.5 m, edges do not cross |
 | 1.3 | Car physics (batched) | ✅ | 2026-10-15 | `uv run pytest` 87 passed (17 new in tests/env/test_car.py); hand step v=10.2333, psi=−0.029316; v_max reached in 4.7 s; batch N=3 bit-identical to 3 single runs; grip limit holds at all speeds; §6.3 values kept unchanged |
-| 1.4 | Raycast sensors | ☐ | | |
+| 1.4 | Raycast sensors | ✅ | 2026-10-15 | `uv run pytest` 105 passed (18 new in tests/env/test_sensors.py); wall 10 m ahead → 0.2; no hit → 1.0; Hypothesis: batched = scalar reference to 1e-9 (60 track + 150 random-wall cases); two planted bugs were caught; ~21 ms for 100 cars |
 | 1.5 | Progress, crash, termination | ☐ | | |
 | 1.6 | Policies, episode runner, recording | ☐ | | |
 | 1.7 | Live session over WebSocket | ☐ | | |

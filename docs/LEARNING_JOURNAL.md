@@ -178,3 +178,21 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   matter a lot. The contract's starting parameters needed no tuning.
 - Open question: will a fixed throttle (task 1.9) be slow enough to stay inside the grip limit on
   the 22.5 m bends?
+
+### 2026-10-15 — Task 1.4 Raycast sensors
+- Concept: a sensor reading is the distance along a ray to the first wall, divided by 50 m so it
+  lies in 0..1; the ray-versus-segment maths solves for the distance t along the ray and the
+  position u along the wall.
+- Key equation(s) in words: t is cross(wall start minus car, wall vector) divided by
+  cross(ray direction, wall vector); u is cross(wall start minus car, ray direction) over the
+  same denominator; a hit needs t at least 0 and u between 0 and 1; a zero denominator means the
+  ray is parallel to the wall.
+- What we observed: a wall 10 m ahead gives centre 0.2, +-30 degrees 0.2309 (10 / cos 30 = 11.55 m)
+  and +-60 degrees 0.4 (20 m). At the start of train_loop_01 the side rays read about 7 m
+  (6 / sin 60 = 6.93 m) and the centre ray sees nothing (0.95). Batched and scalar versions
+  agreed to 1e-9 on 60 track cases and 150 random-wall cases. Breaking the code on purpose (letting
+  rays hit behind the car, or shrinking the allowed range along a wall) made the tests fail.
+- Surprise or difficulty: a ray aimed exactly at the shared corner of two walls can slip between
+  them through rounding, so u gets a 1e-9 slack; the corner test fails without it. 100 cars take
+  about 21 ms per call, fine for live driving, a likely bottleneck for populations later (ADR-013).
+- Open question: should rays be tested against only nearby wall segments rather than all 1462?
