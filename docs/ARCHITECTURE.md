@@ -268,6 +268,14 @@ For the **focus car(s)**: the full ForwardTrace at every step.
 Population replays may store pose-only (x, y, ψ, alive) to keep size down.
 Stored as `.npz`; sent to the browser as JSON with floats rounded to 4 significant digits.
 
+*Layout as built (task 1.6, `env/episode.py`):* for T steps and N cars, state arrays (`x`, `y`,
+`psi`, `v`, `alive`, `progress`, `rays`, `observation`) have T + 1 frames (frame t is the state
+before action t; frame T is the final state) and `action` has T entries. The start is stored as
+`start_s0`, `start_lateral`, `start_heading_offset` and `start_speed` (what `World.reset` needs to
+recreate it exactly, random draws included), plus the final `status` of each car. Metadata is JSON
+text inside the file and also holds the world rules (`world_config`) and `car_params`, so a replay
+rebuilds the same world. Replaying the actions reproduces every array bit for bit.
+
 ### 6.12 Learner contract (learner v1)
 Every learning method provides:
 - `name` and `feedback_kind` ∈ {`labels`, `episode_score`, `step_reward`, `none`}

@@ -118,3 +118,9 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Crash | The car's side reaching a road edge: sideways offset beyond half the road width minus the car's half-width. |
 | Stall | Making less than 2 m of progress in the last 3 seconds (checked after the first 2 seconds). |
 | Time limit / timeout | The maximum episode length; a car still running when it is reached is stopped with reason "timeout". |
+| Observation | The 7 numbers a car sees each step: five ray readings, speed over top speed, and heading error over pi. |
+| Heading error | The angle between where the car points and where the road points, wrapped to between minus and plus pi; positive means pointing left of the road. |
+| Policy | A function from what a car sees (observation) to what it does (steer and throttle); a neural network is one kind of policy. |
+| Action | The two numbers a policy outputs each step: steer and throttle, each between -1 and 1. |
+| Episode recording | A saved episode: the start, every action, and the resulting states, enough to replay it exactly. |
+| Replay | Re-running a recording's actions from its start; with no hidden randomness it reproduces the original trajectory exactly. |

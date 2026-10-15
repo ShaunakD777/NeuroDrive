@@ -96,3 +96,38 @@ def ray_readings(
 ) -> Array:
     """Normalised sensor readings in [0, 1]: :func:`ray_distances` divided by ``max_range``."""
     return ray_distances(segments, x, y, psi, angles, max_range) / max_range
+
+
+OBSERVATION_SIZE = 7  # 5 ray readings + normalised speed + normalised heading error
+
+
+def wrap_angle(angle: ArrayLike) -> Array:
+    """Wrap angles (radians) into (-pi, pi]: add or subtract whole turns of 2*pi as needed."""
+    a = np.asarray(angle, dtype=np.float64)
+    return np.pi - np.mod(np.pi - a, 2.0 * np.pi)
+
+
+def build_observation(
+    segments: ArrayLike,
+    x: ArrayLike,
+    y: ArrayLike,
+    psi: ArrayLike,
+    v: ArrayLike,
+    road_heading: ArrayLike,
+    v_max: float,
+) -> Array:
+    """The 7-number observation of every car (observation v1, ARCHITECTURE §6.4), shape (N, 7).
+
+    Symbols: ``psi`` is the car's heading, ``road_heading`` the road direction at the car's
+    nearest centreline point, ``v`` the speed and ``v_max`` the top speed.
+
+    * o1 .. o5: the five ray readings in [0, 1], ordered far-left to far-right.
+    * o6 = v / v_max, in [0, 1].
+    * o7 = wrap(psi - road_heading) / pi, in (-1, 1]; positive means the car points to the left
+      of the road direction.
+    """
+    readings = ray_readings(segments, x, y, psi)
+    n = readings.shape[0]
+    speed = np.broadcast_to(np.asarray(v, dtype=np.float64), (n,)) / v_max
+    heading_error = wrap_angle(np.asarray(psi) - np.asarray(road_heading)) / np.pi
+    return np.column_stack([readings, speed, np.broadcast_to(heading_error, (n,))])

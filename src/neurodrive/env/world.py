@@ -77,8 +77,10 @@ class World:
     After ``reset``/``step`` these hold one value per car: ``cars`` (the :class:`CarState`),
     ``progress`` (P, metres), ``laps`` (completed laps), ``status`` (a :class:`Status` value per
     car), ``s`` (arc length), ``lateral_offset`` (e), ``road_heading`` (tangent angle at the car's
-    nearest centreline point), and ``last_ds`` (progress made in the latest step). ``step_count``
-    and ``time`` count steps and seconds since reset.
+    nearest centreline point), and ``last_ds`` (progress made in the latest step). ``start``
+    holds the arguments of the latest ``reset`` after any randomness was applied, so
+    ``reset(**world.start)`` recreates that start exactly. ``step_count`` and ``time`` count
+    steps and seconds since reset.
     """
 
     def __init__(
@@ -104,6 +106,11 @@ class World:
     def n(self) -> int:
         """Number of cars."""
         return self.cars.n
+
+    @property
+    def ready(self) -> bool:
+        """True once :meth:`reset` has been called."""
+        return self._ready
 
     @property
     def running(self) -> NDArray[np.bool_]:
@@ -178,6 +185,14 @@ class World:
                 lat = lat + rng.uniform(-lateral_jitter, lateral_jitter, size=count)
             if heading_jitter > 0.0:
                 dpsi = dpsi + rng.uniform(-heading_jitter, heading_jitter, size=count)
+
+        # The start actually used (after any random draws), so a recording can recreate it exactly.
+        self.start = {
+            "s0": s_start.copy(),
+            "lateral": lat.copy(),
+            "heading_offset": dpsi.copy(),
+            "speed": v.copy(),
+        }
 
         x, y, road = self.track.point_at(s_start)
         x = x - lat * np.sin(road)  # the left normal of heading h is (-sin h, cos h)

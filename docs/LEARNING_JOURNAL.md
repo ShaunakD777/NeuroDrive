@@ -225,3 +225,19 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
 - Surprise or difficulty: the repo's guard test bans the text "np.random" everywhere except
   `core/rng.py`, even in type hints, so `core/rng.py` now exports a type alias `Rng` for hints.
 - Open question: should training use random starts by default while exams keep fixed ones?
+
+### 2026-10-15 — Task 1.6 Policies, episode runner and recording
+- Concept: a policy is a function from observation to action; an episode is a policy run in a
+  world; a recording stores the start and the actions, so the drive can be reproduced exactly.
+- Key equation(s) in words: the observation is five ray readings, speed divided by top speed, and
+  the heading error (car heading minus road heading, wrapped into minus pi to plus pi) divided
+  by pi.
+- What we observed: a tiny hand-made driver that sees only the observation (steer away from the
+  nearer wall and towards the road direction) drives 369 m of train_loop_01 before clipping a
+  wall; its 625-step recording is about 99 KB; saving, loading and replaying it gave identical
+  arrays, and so did a four-car run from seeded random starts.
+- Surprise or difficulty: a replay needs the start the world actually used after random draws, so
+  `World` now keeps `start`; and a recording needs one more frame of state than of actions (T + 1
+  against T), a classic off-by-one worth writing down.
+- Open question: should the network view's per-step ForwardTrace live inside the same file or in
+  a companion file once Phase 2 adds it?
