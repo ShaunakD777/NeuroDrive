@@ -245,8 +245,65 @@ class Track:
     def project(self, query: ArrayLike) -> Projection:
         """Find the nearest centreline point to each query point (global search).
 
-        ``query`` has shape (2,) or (M, 2); the result always holds M values. For every query
-        point q it tries each centreline segment (from sample ``a`` to the next sample ``b``):
+        ``query`` has shape (2,) or (M, 2); the result always holds M values. Every centreline
+        segment is tried; see :meth:`_project_among` for what is computed for each one. Use this
+        when the car's previous position is unknown (at reset); otherwise
+        :meth:`project_window` is faster.
+        """
+        q = self._as_points(query)
+        every = np.broadcast_to(np.arange(len(self.points)), (len(q), len(self.points)))
+        return self._project_among(q, every)
+
+    def project_window(
+        self, query: ArrayLike, near: ArrayLike, half_window: int = 15
+    ) -> Projection:
+        """Like :meth:`project`, but only try segments close to the car's previous segment.
+
+        ``near`` holds, for each query point, the segment index found last time (the
+        ``index`` field of an earlier :class:`Projection`). Only the ``2 * half_window + 1``
+        segments around it (wrapping round the loop) are tried. A car moves at most about 1 m per
+        step, roughly one segment, so the nearest point is always inside the window; and a car
+        can never be matched to a distant stretch of road that happens to pass close by, which
+        keeps progress from jumping.
+        """
+        q = self._as_points(query)
+        near_idx = np.broadcast_to(np.asarray(near, dtype=np.intp), (len(q),))
+        offsets = np.arange(-half_window, half_window + 1)
+        window = (near_idx[:, None] + offsets[None, :]) % len(self.points)
+        return self._project_among(q, window)
+
+    def point_at(self, s: ArrayLike) -> tuple[Array, Array, Array]:
+        """Position and road heading at arc length ``s`` (any real numbers; wraps round the loop).
+
+        Returns ``(x, y, heading)`` arrays. The point is found by moving a fraction
+        ``u = (s - s_i) / |segment i|`` of the way along the segment that contains ``s``; the
+        heading blends the tangents at its two ends in the same proportion.
+        """
+        s_ = np.atleast_1d(np.asarray(s, dtype=np.float64)) % self.length
+        i = np.clip(np.searchsorted(self.s, s_, side="right") - 1, 0, len(self.points) - 1)
+        u = (s_ - self.s[i]) / self._seg_len[i]
+        pos = self.points[i] + u[:, None] * self._seg[i]
+        heading = self._blend_heading(i, u)
+        return pos[:, 0], pos[:, 1], heading
+
+    @staticmethod
+    def _as_points(query: ArrayLike) -> Array:
+        q = np.atleast_2d(np.asarray(query, dtype=np.float64))
+        if q.ndim != 2 or q.shape[1] != 2:
+            raise ValueError(f"query must have shape (2,) or (M, 2), got {np.shape(query)}")
+        return q
+
+    def _blend_heading(self, idx: NDArray[np.intp], u: Array) -> Array:
+        """Road heading a fraction ``u`` of the way along segment ``idx`` (tangents blended)."""
+        t = (1.0 - u)[:, None] * self.tangent[idx] + u[:, None] * self.tangent[
+            (idx + 1) % len(self.points)
+        ]
+        return np.arctan2(t[:, 1], t[:, 0])
+
+    def _project_among(self, q: Array, candidates: NDArray[np.intp]) -> Projection:
+        """Nearest centreline point for each row of ``q`` among ``candidates`` (M, K) segments.
+
+        For each query point q and candidate segment (from sample ``a`` to the next sample ``b``):
 
         1. How far along the segment is q? ``u = dot(q - a, b - a) / |b - a|^2``, clamped to
            [0, 1] so the nearest point stays on the segment.
@@ -257,29 +314,21 @@ class Track:
         left of the direction of travel, decided by the sign of the 2-D cross product of the
         segment direction with ``q - a``); and the road heading, a blend of the tangents at a
         and b.
-
-        Task 1.5 adds a faster search restricted to a window of segments near the previous one.
         """
-        q = np.atleast_2d(np.asarray(query, dtype=np.float64))
-        if q.ndim != 2 or q.shape[1] != 2:
-            raise ValueError(f"query must have shape (2,) or (M, 2), got {np.shape(query)}")
-
-        rel = q[:, None, :] - self.points[None, :, :]  # (M, N, 2): q - a for every segment
-        u = np.einsum("mnk,nk->mn", rel, self._seg) / (self._seg_len**2)[None, :]
+        a = self.points[candidates]  # (M, K, 2) segment start points
+        seg = self._seg[candidates]  # (M, K, 2) segment vectors
+        rel = q[:, None, :] - a  # q - a for every candidate
+        u = np.sum(rel * seg, axis=2) / self._seg_len[candidates] ** 2
         u = np.clip(u, 0.0, 1.0)
-        off = rel - u[..., None] * self._seg[None, :, :]  # q minus its nearest point
-        dist = np.linalg.norm(off, axis=2)
-        idx = np.argmin(dist, axis=1)
+        dist = np.linalg.norm(rel - u[..., None] * seg, axis=2)  # distance to the nearest point
+        best = np.argmin(dist, axis=1)
         rows = np.arange(len(q))
-        u_best = u[rows, idx]
+        idx = candidates[rows, best]
+        u_best, d_best = u[rows, best], dist[rows, best]
 
-        seg = self._seg[idx]
-        cross = seg[:, 0] * rel[rows, idx, 1] - seg[:, 1] * rel[rows, idx, 0]
-        e = np.where(cross >= 0.0, dist[rows, idx], -dist[rows, idx])
+        cross = seg[rows, best, 0] * rel[rows, best, 1] - seg[rows, best, 1] * rel[rows, best, 0]
+        e = np.where(cross >= 0.0, d_best, -d_best)
         s = self.s[idx] + u_best * self._seg_len[idx]
-        t = (1.0 - u_best)[:, None] * self.tangent[idx] + u_best[:, None] * self.tangent[
-            (idx + 1) % len(self.points)
-        ]
-        heading = np.arctan2(t[:, 1], t[:, 0])
-
-        return Projection(s=s % self.length, e=e, heading=heading, index=idx)
+        return Projection(
+            s=s % self.length, e=e, heading=self._blend_heading(idx, u_best), index=idx
+        )

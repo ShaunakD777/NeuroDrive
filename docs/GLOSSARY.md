@@ -110,3 +110,11 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Cross product (2-D) | For vectors p and q, p_x*q_y - p_y*q_x; its sign says which side of p the vector q lies on. |
 | Property-based test (Hypothesis) | A test that checks a rule on many automatically generated inputs, including awkward ones, instead of a few hand-picked cases. |
 | Reference implementation | A slow, obviously correct version of an algorithm, used only in tests to check the fast version. |
+| World | The object that holds a track and N cars and advances them step by step, tracking progress and when each car's episode ends. |
+| Episode | One attempt: from placing the cars at the start until each car crashes, finishes, stalls or times out. |
+| Progress (P) | Total distance driven along the road since the start: forward adds, backward subtracts. |
+| Wrap-around (of arc length) | Treating the loop as circular, so going from 725 m to 3 m on a 731 m loop counts as +9 m, not -722 m. |
+| Windowed search | Looking for the nearest road point only among segments near where the car was a moment ago, which is faster and cannot jump to a far-away stretch of road. |
+| Crash | The car's side reaching a road edge: sideways offset beyond half the road width minus the car's half-width. |
+| Stall | Making less than 2 m of progress in the last 3 seconds (checked after the first 2 seconds). |
+| Time limit / timeout | The maximum episode length; a car still running when it is reached is stopped with reason "timeout". |

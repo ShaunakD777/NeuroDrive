@@ -196,3 +196,21 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   them through rounding, so u gets a 1e-9 slack; the corner test fails without it. 100 cars take
   about 21 ms per call, fine for live driving, a likely bottleneck for populations later (ADR-013).
 - Open question: should rays be tested against only nearby wall segments rather than all 1462?
+
+### 2026-10-15 — Task 1.5 Progress, crash and termination
+- Concept: progress is the running total of how far the car's arc-length position changes each
+  step, wrapped so crossing the start line is not a jump; the episode ends on a crash, finish,
+  stall or time limit, and finished cars freeze while the others carry on.
+- Key equation(s) in words: ds is the new arc length minus the old one, shifted by whole loop
+  lengths into the range minus half to plus half a lap; P adds up ds; laps is floor(P / L); a crash
+  is |e| greater than half the road width minus the car's half-width (5 m here).
+- What we observed: a simple scripted driver (steer from heading error and lateral offset, hold
+  10 m/s) laps train_loop_01 in 76 s with P = 731.02 m against a 730.74 m loop; driving
+  backwards gives negative P; a stopped car stalls at exactly step 60 (2 s). With the wrap rule
+  removed, three lap tests failed at once, so they do guard it.
+- Surprise or difficulty: my first lap test timed out because 8 m/s for 60 s covers only 480 m,
+  less than the 731 m loop; the default 60 s limit is tight for slow hand-tuned drivers, a point
+  for task 1.10. A car exactly at a segment joint is equally near two segments, so windowed and
+  global searches may pick different neighbours there; arc length and offset still agree.
+- Open question: should reset accept a seeded random start offset (the Driving Exam uses fixed
+  starts, but training may want variety), and which seed would it use?
