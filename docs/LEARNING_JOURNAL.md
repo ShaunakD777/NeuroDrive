@@ -161,3 +161,20 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   radius against half the width, and a dumbbell-shaped road shows the edge-crossing check works.
 - Open question: is a 22.5 m minimum radius gentle enough for a one-neuron driver at the speeds
   task 1.3 will allow?
+
+### 2026-10-15 — Task 1.3 Car physics (batched)
+- Concept: a kinematic bicycle car stepped in fixed slices of 1/30 s: speed first, then heading
+  with the new speed, then position with the new heading. A grip limit caps how sharply the car
+  can turn at speed.
+- Key equation(s) in words: speed gains throttle acceleration and loses drag times speed; the
+  heading turns by speed times curvature times dt, where curvature is the steering's wish
+  (tangent of the wheel angle over the wheelbase) but never more than 9 divided by speed squared.
+- What we observed: from 10 m/s with full throttle and full right steer one step gives speed
+  10.2333 and heading change −0.029316 rad (the grip limit decides); at 4 m/s the steering does.
+  Full throttle reaches 30 m/s in 4.7 s. A batch of three cars matched three single-car runs
+  exactly, bit for bit.
+- Surprise or difficulty: at 30 m/s even full lock turns only about 0.3 rad per second, a turn
+  radius of 100 m, so the car cannot follow the train loop's bends at top speed; the throttle will
+  matter a lot. The contract's starting parameters needed no tuning.
+- Open question: will a fixed throttle (task 1.9) be slow enough to stay inside the grip limit on
+  the 22.5 m bends?

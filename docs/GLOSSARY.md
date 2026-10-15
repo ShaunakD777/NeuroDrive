@@ -98,3 +98,9 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Lateral offset (e) | How far a point is to the side of the centreline: positive on the left, negative on the right. |
 | Projection (onto the track) | Finding the nearest centreline point to a position, which gives its arc length s and lateral offset e. |
 | Catmull-Rom spline | A smooth curve that passes exactly through a list of corner points. |
+| Kinematic bicycle model | A simple car model: front wheel angle sets how fast the heading turns, with no tyre forces. |
+| Time step (dt) | The fixed slice of time (1/30 s) the simulation advances by each update. |
+| Semi-implicit Euler | An update order where speed changes first and the new speed is then used for heading and position, which is more stable than using old values everywhere. |
+| Curvature (kappa) | How sharply a path bends: 1 divided by the turn radius, in 1/metres. |
+| Grip limit | The cap on sideways acceleration (v squared times curvature); beyond it the car cannot turn tighter and runs wide. |
+| Drag | A slowing effect proportional to speed; with no throttle, speed shrinks by a fixed fraction each step. |
