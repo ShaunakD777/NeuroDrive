@@ -100,12 +100,50 @@ describe("live store: incoming messages", () => {
 });
 
 describe("live store: commands", () => {
-  it("loadTrack remembers the track and sends load_scenario with a keyboard car", () => {
-    useLive.getState().loadTrack("train_loop_01");
-    expect(useLive.getState().wantedTrack).toBe("train_loop_01");
+  it("loadScenario with only a track sends the defaults: one keyboard car, fixed start", () => {
+    useLive.getState().loadScenario({ track: "train_loop_01" });
+    expect(useLive.getState().wanted).toEqual({
+      track: "train_loop_01",
+      policy: "keyboard",
+      n_cars: 1,
+      seed: null,
+    });
     expect(sent).toEqual([
       { type: "load_scenario", track: "train_loop_01", policy: "keyboard", n_cars: 1, seed: null },
     ]);
+  });
+
+  it("changing one setting keeps the others", () => {
+    const { loadScenario } = useLive.getState();
+    loadScenario({ track: "train_loop_01" });
+    loadScenario({ n_cars: 5 });
+    loadScenario({ seed: 7 });
+    loadScenario({ policy: "constant" });
+    expect(sent.at(-1)).toEqual({
+      type: "load_scenario",
+      track: "train_loop_01",
+      policy: "constant",
+      n_cars: 5,
+      seed: 7,
+    });
+    loadScenario({ seed: null }); // null means "fixed start", it is not "unchanged"
+    expect(sent.at(-1)).toMatchObject({ n_cars: 5, seed: null });
+  });
+
+  it("builds on the loaded scenario when nothing was asked for yet, and on the first track", () => {
+    useLive.getState().receive(scenario);
+    useLive.getState().loadScenario({ n_cars: 3 });
+    expect(sent.at(-1)).toMatchObject({ track: "train_loop_01", n_cars: 3, seed: null });
+
+    useLive.setState({ ...initialLive, tracks: [{ name: "first_track", split: "train" }] });
+    useLive.getState().loadScenario({});
+    expect(sent.at(-1)).toMatchObject({ track: "first_track", policy: "keyboard", n_cars: 1 });
+  });
+
+  it("does nothing when no track is known yet", () => {
+    useLive.getState().loadScenario({ n_cars: 2 });
+    expect(sent).toEqual([]);
+    expect(useLive.getState().wanted).toBeNull();
   });
 
   it("sends key_state only when the input changes", () => {

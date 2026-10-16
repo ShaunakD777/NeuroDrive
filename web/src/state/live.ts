@@ -41,11 +41,20 @@ export interface DriveInput {
   throttle: number;
 }
 
+/** What a `load_scenario` message asks for. */
+export interface ScenarioRequest {
+  track: string;
+  policy: "keyboard" | "constant";
+  n_cars: number;
+  /** null: every car starts at the track's start line; a number: a seeded random start. */
+  seed: number | null;
+}
+
 export interface LiveState {
   status: ConnectionStatus;
   tracks: TrackInfo[];
-  /** The track the user wants loaded; used again after a reconnect. */
-  wantedTrack: string | null;
+  /** The scenario the user last asked for; loaded again after a reconnect. */
+  wanted: ScenarioRequest | null;
   scenario: ScenarioMessage | null;
   geometry: TrackGeometry | null;
   frame: FrameMessage | null;
@@ -60,8 +69,12 @@ export interface LiveActions {
   setStatus: (status: ConnectionStatus) => void;
   setTracks: (tracks: TrackInfo[]) => void;
   setGeometry: (geometry: TrackGeometry) => void;
-  /** Remember which track to load, and tell the server to load it. */
-  loadTrack: (name: string) => void;
+  /**
+   * Ask the server to load a scenario. `changes` are applied on top of the scenario already
+   * loaded (or the one last asked for), so changing one setting keeps the others. Remembered so
+   * a reconnect loads the same scenario again.
+   */
+  loadScenario: (changes: Partial<ScenarioRequest>) => void;
   /** File one server message into the store. */
   receive: (message: unknown) => void;
   /** Send held-key input to the server if it differs from what was last sent. */
@@ -83,7 +96,7 @@ const NO_KEYS: DriveInput = { steer: 0, throttle: 0 };
 export const initialLive: LiveState = {
   status: "connecting",
   tracks: [],
-  wantedTrack: null,
+  wanted: null,
   scenario: null,
   geometry: null,
   frame: null,
@@ -105,9 +118,29 @@ export const useLive = create<LiveState & LiveActions>()((set, get) => ({
   setTracks: (tracks) => set({ tracks }),
   setGeometry: (geometry) => set({ geometry }),
 
-  loadTrack: (name) => {
-    set({ wantedTrack: name });
-    get().send({ type: "load_scenario", track: name, policy: "keyboard", n_cars: 1, seed: null });
+  loadScenario: (changes) => {
+    const { scenario, wanted, tracks } = get();
+    // Build on what was last asked for (it may not have been answered yet), else on what is loaded.
+    const base: Partial<ScenarioRequest> =
+      wanted ??
+      (scenario === null
+        ? {}
+        : {
+            track: scenario.track,
+            policy: scenario.policy,
+            n_cars: scenario.n_cars,
+            seed: scenario.seed,
+          });
+    const track = changes.track ?? base.track ?? tracks[0]?.name;
+    if (track === undefined) return; // nothing to load yet
+    const request: ScenarioRequest = {
+      track,
+      policy: changes.policy ?? base.policy ?? "keyboard",
+      n_cars: changes.n_cars ?? base.n_cars ?? 1,
+      seed: changes.seed !== undefined ? changes.seed : (base.seed ?? null),
+    };
+    set({ wanted: request });
+    get().send({ type: "load_scenario", ...request });
   },
 
   receive: (message) => {

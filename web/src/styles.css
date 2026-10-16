@@ -362,14 +362,21 @@ body {
 
 .controls {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  gap: 6px;
   margin-bottom: 8px;
 }
 
+.controls-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
 .controls button,
-.controls select {
+.controls select,
+.controls .control-number {
   padding: 4px 12px;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -380,14 +387,20 @@ body {
   cursor: pointer;
 }
 
+.control-number {
+  width: 5.5em;
+}
+
 .controls button:disabled,
-.controls select:disabled {
+.controls select:disabled,
+.controls .control-number:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
 .controls button:focus-visible,
-.controls select:focus-visible {
+.controls select:focus-visible,
+.controls .control-number:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }

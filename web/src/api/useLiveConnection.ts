@@ -9,7 +9,8 @@ import { connectLive } from "./ws";
  *
  * 1. Open the WebSocket; every message goes into the store, and so does the connection status.
  * 2. Each time the status becomes "connected" (first connect, or after the server restarted),
- *    fetch the track list and load a scenario: the track the user chose, or the first one.
+ *    fetch the track list and load a scenario: the one the user last asked for, or the first
+ *    track with a single keyboard car.
  * 3. Whenever the loaded scenario names a track whose outline is not in the store, fetch it.
  */
 export function useLiveConnection(): void {
@@ -36,8 +37,8 @@ export function useLiveConnection(): void {
         if (cancelled) return;
         const live = useLive.getState();
         live.setTracks(tracks);
-        const name = live.wantedTrack ?? tracks[0]?.name;
-        if (name !== undefined) live.loadTrack(name);
+        // After a reconnect the server has forgotten the scenario: ask for the same one again.
+        live.loadScenario(live.wanted ?? {});
       } catch {
         // The server could not list tracks; the view stays empty until the next reconnect.
       }

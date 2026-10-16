@@ -275,3 +275,16 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   probably start closed on narrow screens (an old open question from task 0.4b).
 - Open question: will the 30 frames per second look smooth enough, or should the browser
   interpolate between frames? Also, a manual lap of the track is still for the user to try.
+
+### 2026-10-16 — Task 1.8 follow-up: scenario controls in the UI
+- Concept: a feature the server supports but the UI cannot reach is invisible; the controls now
+  cover everything `load_scenario` and `select_car` can do: driver, number of cars, random start
+  with a seed, and the selected car.
+- What we observed: 12 cars with seed 1 spread around the loop; the same seed gave the same start
+  again, a different seed gave a different one; the constant driver moves with no keys held; a bad
+  number (500 cars, an empty box) is never sent, the box shows the real value again.
+- Surprise or difficulty: the check box and the numbers show what the *server* loaded, so a click
+  changes them only after the server answers; a test that expected an instant tick failed until it
+  waited. A first full browser-test run once failed 7 tests and could not be reproduced in three
+  reruns (15 of 15 passed each time); worth watching.
+- Open question: should the number of cars be capped lower in the UI than the server's 100?

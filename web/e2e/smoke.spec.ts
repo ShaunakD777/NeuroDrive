@@ -227,3 +227,73 @@ test("moving between pages keeps the same live session", async ({ page }) => {
   await page.getByRole("link", { name: "Environment" }).click();
   await expect(page.getByTestId("hud-step")).toHaveText("2");
 });
+
+// ── Scenario controls: driver, number of cars, random start, selected car ───────────────────
+
+test("the constant driver moves the car without any keys", async ({ page }) => {
+  await page.goto("/#/environment");
+  await expect(page.getByTestId("hud-step")).toHaveText("0");
+  await page.getByTestId("select-policy").selectOption("constant");
+  await expect(page.getByTestId("select-policy")).toHaveValue("constant");
+  await expect(page.getByTestId("hud-step")).toHaveText("0");
+
+  await page.getByTestId("btn-play").click();
+  await expect.poll(() => numberOf(page, "hud-speed")).toBeGreaterThan(3);
+  await expect(page.getByTestId("hud-throttle")).toHaveText("0.30");
+});
+
+test("several cars with a seeded random start: the same seed gives the same start", async ({
+  page,
+}) => {
+  await page.goto("/#/environment");
+  await expect(page.getByTestId("hud-step")).toHaveText("0");
+  await expect(page.getByTestId("select-car")).toHaveCount(0); // one car: nothing to choose
+
+  const cars = page.getByTestId("input-cars");
+  await cars.fill("4");
+  await cars.press("Enter");
+  await expect(page.getByTestId("select-car")).toBeVisible();
+  await expect(page.getByTestId("select-car").locator("option")).toHaveCount(4);
+
+  // The box shows what the server loaded, so it ticks a moment after the click.
+  await page.getByTestId("check-random-start").click();
+  await expect(page.getByTestId("check-random-start")).toBeChecked();
+  await expect(page.getByTestId("input-seed")).toHaveValue("1");
+  await page.getByTestId("camera-fit").click();
+
+  const rays = async () =>
+    (await Promise.all([0, 1, 2, 3, 4].map((k) => numberOf(page, `ray-${k}`)))).join(",");
+  await page.getByTestId("select-car").selectOption("2");
+  await expect(page.getByTestId("select-car")).toHaveValue("2");
+  await expect(page.getByTestId("hud-step")).toHaveText("0");
+  const seed1 = await rays();
+
+  const seed = page.getByTestId("input-seed");
+  await seed.fill("2");
+  await seed.press("Enter");
+  await expect(page.getByTestId("input-seed")).toHaveValue("2");
+  await expect.poll(rays).not.toBe(seed1);
+
+  await seed.fill("1");
+  await seed.press("Enter");
+  await expect(page.getByTestId("input-seed")).toHaveValue("1");
+  await page.getByTestId("select-car").selectOption("2");
+  await expect.poll(rays).toBe(seed1);
+
+  // Back to a fixed start: the seed box goes away and the cars share the start line.
+  await page.getByTestId("check-random-start").click();
+  await expect(page.getByTestId("check-random-start")).not.toBeChecked();
+  await expect(page.getByTestId("input-seed")).toHaveCount(0);
+});
+
+test("bad numbers are not sent: the box shows the real value again", async ({ page }) => {
+  await page.goto("/#/environment");
+  await expect(page.getByTestId("hud-step")).toHaveText("0");
+  const cars = page.getByTestId("input-cars");
+  await cars.fill("500");
+  await cars.press("Enter");
+  await expect(cars).toHaveValue("1");
+  await cars.fill("");
+  await cars.press("Enter");
+  await expect(cars).toHaveValue("1");
+});
