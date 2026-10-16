@@ -11,7 +11,10 @@ repos:
     hooks:
       - id: check-added-large-files
         args: [--maxkb=1000]
+      # Run through Python instead of the generated detect-private-key.exe launcher, which
+      # Windows Smart App Control can block ([WinError 4551]). Same check, same code.
       - id: detect-private-key
+        entry: python -m pre_commit_hooks.detect_private_key
       - id: end-of-file-fixer
       - id: trailing-whitespace
         args: [--markdown-linebreak-ext=md]
