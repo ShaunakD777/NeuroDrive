@@ -6,7 +6,7 @@ Run from the repository root:
     uv run --with matplotlib python scripts/study_s1.py --figures   # also draw the figures
 
 It runs every episode of the study (all deterministic: the same code gives the same numbers), prints
-the tables used in ``docs/studies/S1.md``, and writes them to ``docs/studies/data/s1_results.json``.
+the tables used in ``docs/studies/S1.md``, and writes them to ``docs/studies/S1_results.json``.
 With ``--figures`` it also writes the pictures to ``docs/studies/figures/`` (matplotlib is only
 needed for that; it is not a dependency of the project). It also saves one lap of the baseline
 controller as ``recordings/s1_hand_neuron_lap.npz`` (git-ignored) and checks that replaying it gives
@@ -33,7 +33,7 @@ from neurodrive.env.world import Status, World, WorldConfig
 ROOT = Path(__file__).resolve().parent.parent
 TRACK_FILE = ROOT / "tracks" / "train_loop_01.json"
 BASELINE_FILE = ROOT / "configs" / "baselines" / "hand_neuron.yaml"
-RESULTS_FILE = ROOT / "docs" / "studies" / "data" / "s1_results.json"
+RESULTS_FILE = ROOT / "docs" / "studies" / "S1_results.json"
 FIGURES_DIR = ROOT / "docs" / "studies" / "figures"
 RECORDING_FILE = ROOT / "recordings" / "s1_hand_neuron_lap.npz"
 
