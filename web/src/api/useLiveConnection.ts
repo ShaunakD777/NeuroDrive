@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 
 import { attachSender, useLive } from "../state/live";
-import { fetchTrack, fetchTracks } from "./rest";
+import { fetchActivations, fetchTrack, fetchTracks } from "./rest";
 import { connectLive } from "./ws";
 
 /**
@@ -46,6 +46,16 @@ export function useLiveConnection(): void {
     return () => {
       cancelled = true;
     };
+  }, [status]);
+
+  // The activation curves never change, so one fetch per page load is enough.
+  useEffect(() => {
+    if (status !== "connected" || useLive.getState().activations !== null) return;
+    fetchActivations()
+      .then((curves) => useLive.getState().setActivations(curves))
+      .catch(() => {
+        // Without the curves the neuron view simply has no curve to draw.
+      });
   }, [status]);
 
   useEffect(() => {

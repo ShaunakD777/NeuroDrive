@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 import type {
+  ActivationCurves,
   EpisodeEndMessage,
   ErrorMessage,
   FrameMessage,
@@ -11,6 +12,7 @@ import type {
   Reset,
   ScenarioMessage,
   SelectCar,
+  SetParam,
   SetSpeed,
   Step,
   TrackGeometry,
@@ -31,7 +33,8 @@ export type Command =
   | Reset
   | SetSpeed
   | SelectCar
-  | KeyState;
+  | KeyState
+  | SetParam;
 
 /** The messages the server sends that the store keeps (hello only confirms the connection). */
 export type ServerMessage = ScenarioMessage | FrameMessage | EpisodeEndMessage | ErrorMessage;
@@ -44,7 +47,7 @@ export interface DriveInput {
 /** What a `load_scenario` message asks for. */
 export interface ScenarioRequest {
   track: string;
-  policy: "keyboard" | "constant";
+  policy: "keyboard" | "constant" | "neuron";
   n_cars: number;
   /** null: every car starts at the track's start line; a number: a seeded random start. */
   seed: number | null;
@@ -57,6 +60,8 @@ export interface LiveState {
   wanted: ScenarioRequest | null;
   scenario: ScenarioMessage | null;
   geometry: TrackGeometry | null;
+  /** The activation functions sampled by the server, for drawing curves (null until fetched). */
+  activations: ActivationCurves | null;
   frame: FrameMessage | null;
   episodeEnd: EpisodeEndMessage | null;
   /** The last error the server reported, or null. */
@@ -69,6 +74,7 @@ export interface LiveActions {
   setStatus: (status: ConnectionStatus) => void;
   setTracks: (tracks: TrackInfo[]) => void;
   setGeometry: (geometry: TrackGeometry) => void;
+  setActivations: (activations: ActivationCurves) => void;
   /**
    * Ask the server to load a scenario. `changes` are applied on top of the scenario already
    * loaded (or the one last asked for), so changing one setting keeps the others. Remembered so
@@ -99,6 +105,7 @@ export const initialLive: LiveState = {
   wanted: null,
   scenario: null,
   geometry: null,
+  activations: null,
   frame: null,
   episodeEnd: null,
   error: null,
@@ -117,6 +124,7 @@ export const useLive = create<LiveState & LiveActions>()((set, get) => ({
   setStatus: (status) => set({ status }),
   setTracks: (tracks) => set({ tracks }),
   setGeometry: (geometry) => set({ geometry }),
+  setActivations: (activations) => set({ activations }),
 
   loadScenario: (changes) => {
     const { scenario, wanted, tracks } = get();

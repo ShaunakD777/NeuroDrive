@@ -558,3 +558,225 @@ body {
     display: none;
   }
 }
+
+/* ── Neuron view ──────────────────────────────────────────────── */
+
+.neuron-view {
+  overflow: auto;
+}
+
+.neuron-intro {
+  margin-bottom: 8px !important;
+  font-size: 0.88rem;
+}
+
+.neuron-diagram {
+  width: 100%;
+  max-width: 640px;
+  height: auto;
+  display: block;
+}
+
+.neuron-diagram .node {
+  fill: var(--surface);
+  stroke: var(--text-muted);
+  stroke-width: 2;
+}
+
+.neuron-diagram .node-fill {
+  fill: var(--accent);
+  stroke: none;
+}
+
+.neuron-diagram .node-text {
+  fill: var(--text);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.neuron-diagram .neuron-sigma {
+  font-size: 24px;
+}
+
+.neuron-diagram .node-caption,
+.neuron-diagram .wire-label {
+  fill: var(--text-muted);
+  font-size: 12px;
+}
+
+.wire {
+  fill: none;
+  stroke-linecap: round;
+}
+
+.wire-pos {
+  stroke: var(--accent);
+}
+
+.wire-neg {
+  stroke: var(--warn);
+}
+
+.wire-out {
+  stroke: var(--text-muted);
+}
+
+.neuron-node {
+  cursor: pointer;
+}
+
+.neuron-node:focus-visible {
+  outline: none;
+}
+
+.neuron-node:focus-visible .neuron-body,
+.neuron-node-selected .neuron-body {
+  stroke: var(--accent);
+  stroke-width: 5;
+}
+
+.dial-ring {
+  fill: var(--surface);
+  stroke: var(--text-muted);
+  stroke-width: 2;
+}
+
+.dial-arrow line {
+  stroke: var(--accent);
+  stroke-linecap: round;
+}
+
+.dial-arrow polygon {
+  fill: var(--accent);
+}
+
+.neuron-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 24px;
+  align-items: flex-start;
+  margin-top: 8px;
+}
+
+.neuron-params {
+  flex: 1 1 340px;
+  min-width: 300px;
+}
+
+.param {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.param-label {
+  min-width: 72px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.param-slider {
+  flex: 1;
+  min-width: 100px;
+  accent-color: var(--accent);
+}
+
+.param-number,
+.param select {
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.param-number {
+  width: 5.5em;
+}
+
+.param-note,
+.param-sum {
+  margin: 2px 0 0 80px;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.param-sum {
+  margin-top: 8px;
+  color: var(--text);
+}
+
+.hint {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.neuron-params .hint {
+  margin: 2px 0 0 80px;
+}
+
+.curve-chart {
+  flex: 1 1 280px;
+  max-width: 360px;
+  height: auto;
+}
+
+.chart-frame {
+  fill: var(--surface);
+  stroke: var(--border);
+}
+
+.chart-axis,
+.chart-guide {
+  stroke: var(--text-muted);
+  stroke-width: 1;
+}
+
+.chart-guide {
+  stroke-dasharray: 3 3;
+}
+
+.chart-curve {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.chart-dot {
+  fill: var(--bad);
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.chart-label {
+  fill: var(--text-muted);
+  font-size: 10px;
+}
+
+.neuron-compact {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.88rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.neuron-compact-dial {
+  width: 100px;
+  height: 90px;
+  flex-shrink: 0;
+}
+
+.neuron-empty button {
+  margin-top: 8px;
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}

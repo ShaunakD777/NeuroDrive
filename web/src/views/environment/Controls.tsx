@@ -126,12 +126,13 @@ export function Controls({
             value={scenario?.policy ?? "keyboard"}
             disabled={!ready}
             onChange={(e) => {
-              loadScenario({ policy: e.target.value as "keyboard" | "constant" });
+              loadScenario({ policy: e.target.value as "keyboard" | "constant" | "neuron" });
               e.target.blur();
             }}
           >
             <option value="keyboard">Keyboard (you drive)</option>
             <option value="constant">Constant (steer 0, throttle 0.3)</option>
+            <option value="neuron">Neuron (you set its weights)</option>
           </select>
         </label>
 

@@ -288,3 +288,23 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   waited. A first full browser-test run once failed 7 tests and could not be reproduced in three
   reruns (15 of 15 passed each time); worth watching.
 - Open question: should the number of cars be capped lower in the UI than the server's 100?
+
+### 2026-10-16 — Task 1.9 Neuron policy and Neuron view
+- Concept: a neuron as a tiny controller. It reads two ray distances, scales each by a weight,
+  adds a bias, and the activation turns the total into a steering command. The weights are the
+  behaviour: change a number and the car drives differently.
+- Key equation(s) in words: z is the left weight times the left ray, plus the right weight times
+  the right ray, plus the bias; the steering is the activation of z; positive turns right. A wall
+  close on the left means a small left reading, so a useful left weight is negative and the right
+  one positive.
+- What we observed: with weights −4 and +4 and bias 0.1, a close left wall (0.2 and 0.5) gives
+  z = 1.3 and tanh 0.8617 (hard right); a close right wall gives z = −1.1 and tanh −0.8005 (hard
+  left); the same inputs through sigmoid give 0.7858 and 0.2497, which both steer right. Weights
+  of ±4 to ±24 kept the car on the road for the whole 90 s; all zeros crashed after 9.8 s and
+  swapping the signs crashed too.
+- Surprise or difficulty: the weights that work are large (about ±8) because a ray reading changes
+  only about 0.05 for a metre of sideways drift. The generated TypeScript types also needed the
+  schema exporter to strip field titles from nested models, otherwise they came out as clashing
+  aliases.
+- Open question: with a throttle of 0.15 the car settles near 12 m/s and covers about 1.3 laps in
+  90 s, so a 2-lap finish needs a higher throttle; how fast can a hand-tuned neuron safely go?

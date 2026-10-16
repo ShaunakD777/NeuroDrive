@@ -49,6 +49,8 @@ export interface Scene {
   selected: number;
   /** The small drawer version: no distance labels. */
   compact: boolean;
+  /** Indices of rays to emphasise (the ones the selected neuron reads); empty for none. */
+  highlight: number[];
 }
 
 const CAR_LENGTH_EXTRA = 2.0; // car length = wheelbase + this, metres (display only)
@@ -115,11 +117,13 @@ function drawRays(ctx: CanvasRenderingContext2D, theme: Theme, scene: Scene): vo
   ctx.textBaseline = "middle";
   frame.selected.rays.forEach((distance, k) => {
     const hit = distance < scenario.ray_range - 1e-6;
+    const emphasised = scene.highlight.includes(k);
+    ctx.globalAlpha = scene.highlight.length > 0 && !emphasised ? 0.3 : 1;
     const [ex, ey] = rayEnd(x[i], y[i], psi[i], scenario.ray_angles[k], distance);
     const [sx, sy] = worldToScreen(scene.camera, scene.size, x[i], y[i]);
     const [tx, ty] = worldToScreen(scene.camera, scene.size, ex, ey);
     const fraction = distance / scenario.ray_range;
-    ctx.lineWidth = hit ? 2 : 1;
+    ctx.lineWidth = emphasised ? 5 : hit ? 2 : 1;
     ctx.strokeStyle = !hit ? theme.muted : fraction < 0.2 ? theme.bad : fraction < 0.5 ? theme.warn : theme.ok;
     ctx.beginPath();
     ctx.moveTo(sx, sy);
@@ -130,11 +134,12 @@ function drawRays(ctx: CanvasRenderingContext2D, theme: Theme, scene: Scene): vo
       ctx.beginPath();
       ctx.arc(tx, ty, 3, 0, Math.PI * 2);
       ctx.fill();
-      if (!scene.compact) {
+      if (!scene.compact || emphasised) {
         ctx.fillStyle = theme.text;
         ctx.fillText(`${distance.toFixed(1)} m`, tx + 6, ty);
       }
     }
+    ctx.globalAlpha = 1;
   });
 }
 

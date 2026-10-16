@@ -8,11 +8,14 @@ import asyncio
 import time
 from pathlib import Path
 
+import numpy as np
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 
 from neurodrive import __version__
+from neurodrive.core.activations import ACTIVATIONS
 from neurodrive.server.live import LiveSession, TrackLibrary
 from neurodrive.server.schemas import (
+    ActivationCurves,
     HealthResponse,
     HelloMessage,
     TrackGeometry,
@@ -32,6 +35,16 @@ def create_app(tracks_dir: Path | None = None) -> FastAPI:
     @app.get("/api/health")
     def health() -> HealthResponse:
         return HealthResponse(version=__version__)
+
+    @app.get("/api/activations")
+    def activations() -> ActivationCurves:
+        # The activation functions sampled on z from -5 to 5, for the browser to draw (the browser
+        # never computes them itself).
+        z = np.linspace(-5.0, 5.0, 101)
+        return ActivationCurves(
+            z=np.round(z, 4).tolist(),
+            curves={name: np.round(f(z), 5).tolist() for name, f in sorted(ACTIVATIONS.items())},
+        )
 
     @app.get("/api/tracks")
     def list_tracks() -> TrackListResponse:

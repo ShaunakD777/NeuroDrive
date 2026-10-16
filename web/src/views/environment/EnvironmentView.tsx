@@ -36,6 +36,9 @@ export function EnvironmentView({
   const [zoom, setZoom] = useState(compact ? COMPACT_ZOOM : DEFAULT_ZOOM);
 
   const geometry = useLive((s) => s.geometry);
+  const neuronSelected = useSelection((s) => s.neuron !== null);
+  const neuronRays = useLive((s) => s.frame?.selected?.neuron?.input_rays ?? null);
+  const highlightAttribute = neuronSelected && neuronRays !== null ? neuronRays.join(",") : "";
   const fitPoints = useMemo(
     () => (geometry === null ? [] : [...geometry.left, ...geometry.right]),
     [geometry],
@@ -67,6 +70,9 @@ export function EnvironmentView({
     if (canvas === null || !ctx || size.w === 0 || size.h === 0) return;
     const { frame, scenario, geometry: track } = useLive.getState();
     const selected = frame?.selected?.index ?? 0;
+    // When the neuron is selected (Network view), emphasise the two rays it reads.
+    const neuronRays = frame?.selected?.neuron?.input_rays ?? [];
+    const highlight = useSelection.getState().neuron === null ? [] : neuronRays;
     const car = frame === null ? null : frame.cars;
     const camera =
       mode === "follow" && car !== null && car.x.length > selected
@@ -75,7 +81,16 @@ export function EnvironmentView({
     cameraRef.current = camera;
     const ratio = window.devicePixelRatio || 1;
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-    drawScene(ctx, readTheme(canvas), { size, camera, geometry: track, scenario, frame, selected, compact });
+    drawScene(ctx, readTheme(canvas), {
+      size,
+      camera,
+      geometry: track,
+      scenario,
+      frame,
+      selected,
+      compact,
+      highlight,
+    });
   }, [size, mode, zoom, compact, fitPoints]);
 
   // Redraw when anything the picture depends on changes, at most once per display frame.
@@ -89,10 +104,12 @@ export function EnvironmentView({
         });
       }
     };
-    const unsubscribe = useLive.subscribe(schedule);
+    const unsubscribeLive = useLive.subscribe(schedule);
+    const unsubscribeSelection = useSelection.subscribe(schedule);
     schedule();
     return () => {
-      unsubscribe();
+      unsubscribeLive();
+      unsubscribeSelection();
       cancelAnimationFrame(pending);
     };
   }, [draw]);
@@ -141,6 +158,7 @@ export function EnvironmentView({
           ref={canvasRef}
           className="env-canvas"
           data-testid="environment-canvas"
+          data-highlighted-rays={highlightAttribute}
           style={{ width: size.w, height: size.h }}
           onPointerDown={onPointerDown}
           aria-label="Top-down view of the track and the cars"
@@ -151,7 +169,8 @@ export function EnvironmentView({
       {!compact && (
         <p className="env-hint">
           Drive with the arrow keys or W A S D (up accelerates, down brakes). Press Play first: the
-          car only moves while the simulation runs. Click a car to select it.
+          car only moves while the simulation runs. Click a car to select it. With the Neuron
+          driver, set its weights on the Network page.
         </p>
       )}
     </section>

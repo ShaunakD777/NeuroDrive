@@ -1,4 +1,4 @@
-import type { TrackGeometry, TrackListResponse } from "./generated";
+import type { ActivationCurves, TrackGeometry, TrackListResponse } from "./generated";
 
 /** Ask the Python server something over plain HTTP; throw a readable error if it says no. */
 async function getJson<T>(path: string): Promise<T> {
@@ -15,4 +15,9 @@ export async function fetchTracks(): Promise<TrackListResponse> {
 /** The outline of one track, for drawing (`GET /api/tracks/{name}`). */
 export async function fetchTrack(name: string): Promise<TrackGeometry> {
   return getJson<TrackGeometry>(`/api/tracks/${encodeURIComponent(name)}`);
+}
+
+/** The four activation functions sampled on the same z values (`GET /api/activations`). */
+export async function fetchActivations(): Promise<ActivationCurves> {
+  return getJson<ActivationCurves>("/api/activations");
 }

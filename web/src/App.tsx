@@ -10,6 +10,7 @@ import { VIEWS, viewInfo, type ViewId } from "./nav/views";
 import { effectivePartner, useLayout } from "./state/layout";
 import { useLive } from "./state/live";
 import { EnvironmentView } from "./views/environment/EnvironmentView";
+import { NeuronView } from "./views/network/NeuronView";
 
 export function App() {
   // The connection belongs to the app, not to a page, so it survives page changes.
@@ -33,6 +34,7 @@ export function App() {
 
 function MainView({ id, headerExtra }: { id: ViewId; headerExtra?: ReactNode }) {
   if (id === "environment") return <EnvironmentView headerExtra={headerExtra} />;
+  if (id === "network") return <NeuronView headerExtra={headerExtra} />;
   const v = viewInfo(id);
   return <ViewPanel title={v.title} comingIn={v.comingIn} headerExtra={headerExtra} />;
 }

@@ -8,7 +8,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
-API_VERSION = "v1.2"
+API_VERSION = "v1.3"
 
 
 class WireModel(BaseModel):
@@ -83,14 +83,15 @@ class CommandModel(WireModel):
 class LoadScenario(CommandModel):
     """Load a track and a driver; the session starts paused at step 0.
 
-    ``policy`` is ``"keyboard"`` (driven by ``key_state``) or ``"constant"`` (every car holds
-    steer 0, throttle 0.3). ``seed`` None starts every car at the track's start; an integer gives
-    a seeded random start (position, sideways offset and heading).
+    ``policy`` is ``"keyboard"`` (driven by ``key_state``), ``"constant"`` (every car holds steer 0,
+    throttle 0.3) or ``"neuron"`` (one shared neuron steers; change it with ``set_param``).
+    ``seed`` None starts every car at the track's start; an integer gives a seeded random start
+    (position, sideways offset and heading).
     """
 
     type: Literal["load_scenario"] = "load_scenario"
     track: str
-    policy: Literal["keyboard", "constant"] = "keyboard"
+    policy: Literal["keyboard", "constant", "neuron"] = "keyboard"
     n_cars: int = Field(default=1, ge=1, le=100)
     seed: int | None = Field(default=None, ge=0)
 
@@ -141,8 +142,21 @@ class KeyState(CommandModel):
     throttle: float = Field(ge=-1.0, le=1.0)
 
 
+class SetParam(CommandModel):
+    """Change one parameter of the neuron driver while it drives; answered with a frame.
+
+    ``name`` is ``w_left``, ``w_right``, ``bias`` or ``throttle`` (then ``value`` is a number;
+    weights and bias within +-30, throttle within +-1) or ``activation`` (then ``value`` is
+    ``"tanh"``, ``"sigmoid"``, ``"relu"`` or ``"linear"``). Only valid for the neuron policy.
+    """
+
+    type: Literal["set_param"] = "set_param"
+    name: Literal["w_left", "w_right", "bias", "throttle", "activation"]
+    value: float | str
+
+
 Command = Annotated[
-    LoadScenario | Play | Pause | Step | Reset | SetSpeed | SelectCar | KeyState,
+    LoadScenario | Play | Pause | Step | Reset | SetSpeed | SelectCar | KeyState | SetParam,
     Field(discriminator="type"),
 ]
 COMMAND_ADAPTER: TypeAdapter[Command] = TypeAdapter(Command)
@@ -161,7 +175,7 @@ class ScenarioMessage(WireModel):
 
     type: Literal["scenario"] = "scenario"
     track: str
-    policy: Literal["keyboard", "constant"]
+    policy: Literal["keyboard", "constant", "neuron"]
     n_cars: int
     seed: int | None
     dt: float
@@ -191,12 +205,42 @@ class CarColumns(WireModel):
     action: list[list[float]]
 
 
+class NeuronReadout(WireModel):
+    """What the selected car's neuron saw and computed (neuron policy only).
+
+    ``inputs`` are the two ray readings (0 to 1) it reads and ``input_rays`` which of the five rays
+    they are. ``contributions`` are weight times input for each, ``z`` is their total plus the
+    bias, and ``output`` is the activation of ``z``: the steering command. All computed by Python.
+    """
+
+    inputs: list[float]
+    input_rays: list[int]
+    weights: list[float]
+    bias: float
+    contributions: list[float]
+    z: float
+    output: float
+    activation: Literal["tanh", "sigmoid", "relu", "linear"]
+    throttle: float
+
+
 class SelectedCar(WireModel):
-    """Extra detail for the selected car: ray distances in metres and the 7-number observation."""
+    """Extra detail for the selected car: rays in metres, the observation and the neuron readout."""
 
     index: int
     rays: list[float]
     observation: list[float]
+    neuron: NeuronReadout | None
+
+
+class ActivationCurves(WireModel):
+    """Answer to ``GET /api/activations``: each activation function sampled on the same z values.
+
+    ``curves`` maps a name (tanh, sigmoid, relu, linear) to the list of f(z) for every z in ``z``.
+    """
+
+    z: list[float]
+    curves: dict[str, list[float]]
 
 
 class FrameMessage(WireModel):
@@ -248,9 +292,12 @@ WIRE_MODELS: tuple[type[WireModel], ...] = (
     SetSpeed,
     SelectCar,
     KeyState,
+    SetParam,
     ScenarioMessage,
     CarColumns,
+    NeuronReadout,
     SelectedCar,
+    ActivationCurves,
     FrameMessage,
     EpisodeEndMessage,
     ErrorMessage,

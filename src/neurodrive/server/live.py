@@ -22,7 +22,7 @@ import numpy as np
 from pydantic import ValidationError
 
 from neurodrive.core.rng import make_rng
-from neurodrive.env.policies import ConstantPolicy, KeyboardPolicy, Policy
+from neurodrive.env.policies import ConstantPolicy, KeyboardPolicy, NeuronPolicy, Policy
 from neurodrive.env.sensors import RAY_ANGLES, RAY_RANGE, build_observation, edge_segments
 from neurodrive.env.track import Track
 from neurodrive.env.world import Status, World
@@ -34,12 +34,14 @@ from neurodrive.server.schemas import (
     FrameMessage,
     KeyState,
     LoadScenario,
+    NeuronReadout,
     Pause,
     Play,
     Reset,
     ScenarioMessage,
     SelectCar,
     SelectedCar,
+    SetParam,
     SetSpeed,
     Step,
     TrackGeometry,
@@ -106,6 +108,7 @@ class LiveSession:
         self._world: World | None = None
         self._policy: Policy | None = None
         self._keys: KeyboardPolicy | None = None
+        self._neuron: NeuronPolicy | None = None
         self._scenario: LoadScenario | None = None
         self._segments = np.zeros((0, 2, 2))
         self._action = np.zeros((0, 2))
@@ -152,6 +155,14 @@ class LiveSession:
             if command.index >= self._world.n:
                 return [ErrorMessage(message=f"no car {command.index}: there are {self._world.n}")]
             self.selected = command.index
+            return [self._frame()]
+        if isinstance(command, SetParam):
+            if self._neuron is None:
+                return [ErrorMessage(message="set_param needs the neuron driver (policy 'neuron')")]
+            try:
+                self._neuron.set_param(command.name, command.value)
+            except ValueError as exc:
+                return [ErrorMessage(message=str(exc))]
             return [self._frame()]
         if isinstance(command, Reset):
             self._reset_world()
@@ -202,7 +213,8 @@ class LiveSession:
         self._world = World(track)
         self._segments = edge_segments(track)
         self._keys = KeyboardPolicy() if command.policy == "keyboard" else None
-        self._policy = self._keys or ConstantPolicy(0.0, CONSTANT_THROTTLE)
+        self._neuron = NeuronPolicy() if command.policy == "neuron" else None
+        self._policy = self._keys or self._neuron or ConstantPolicy(0.0, CONSTANT_THROTTLE)
         self.playing = False
         self.selected = 0
         self._reset_world()
@@ -289,7 +301,25 @@ class LiveSession:
                 index=i,
                 rays=np.round(obs[i, :5] * RAY_RANGE, 3).tolist(),
                 observation=np.round(obs[i], 4).tolist(),
+                neuron=self._neuron_readout(obs[i]),
             ),
+        )
+
+    def _neuron_readout(self, observation: np.ndarray) -> NeuronReadout | None:
+        """The neuron driver's numbers for one car (None for the other drivers)."""
+        if self._neuron is None:
+            return None
+        r = self._neuron.readout(observation)
+        return NeuronReadout(
+            inputs=[round(v, 4) for v in r.inputs],
+            input_rays=list(r.input_rays),
+            weights=list(r.weights),
+            bias=r.bias,
+            contributions=[round(v, 4) for v in r.contributions],
+            z=round(r.z, 4),
+            output=round(r.output, 4),
+            activation=r.activation,  # type: ignore[arg-type]
+            throttle=r.throttle,
         )
 
     def _frame_and_end(self) -> list[WireModel]:

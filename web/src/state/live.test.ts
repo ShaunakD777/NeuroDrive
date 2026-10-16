@@ -20,7 +20,12 @@ function frame(step: number, playing = false): FrameMessage {
       status: [0],
       action: [[0, 0]],
     },
-    selected: { index: 0, rays: [1, 2, 3, 4, 5], observation: [0, 0, 0, 0, 0, 0, 0] },
+    selected: {
+      index: 0,
+      rays: [1, 2, 3, 4, 5],
+      observation: [0, 0, 0, 0, 0, 0, 0],
+      neuron: null,
+    },
   };
 }
 
@@ -138,6 +143,28 @@ describe("live store: commands", () => {
     useLive.setState({ ...initialLive, tracks: [{ name: "first_track", split: "train" }] });
     useLive.getState().loadScenario({});
     expect(sent.at(-1)).toMatchObject({ track: "first_track", policy: "keyboard", n_cars: 1 });
+  });
+
+  it("can ask for the neuron driver and keeps it when other settings change", () => {
+    const { loadScenario } = useLive.getState();
+    loadScenario({ track: "train_loop_01", policy: "neuron" });
+    expect(sent.at(-1)).toMatchObject({ policy: "neuron" });
+    loadScenario({ n_cars: 4 });
+    expect(sent.at(-1)).toMatchObject({ policy: "neuron", n_cars: 4 });
+  });
+
+  it("sends set_param commands unchanged", () => {
+    expect(useLive.getState().send({ type: "set_param", name: "w_left", value: -4 })).toBe(true);
+    expect(useLive.getState().send({ type: "set_param", name: "activation", value: "sigmoid" })).toBe(true);
+    expect(sent).toEqual([
+      { type: "set_param", name: "w_left", value: -4 },
+      { type: "set_param", name: "activation", value: "sigmoid" },
+    ]);
+  });
+
+  it("keeps the activation curves the server sent", () => {
+    useLive.getState().setActivations({ z: [-1, 0, 1], curves: { tanh: [-0.76, 0, 0.76] } });
+    expect(useLive.getState().activations?.curves.tanh[2]).toBe(0.76);
   });
 
   it("does nothing when no track is known yet", () => {

@@ -1,6 +1,7 @@
 """Tests for live sessions: the clock logic with a hand-driven clock, then the real WebSocket."""
 
 import json
+import math
 import shutil
 from pathlib import Path
 
@@ -341,7 +342,7 @@ def test_rest_track_endpoints():
 def test_websocket_session_end_to_end():
     client = TestClient(create_app())
     with client.websocket_connect("/ws/live") as ws:
-        assert json.loads(ws.receive_text())["api"] == API_VERSION == "v1.2"
+        assert json.loads(ws.receive_text())["api"] == API_VERSION == "v1.3"
         ws.send_text(json.dumps({"type": "load_scenario", "track": TRACK, "policy": "constant"}))
         assert json.loads(ws.receive_text())["type"] == "scenario"
         assert json.loads(ws.receive_text())["step"] == 0
@@ -390,3 +391,157 @@ def test_each_connection_has_its_own_session():
         b.send_text(json.dumps({"type": "step"}))
         frame_b = json.loads(b.receive_text())
         assert frame_a["step"] == 3 and frame_b["step"] == 1
+
+
+# ── the neuron driver: readout, set_param, activation curves (api v1.3) ─────────────────────
+
+
+def neuron_session(n_cars: int = 1, seed: int | None = None) -> LiveSession:
+    return loaded("neuron", n_cars=n_cars, seed=seed)
+
+
+def set_param(session: LiveSession, name: str, value) -> list:
+    return send(session, type="set_param", name=name, value=value)
+
+
+def test_neuron_scenario_starts_with_zero_weights_and_a_readout_in_every_frame():
+    session = LiveSession(TrackLibrary(TRACKS))
+    scenario, frame = send(session, type="load_scenario", track=TRACK, policy="neuron")
+    assert scenario.policy == "neuron"
+    neuron = frame.selected.neuron
+    assert neuron.weights == [0.0, 0.0] and neuron.bias == 0.0
+    assert neuron.activation == "tanh" and neuron.throttle == 0.15
+    assert neuron.input_rays == [0, 4] and len(neuron.inputs) == 2
+    assert neuron.inputs == [frame.selected.observation[0], frame.selected.observation[4]]
+    assert neuron.z == 0.0 and neuron.output == 0.0 and neuron.contributions == [0.0, 0.0]
+
+
+def test_the_other_drivers_have_no_neuron_readout():
+    for policy in ("keyboard", "constant"):
+        (frame,) = send(loaded(policy), type="step")
+        assert frame.selected.neuron is None
+
+
+def test_set_param_answers_with_a_frame_showing_the_new_numbers_even_while_paused():
+    session = neuron_session()
+    (frame,) = set_param(session, "bias", 1.0)
+    neuron = frame.selected.neuron
+    assert isinstance(frame, FrameMessage) and not frame.playing and frame.step == 0
+    assert neuron.bias == 1.0 and neuron.z == pytest.approx(1.0)
+    assert neuron.output == pytest.approx(0.7616, abs=1e-4)  # tanh(1)
+    (frame,) = set_param(session, "activation", "sigmoid")
+    assert frame.selected.neuron.activation == "sigmoid"
+    assert frame.selected.neuron.output == pytest.approx(0.7311, abs=1e-4)  # sigmoid(1)
+    (frame,) = set_param(session, "bias", -1.0)
+    assert frame.selected.neuron.output == pytest.approx(0.2689, abs=1e-4)  # sigmoid(-1) > 0
+
+
+def test_a_weight_change_shows_in_the_very_next_steering_action():
+    session = neuron_session()
+    (frame,) = send(session, type="step")
+    assert frame.cars.action == [[0.0, 0.15]]  # zero weights: straight
+    set_param(session, "bias", 0.5)
+    (frame,) = send(session, type="step")
+    assert frame.cars.action[0][0] == pytest.approx(0.4621, abs=1e-4)  # tanh(0.5)
+    set_param(session, "bias", -0.5)
+    (frame,) = send(session, type="step")
+    assert frame.cars.action[0][0] == pytest.approx(-0.4621, abs=1e-4)
+
+
+def test_the_readout_matches_the_hand_example_and_its_own_sums():
+    session = neuron_session()
+    for name, value in (("w_left", -4.0), ("w_right", 4.0), ("bias", 0.1)):
+        (frame,) = set_param(session, name, value)
+    n = frame.selected.neuron
+    assert n.contributions == pytest.approx(
+        [w * x for w, x in zip(n.weights, n.inputs, strict=True)], abs=1e-3
+    )
+    assert n.z == pytest.approx(sum(n.contributions) + n.bias, abs=2e-4)
+    assert n.output == pytest.approx(math.tanh(n.z), abs=2e-4)
+
+
+def test_the_readout_follows_the_selected_car_and_all_cars_share_the_neuron():
+    session = neuron_session(n_cars=3, seed=4)
+    set_param(session, "w_left", -3.0)
+    (frame0,) = send(session, type="select_car", index=0)
+    (frame2,) = send(session, type="select_car", index=2)
+    assert frame0.selected.neuron.weights == frame2.selected.neuron.weights == [-3.0, 0.0]
+    assert (
+        frame0.selected.neuron.inputs != frame2.selected.neuron.inputs
+    )  # different cars see different walls
+
+
+def test_set_param_errors_leave_the_session_and_the_neuron_unchanged():
+    session = neuron_session()
+    set_param(session, "w_left", 2.0)
+    for name, value in (("w_left", 99.0), ("activation", "gelu"), ("throttle", 5.0), ("bias", "x")):
+        (reply,) = set_param(session, name, value)
+        assert isinstance(reply, ErrorMessage), (name, value)
+    (frame,) = send(session, type="step")
+    assert frame.selected.neuron.weights[0] == 2.0
+
+
+def test_set_param_needs_the_neuron_driver_and_a_valid_message():
+    for policy in ("keyboard", "constant"):
+        (reply,) = set_param(loaded(policy), "bias", 1.0)
+        assert isinstance(reply, ErrorMessage) and "neuron" in reply.message
+    (reply,) = set_param(LiveSession(TrackLibrary(TRACKS)), "bias", 1.0)
+    assert isinstance(reply, ErrorMessage) and "load_scenario" in reply.message
+    session = neuron_session()
+    for command in (
+        {"type": "set_param", "name": "speed", "value": 1.0},
+        {"type": "set_param", "name": "bias"},
+        {"type": "set_param", "value": 1.0},
+    ):
+        (reply,) = send(session, **command)
+        assert isinstance(reply, ErrorMessage), command
+
+
+def test_parameters_survive_a_reset_but_a_new_scenario_starts_fresh():
+    session = neuron_session()
+    set_param(session, "w_right", 7.0)
+    (frame,) = send(session, type="reset")
+    assert frame.selected.neuron.weights == [0.0, 7.0]
+    send(session, type="load_scenario", track=TRACK, policy="neuron")
+    (frame,) = send(session, type="step")
+    assert frame.selected.neuron.weights == [0.0, 0.0]
+
+
+def test_a_neuron_with_opposite_sign_weights_keeps_the_car_on_the_road_live():
+    session = neuron_session()
+    set_param(session, "w_left", -8.0)
+    set_param(session, "w_right", 8.0)
+    send(session, type="set_speed", speed=8.0)
+    send(session, type="play")
+    sent = run_clock(session, 2.0)  # 16 s of driving at 8x
+    frames = [m for _, m in sent if isinstance(m, FrameMessage)]
+    assert frames[-1].cars.alive == [True] and frames[-1].cars.progress[0] > 60.0
+    assert not [m for _, m in sent if isinstance(m, EpisodeEndMessage)]
+
+
+def test_activation_curves_endpoint_returns_python_computed_curves():
+    client = TestClient(create_app())
+    body = client.get("/api/activations").json()
+    z = body["z"]
+    assert len(z) == 101 and z[0] == -5.0 and z[-1] == 5.0 and z[50] == 0.0
+    assert set(body["curves"]) == {"tanh", "sigmoid", "relu", "linear"}
+    assert all(len(v) == 101 for v in body["curves"].values())
+    curves = body["curves"]
+    assert curves["tanh"][50] == 0.0 and curves["sigmoid"][50] == 0.5
+    assert min(curves["tanh"]) > -1.0 and max(curves["tanh"]) < 1.0
+    assert min(curves["sigmoid"]) > 0.0 and max(curves["sigmoid"]) < 1.0  # never negative
+    assert min(curves["relu"]) == 0.0 and curves["relu"][-1] == 5.0
+    assert curves["linear"] == z
+
+
+def test_websocket_set_param_end_to_end():
+    client = TestClient(create_app())
+    with client.websocket_connect("/ws/live") as ws:
+        ws.receive_text()
+        ws.send_text(json.dumps({"type": "load_scenario", "track": TRACK, "policy": "neuron"}))
+        ws.receive_text(), ws.receive_text()
+        ws.send_text(json.dumps({"type": "set_param", "name": "bias", "value": 1.0}))
+        frame = json.loads(ws.receive_text())
+        assert frame["selected"]["neuron"]["bias"] == 1.0
+        ws.send_text(json.dumps({"type": "set_param", "name": "activation", "value": "sigmoid"}))
+        assert json.loads(ws.receive_text())["selected"]["neuron"]["activation"] == "sigmoid"

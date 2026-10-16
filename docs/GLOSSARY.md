@@ -134,3 +134,7 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Camera (drawing) | The choice of which world point sits at the centre of the canvas and how many pixels one metre takes up (zoom). |
 | HUD (heads-up display) | The numbers drawn over the picture: speed, steering and throttle, progress, ray distances and status. |
 | Store (web) | One shared object in the web app that views read from and write to; the live store holds the latest frame from the server. |
+| Neuron policy | A driver whose steering is one neuron: it reads the far-left and far-right rays, weights them, adds a bias, and passes the sum through an activation. |
+| Contribution | One input's share of the weighted sum: its weight times its value. |
+| Activation curve | A graph of an activation function: the weighted sum z along the bottom and the neuron's output up the side; a dot marks where the neuron is right now. |
+| Selection linking | Clicking something in one view (a car, a neuron) highlights the related thing in another view. |

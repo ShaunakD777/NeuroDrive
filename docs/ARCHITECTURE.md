@@ -309,13 +309,15 @@ Exam spec version, list of tracks, per-episode metrics (track, start index, prog
 crashed, lap times, mean speed, smoothness, time to crash), and aggregates per track and overall
 (median, IQR, completion rate). See `EXPERIMENT_PROTOCOL.md`.
 
-## 7. Server API (api v1.2, ADR-016, ADR-018)
+## 7. Server API (api v1.3, ADR-016, ADR-018, ADR-019)
 
 REST (`/api/...`):
 - `GET health` → `{status: "ok", version}` (`version` is the NeuroDrive package version)
 - `GET tracks` → `{tracks: [{name, split}]}`; `GET tracks/{name}` → geometry for drawing:
   `{name, split, width, length, start_s0, centerline, left, right}` (the last three are lists of
   [x, y] points in metres rounded to 2 decimals; the loops are closed without repeating the first point)
+- `GET activations` → `{z, curves}`: z from −5 to 5 and, for each of tanh, sigmoid, relu and linear,
+  the function's values on those z (so the browser can draw the curves without computing them)
 - `GET runs`, `GET runs/{id}` (config, meta, metrics), `GET runs/{id}/checkpoints`
 - `GET runs/{id}/checkpoints/{unit}`: network as JSON
 - `GET runs/{id}/checkpoints/{unit}/diff?from={unit}`: per-weight change
@@ -327,16 +329,20 @@ REST (`/api/...`):
 
 WebSocket `/ws/live` (one independent session per connection):
 - `hello` is sent first, on connect: `{type: "hello", version, api}` (`api` is the message-contract
-  version, currently `"v1.2"`).
+  version, currently `"v1.3"`).
 - client → server (each has a `type` field):
-  - `load_scenario {track, policy, n_cars, seed}`: `policy` is `"keyboard"` or `"constant"` (more
-    arrive with later tasks); `n_cars` 1 to 100 (default 1); `seed` is an integer for a seeded
+  - `load_scenario {track, policy, n_cars, seed}`: `policy` is `"keyboard"`, `"constant"` or
+    `"neuron"` (more arrive with later tasks); `n_cars` 1 to 100 (default 1); `seed` is an integer for a seeded
     random start or null for the track's fixed start. Loads paused at step 0.
   - `play`, `pause`, `step` (exactly one physics step, even while paused), `reset` (back to
     step 0 with the same scenario and seed; stays paused or playing as before),
     `set_speed {speed}` (0.1 to 8, default 1), `select_car {index}` (default 0),
     `key_state {steer, throttle}` (each −1..1; used by the keyboard policy, ignored otherwise).
-  - `set_param` (neuron weights) arrives with task 1.9.
+  - `set_param {name, value}` (neuron driver only): `name` is `w_left`, `w_right`, `bias`,
+    `throttle` (numbers; weights and bias within ±30, throttle within ±1) or `activation` (`tanh`,
+    `sigmoid`, `relu` or `linear`). Answered with a frame. The neuron is
+    steer = f(w_left·d_left + w_right·d_right + bias) with d_left and d_right the far-left and
+    far-right ray readings, at a fixed throttle; it starts with all zeros and throttle 0.15.
 - server → client:
   - `scenario {track, policy, n_cars, seed, dt, time_limit, target_laps, v_max, wheelbase,
     car_half_width, ray_angles, ray_range}`: no geometry (use `GET tracks/{name}`).
@@ -344,9 +350,15 @@ WebSocket `/ws/live` (one independent session per connection):
     entry per car: `x`, `y`, `psi`, `v`, `alive`, `progress`, `status` (0 running, 1 crashed,
     2 finished, 3 stalled, 4 timeout), `action` (a [steer, throttle] pair per car; the last action
     applied, [0, 0] before the first step). `selected` is `{index, rays, observation}` for the
-    selected car (rays in metres, five numbers; observation is the 7-number vector) or null.
+    selected car (rays in metres, five numbers; observation is the 7-number vector; `neuron` is the
+    neuron driver's readout, see below, or null) or null.
     Numbers are rounded: positions, speed and progress to 3 decimals, angles and the observation
     to 4.
+  - `selected.neuron {inputs, input_rays, weights, bias, contributions, z, output, activation,
+    throttle}`: `inputs` are the two ray readings (0 to 1) the neuron reads, `input_rays` which of
+    the five rays they are (0 and 4), `contributions` the weight times input for each, `z` the
+    weighted sum (their total plus the bias) and `output` the activation of `z`, all computed by
+    Python.
   - `episode_end {step, time, status, progress, laps}`: sent once when every car has stopped; the
     session then pauses. `status` holds a name per car (`crashed`, `finished`, `stalled`,
     `timeout`).
