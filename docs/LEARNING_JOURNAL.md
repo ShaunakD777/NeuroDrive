@@ -308,3 +308,27 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   aliases.
 - Open question: with a throttle of 0.15 the car settles near 12 m/s and covers about 1.3 laps in
   90 s, so a 2-lap finish needs a higher throttle; how fast can a hand-tuned neuron safely go?
+
+### 2026-10-16 — Task 1.10 Milestone 1 experiments (study S1)
+- Concept: hand-tuning as "the human is the learning algorithm". A good controller needs the right
+  *sign* pattern first, a big enough size second, and an output whose range can express the answer.
+- Key equation(s) in words: z is the left weight times the left ray, plus the right weight times the
+  right ray, plus the bias; steer is the activation of z. A wall close on the left makes the left
+  reading small; to turn right the left weight must be negative (a small value removes less from the
+  sum than a big one) and the right weight positive, so the weights need opposite signs.
+- What we observed: weights −12 and +12, bias 0, tanh, throttle 0.24 finish the exam's 2 laps in
+  86.3 s from all 10 exam-like starts and all 10 seeded random starts; the lap was recorded and
+  replayed identically. Flipping the signs crashes in 3.6 s (the car steers towards the nearer
+  wall, which makes it nearer, positive feedback). 108 sigmoid settings never finished and never
+  once steered below zero.
+- Why sigmoid only ever steers one way: its output is always between 0 and 1, so the steering
+  command is never negative, and negative means left. At the crash the sigmoid neuron's sum was
+  −5.4, a clear "go left", and sigmoid turned that into +0.005, "straight". With bias 0 it is worse:
+  sigmoid(0) = 0.5, so on a straight road the car is pulled half-right all the time. The weights
+  cannot fix this; only the output range (tanh, from −1 to +1) can.
+- Surprise or difficulty: the usable throttle window is tiny, 0.23 to 0.25 (about 18.4 to 20 m/s):
+  slower misses the 90 s limit, faster cannot take the bends, and a neuron with a fixed throttle
+  cannot brake. Weight size hardly matters once it is 4 to 8 or more. The study took 16 minutes to
+  run, which is a cue to batch cars or speed up the sensors before the learning phases.
+- Open question: would a sigmoid neuron do better on a clockwise (mirrored) track, and is a second
+  neuron for the throttle enough to widen the throttle window?
