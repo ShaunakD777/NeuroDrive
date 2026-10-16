@@ -258,3 +258,20 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   straight off the curving road within about 7 s, so speed tests must stay short.
 - Open question: when 1.8 draws these frames, will 30 per second look smooth enough, or should
   the browser interpolate between frames?
+
+### 2026-10-16 — Task 1.8 Environment view v1
+- Concept: the browser only displays and sends commands. World metres become screen pixels with a
+  scale and a flipped y axis; a camera either follows the car or fits the whole track; rays are
+  drawn from the server's distances, never recomputed in the browser.
+- Key equation(s) in words: screen x is half the canvas width plus (world x minus camera x) times
+  pixels-per-metre; screen y is half the height minus (world y minus camera y) times pixels-per-metre.
+- What we observed: with a centre at (10, 5) and 2 pixels per metre on a 200 by 100 canvas, world
+  (11, 6) lands at pixel (102, 48). Holding the up arrow for 1.8 s at 1x took the car to 13 m/s
+  with side rays reading 6 to 9 m; driving straight at 8x crashed it, the banner said "Crashed: the
+  car left the road", the nearest ray read under 6 m, and Reset cleared it.
+- Surprise or difficulty: after choosing a speed from the dropdown the menu kept keyboard focus,
+  so the arrow keys changed the menu instead of driving; the menus now release focus. On a phone
+  the companion drawer takes nearly half the width; the view scrolls, but the drawer should
+  probably start closed on narrow screens (an old open question from task 0.4b).
+- Open question: will the 30 frames per second look smooth enough, or should the browser
+  interpolate between frames? Also, a manual lap of the track is still for the user to try.

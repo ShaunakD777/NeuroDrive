@@ -1,18 +1,20 @@
-import { type ReactNode, useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 
-import { connectLive, type ConnectionStatus } from "./api/ws";
+import { useLiveConnection } from "./api/useLiveConnection";
 import { CompanionDrawer } from "./components/CompanionDrawer";
 import { TopBar } from "./components/TopBar";
 import { ViewPanel } from "./components/ViewPanel";
 import { useRoute } from "./nav/route";
 import { VIEWS, viewInfo, type ViewId } from "./nav/views";
 import { effectivePartner, useLayout } from "./state/layout";
+import { useLive } from "./state/live";
+import { EnvironmentView } from "./views/environment/EnvironmentView";
 
 export function App() {
   // The connection belongs to the app, not to a page, so it survives page changes.
-  const [status, setStatus] = useState<ConnectionStatus>("connecting");
-  useEffect(() => connectLive(setStatus), []);
+  useLiveConnection();
+  const status = useLive((s) => s.status);
 
   const current = useRoute();
   const { mode, setMode } = useLayout();
@@ -30,6 +32,7 @@ export function App() {
 }
 
 function MainView({ id, headerExtra }: { id: ViewId; headerExtra?: ReactNode }) {
+  if (id === "environment") return <EnvironmentView headerExtra={headerExtra} />;
   const v = viewInfo(id);
   return <ViewPanel title={v.title} comingIn={v.comingIn} headerExtra={headerExtra} />;
 }

@@ -130,3 +130,7 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Speed factor | How much faster or slower than real time the simulation runs; it changes steps per second, never the size of a step. |
 | Column arrays | Sending one list per quantity (all x, all y, ...) instead of one object per car; compact and fast to loop over. |
 | API version | A number (now v1.2) recording the shape of the messages between server and browser; new messages bump the minor number. |
+| Canvas | A drawing surface in the web page that code paints pixels onto; the track, cars and rays are drawn on one. |
+| Camera (drawing) | The choice of which world point sits at the centre of the canvas and how many pixels one metre takes up (zoom). |
+| HUD (heads-up display) | The numbers drawn over the picture: speed, steering and throttle, progress, ray distances and status. |
+| Store (web) | One shared object in the web app that views read from and write to; the live store holds the latest frame from the server. |

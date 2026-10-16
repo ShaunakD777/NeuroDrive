@@ -1,4 +1,5 @@
 import { viewInfo, type ViewId } from "../nav/views";
+import { EnvironmentView } from "../views/environment/EnvironmentView";
 import { ViewPanel } from "./ViewPanel";
 
 /**
@@ -31,7 +32,11 @@ export function CompanionDrawer({
       </button>
       {open && (
         <div id={drawerId} className="drawer-body">
-          <ViewPanel title={companion.title} comingIn={companion.comingIn} compact />
+          {companion.id === "environment" ? (
+            <EnvironmentView compact />
+          ) : (
+            <ViewPanel title={companion.title} comingIn={companion.comingIn} compact />
+          )}
         </div>
       )}
     </aside>

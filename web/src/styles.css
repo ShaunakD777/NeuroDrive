@@ -328,3 +328,220 @@ body {
 .badge[data-status="disconnected"] .badge-dot {
   background: var(--bad);
 }
+
+/* ── Environment view ─────────────────────────────────────────── */
+
+.env-view {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+}
+
+.env-stage {
+  position: relative;
+  flex: 1;
+  min-height: 260px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.env-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  touch-action: none;
+}
+
+.env-hint {
+  margin-top: 8px !important;
+  font-size: 0.82rem;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.controls button,
+.controls select {
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.controls button:disabled,
+.controls select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.controls button:focus-visible,
+.controls select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.control-label {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.hud {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  min-width: 190px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.view-compact .hud {
+  min-width: 0;
+  padding: 4px 8px;
+}
+
+.hud-empty {
+  color: var(--text-muted);
+}
+
+.hud-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hud-label {
+  min-width: 64px;
+  color: var(--text-muted);
+}
+
+.hud-muted {
+  color: var(--text-muted);
+}
+
+.hud-rays {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.bar {
+  position: relative;
+  flex: 1;
+  min-width: 50px;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--border);
+}
+
+.bar::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -2px;
+  bottom: -2px;
+  width: 1px;
+  background: var(--text-muted);
+}
+
+.bar-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 4px;
+  background: var(--accent);
+}
+
+.chip {
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 0.78rem;
+}
+
+.chip[data-kind="running"] {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.chip[data-kind="good"] {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.chip[data-kind="bad"] {
+  color: var(--bad);
+  border-color: var(--bad);
+}
+
+.chip[data-kind="warn"] {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+.banner {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  max-width: calc(100% - 24px);
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  font-size: 0.88rem;
+  text-align: center;
+}
+
+.banner[data-kind="bad"] {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+.banner[data-kind="good"] {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.banner[data-kind="warn"] {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+@media (max-width: 760px) {
+  .hud {
+    min-width: 0;
+    font-size: 0.75rem;
+  }
+
+  .hud-label {
+    min-width: 52px;
+  }
+
+  /* The ray distances are also written next to the rays on the canvas. */
+  .hud-rays {
+    display: none;
+  }
+}
