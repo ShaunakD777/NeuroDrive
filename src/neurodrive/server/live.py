@@ -24,9 +24,9 @@ from pydantic import ValidationError
 
 from neurodrive.core.rng import make_rng
 from neurodrive.env.policies import ConstantPolicy, KeyboardPolicy, NeuronPolicy, Policy
-from neurodrive.env.sensors import RAY_ANGLES, RAY_RANGE, build_observation, edge_segments
+from neurodrive.env.sensors import RAY_ANGLES, RAY_RANGE, build_observation, edge_grid
 from neurodrive.env.track import Track
-from neurodrive.env.world import Status, World
+from neurodrive.env.world import Status, World, WorldConfig
 from neurodrive.server.schemas import (
     COMMAND_ADAPTER,
     CarColumns,
@@ -220,8 +220,8 @@ class LiveSession:
         except KeyError:
             return [ErrorMessage(message=f"unknown track {command.track!r}")]
         self._scenario = command
-        self._world = World(track)
-        self._segments = edge_segments(track)
+        self._world = World(track, WorldConfig.for_track(track))  # per-track time limit (ADR-022)
+        self._segments = edge_grid(track)
         self._keys = KeyboardPolicy() if command.policy == "keyboard" else None
         if command.policy == "neuron":
             if self._saved_neuron is None:

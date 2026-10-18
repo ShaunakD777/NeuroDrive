@@ -8,7 +8,7 @@ import pytest
 
 from neurodrive.core.rng import make_rng
 from neurodrive.env.track import Track
-from neurodrive.env.world import Status, World, WorldConfig
+from neurodrive.env.world import Status, World, WorldConfig, time_limit_for
 
 TRACK_FILE = Path(__file__).resolve().parents[2] / "tracks" / "train_loop_01.json"
 
@@ -371,3 +371,22 @@ def test_cars_started_at_random_positions_still_drive_and_score(loop):
     for _ in range(60):
         drive(world)
     assert np.all(world.progress[world.running] > 5.0)
+
+
+# ── the per-track time limit (ADR-022) ──────────────────────────────────────────────────────
+
+
+def test_time_limit_is_two_laps_at_sixteen_metres_per_second_rounded_up(loop):
+    # 2 laps of 2,900 m at 16 m/s: 5800 / 16 = 362.5 s, rounded up to 363 s.
+    assert time_limit_for(2900.0) == 363.0
+    assert time_limit_for(800.0) == 100.0  # exactly 100 s: no rounding needed
+    assert time_limit_for(800.0, target_laps=1) == 50.0
+    assert time_limit_for(800.0, mean_speed=20.0) == 80.0
+    config = WorldConfig.for_track(loop)  # 730.7 m: 1461.5 / 16 = 91.3 s, so 92 s
+    assert config.time_limit == 92.0 and config.target_laps == 2
+    assert World(loop, config).limit_steps == 92 * 30
+    monza = Track.from_json(TRACK_FILE.parent / "monza_cw.json")
+    assert WorldConfig.for_track(monza).time_limit == 363.0
+    assert WorldConfig.for_track(monza, target_laps=1).time_limit == 182.0
+    with pytest.raises(ValueError):
+        time_limit_for(0.0)

@@ -358,3 +358,23 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   0.05 s. The track list then still built every track just to read its split, which delayed the
   web page's first frame by over 5 s; it now reads only that field.
 - Open question: what time limit should a 2.9 km track have (task 1.12)?
+
+### 2026-10-18 — Task 1.12 Study S1b: the hand-wired neuron on Monza, both directions
+- Concept: transfer (a controller used on a track it was not tuned on); the same road driven both
+  ways; a per-track time limit; a spatial grid that makes the sensors faster without changing a
+  single reading.
+- Key equation(s) in words: the time limit is 2 laps times the lap length, divided by 16 m/s,
+  rounded up (2 × 2,900.3 / 16 = 362.5, so 363 s). The fastest speed through a bend of radius r
+  is √(9 · r), since the tyres allow 9 m/s² sideways: a 17.5 m bend allows √157.5 ≈ 12.5 m/s. A
+  fixed throttle u settles at 80 · u m/s, so 0.24 means about 19 m/s.
+- What we observed: no fixed throttle finished 2 laps on Monza in either direction. Up to
+  throttle 0.19 (clockwise) or 0.1825 (counter-clockwise) the car survives but runs out of time
+  (it would need 392 s or 408 s); above that it crashes in a chicane. The S1 baseline crashes in
+  the first tight bend every time. Flipped signs and zero weights still crash, so the sign logic
+  transfers; only the throttle does not.
+- Surprise or difficulty: at throttle 0.1925 the car survives lap 1 and crashes on lap 2 at the
+  same chicane, because on lap 1 it was still accelerating (15.2 m/s) and on lap 2 it was at its
+  steady 15.4 m/s: 0.2 m/s decided it. Also, throttle 0.13 fails the stall rule before it moves
+  2 m. Sigmoid gained almost nothing from a clockwise track.
+- Open question: a network that sets its own throttle (Phase 2) could brake for the chicanes; how
+  will learning find that?

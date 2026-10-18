@@ -54,7 +54,7 @@ def test_load_scenario_answers_with_scenario_then_frame():
     assert scenario.track == TRACK and scenario.n_cars == 3 and scenario.policy == "keyboard"
     assert scenario.dt == pytest.approx(1 / 30) and scenario.ray_range == 50.0
     assert len(scenario.ray_angles) == 5 and scenario.target_laps == 2
-    assert scenario.time_limit == 90.0 and scenario.v_max == 30.0
+    assert scenario.time_limit == 92.0 and scenario.v_max == 30.0  # 2 laps at 16 m/s (ADR-022)
     assert frame.step == 0 and frame.time == 0.0 and not frame.playing and frame.speed == 1.0
     assert len(frame.cars.x) == len(frame.cars.action) == len(frame.cars.status) == 3
     assert frame.cars.alive == [True] * 3 and frame.cars.status == [0, 0, 0]

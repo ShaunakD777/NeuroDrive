@@ -8,12 +8,15 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
+from neurodrive.core.rng import make_rng
 from neurodrive.env.sensors import (
     RAY_ANGLES,
     RAY_RANGE,
+    edge_grid,
     edge_segments,
     ray_distances,
     ray_readings,
+    wall_grid,
 )
 from neurodrive.env.track import Track
 
@@ -225,3 +228,55 @@ def test_same_poses_give_identical_readings():
     a = ray_readings(TRACK_SEGMENTS, [0.0, 50.0], [0.0, 3.0], [0.1, 2.0])
     b = ray_readings(TRACK_SEGMENTS, [0.0, 50.0], [0.0, 3.0], [0.1, 2.0])
     assert np.array_equal(a, b)
+
+
+# ── the wall grid (only nearby walls) gives exactly the full search's readings ──────────────
+
+MONZA = Track.from_json(TRACK_FILE.parent / "monza_cw.json")
+
+
+@pytest.mark.parametrize("track", [TRACK, MONZA], ids=["train_loop_01", "monza_cw"])
+def test_wall_grid_readings_are_bit_identical_to_the_full_search(track):
+    segments = edge_segments(track)
+    grid = edge_grid(track)
+    rng = make_rng(7)
+    lo, hi = segments.reshape(-1, 2).min(axis=0) - 80.0, segments.reshape(-1, 2).max(axis=0) + 80.0
+    # Cars anywhere round the track (many far off the road or off the grid) and cars on the road.
+    on_road = rng.integers(0, len(track.points), 400)
+    x = np.r_[rng.uniform(lo[0], hi[0], 600), track.points[on_road, 0] + rng.uniform(-6, 6, 400)]
+    y = np.r_[rng.uniform(lo[1], hi[1], 600), track.points[on_road, 1] + rng.uniform(-6, 6, 400)]
+    psi = rng.uniform(-math.pi, math.pi, 1000)
+    for k in range(0, 1000, 250):
+        part = slice(k, k + 250)
+        assert np.array_equal(
+            ray_distances(grid, x[part], y[part], psi[part]),
+            ray_distances(segments, x[part], y[part], psi[part]),
+        )
+    assert grid.n_walls == len(segments)
+    assert grid.table.shape[1] < len(segments) / 3  # each car tests well under a third of the walls
+
+
+def test_wall_grid_handles_cars_on_cell_edges_and_outside_the_grid():
+    segments = wall(10, -20, 10, 20)
+    grid = wall_grid(segments, cell=5.0)
+    # A car exactly on a cell corner, cars on the grid's outer edge, and cars far away.
+    x0, y0 = grid.origin
+    xs = [x0 + 5.0 * 3, x0, x0 + grid.cell * grid.nx, -1000.0, 1000.0, 0.0]
+    ys = [y0 + 5.0 * 4, y0, y0 + grid.cell * grid.ny, 0.0, 0.0, 0.0]
+    for psi in (0.0, 1.0, math.pi):
+        assert np.array_equal(
+            ray_distances(grid, xs, ys, psi), ray_distances(segments, xs, ys, psi)
+        )
+    assert ray_readings(grid, 0.0, 0.0, 0.0)[0, 2] == pytest.approx(0.2)
+    assert np.all(ray_readings(grid, 1000.0, 0.0, 0.0) == 1.0)
+
+
+def test_wall_grid_rejects_longer_rays_and_works_without_walls():
+    grid = wall_grid(wall(10, -20, 10, 20), reach=20.0)
+    with pytest.raises(ValueError, match="built for rays up to"):
+        ray_distances(grid, 0.0, 0.0, 0.0)  # the default range is 50 m
+    assert ray_distances(grid, 0.0, 0.0, 0.0, max_range=20.0)[0, 2] == pytest.approx(10.0)
+    empty = wall_grid(np.zeros((0, 2, 2)))
+    assert np.all(ray_readings(empty, [0.0, 3.0], 0.0, 0.0) == 1.0)
+    with pytest.raises(ValueError, match="shape"):
+        wall_grid(np.zeros((3, 2)))

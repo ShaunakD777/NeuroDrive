@@ -29,7 +29,7 @@ from numpy.typing import NDArray
 
 from neurodrive.env.car import CarParams
 from neurodrive.env.policies import Policy
-from neurodrive.env.sensors import build_observation, edge_segments, ray_readings
+from neurodrive.env.sensors import build_observation, edge_grid, ray_readings
 from neurodrive.env.track import Track
 from neurodrive.env.world import World, WorldConfig
 
@@ -132,7 +132,7 @@ def run_episode(
     """
     if not world.ready or world.step_count != 0:
         raise ValueError("run_episode needs a world that has just been reset")
-    segments = edge_segments(world.track)
+    segments = edge_grid(world.track)  # only nearby walls: same readings, faster
     v_max = world.params.v_max
 
     frames: dict[str, list[Array]] = {k: [] for k in ("x", "y", "psi", "v", "alive", "progress")}

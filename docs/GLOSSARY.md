@@ -50,6 +50,9 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Seed | The starting number for a random generator; the same seed gives the same "random" numbers. |
 | Driving Exam | The fixed test (tracks, starts, limits, metrics) that every network takes, however it was trained. |
 | Held-out track | A track never used during training or tuning; it tests generalisation. |
+| Transfer | Using a controller or model in a setting other than the one it was built or trained for (here: a neuron tuned on one loop, driven on Monza). |
+| Spatial grid | A speed-up that sorts objects into square cells, so a query only looks at objects in nearby cells instead of all of them. The answer is unchanged; only the work is less. |
+| Per-track time limit | The episode time limit set from the track's length: 2 laps at an average of 16 m/s, rounded up to a whole second (ADR-022). |
 | Median / IQR | The middle value / the range covering the middle half of results. |
 | Checkpoint | A saved snapshot of a network at a moment during training. |
 | Package | A folder of Python files that can be imported by name (`import neurodrive`). |

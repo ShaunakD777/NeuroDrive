@@ -224,7 +224,9 @@ for every method.
 - **Progress:** Δs wrapped into (−L_track/2, L_track/2]; cumulative progress P += Δs (driving
   backwards reduces P); laps = floor(P / L_track).
 - **Crash:** |e| > width/2 − car half-width.
-- **Episode ends** for a car when it crashes, reaches the time limit (config; default 90 s), stalls
+- **Episode ends** for a car when it crashes, reaches the time limit (config; a bare `WorldConfig`
+  has 90 s, while the live server and the Driving Exam use the per-track limit
+  ceil(target laps × L_track / 16 m/s), ADR-022: 92 s on `train_loop_01`, 363 s on Monza), stalls
   (progress < 2 m over the last 3 s, checked after the first 2 s), or completes the target laps
   (config; default 2).
 

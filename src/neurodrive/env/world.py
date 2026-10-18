@@ -21,6 +21,7 @@ progress, but the other cars keep going. The world uses no randomness: the same 
 actions always give the same trajectories.
 """
 
+import math
 from dataclasses import dataclass
 from enum import IntEnum
 
@@ -62,8 +63,29 @@ class WorldConfig:
         if self.target_laps < 1:
             raise ValueError("target_laps must be at least 1")
 
+    @classmethod
+    def for_track(cls, track: Track, target_laps: int = 2) -> "WorldConfig":
+        """Rules for ``track`` with the per-track limit of :func:`time_limit_for` (ADR-022)."""
+        return cls(time_limit=time_limit_for(track.length, target_laps), target_laps=target_laps)
+
 
 DEFAULT_CONFIG = WorldConfig()
+
+LIMIT_MEAN_SPEED = 16.0  # m/s: the average speed the per-track time limit asks for (ADR-022)
+
+
+def time_limit_for(
+    length: float, target_laps: int = 2, mean_speed: float = LIMIT_MEAN_SPEED
+) -> float:
+    """Per-track time limit in seconds: ceil(target_laps * L / mean_speed) (ADR-022).
+
+    L is the lap length in metres and mean_speed the average speed a car must hold to finish in
+    time, 16 m/s by default. Example: a 2,900 m track and 2 laps give ceil(5800 / 16) =
+    ceil(362.5) = 363 s.
+    """
+    if not (length > 0 and mean_speed > 0 and target_laps >= 1):
+        raise ValueError("length and mean_speed must be positive, target_laps at least 1")
+    return float(math.ceil(target_laps * length / mean_speed))
 
 
 def _wrap_ds(ds: Array, length: float) -> Array:
