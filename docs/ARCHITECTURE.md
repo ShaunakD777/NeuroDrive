@@ -33,7 +33,7 @@ Status: v1 (planning). Changes to §6 contracts require an ADR in `DECISIONS.md`
 | Run storage (master copy) | Plain files: YAML, JSON, JSON-lines, `.npz` | — |
 | Run index for querying | SQLite via Python's built-in `sqlite3` (mirror of run folders, ADR-007) | Our own SQL |
 | Version control | Git + GitHub; phase branches and tags (ADR-014) | — |
-| Secret and hygiene checks | pre-commit hooks: gitleaks, private-key detection, large-file check, ruff | Tools |
+| Secret and hygiene checks | pre-commit hooks: detect-secrets, private-key detection, large-file check, ruff; gitleaks in CI | Tools |
 | Continuous integration | GitHub Actions: lint, tests, secret scan on every push | Tool |
 | Python tests | pytest (+ Hypothesis for geometry property tests) | Library |
 | Lint/format | ruff | Library |
@@ -447,8 +447,8 @@ logs, run folders or test fixtures. Config files hold only experiment settings.
 names in committed files. `meta.json` records the git commit and library versions, not the user
 or host.
 
-**Safety net (layers):** `.gitignore` → pre-commit hooks (gitleaks, private-key detection,
-large-file check) → CI secret scan on every push → GitHub secret scanning and push protection
+**Safety net (layers):** `.gitignore` → pre-commit hooks (detect-secrets, private-key detection,
+large-file check) → CI gitleaks scan of the whole history on every push → GitHub secret scanning and push protection
 (enabled in the repository settings where available).
 
 **Branches, commits and versions:**

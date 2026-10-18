@@ -66,16 +66,18 @@ Open the folder in Claude Code; it reads `CLAUDE.md` automatically.
 - NeuroDrive needs no secrets. If one is ever needed, it lives in a git-ignored `.env`; only
   placeholders go in `.env.example`.
 - `.gitignore` keeps out run outputs, databases, recordings, dependencies, keys and local settings.
-- Pre-commit hooks run before every commit: gitleaks (secret scan), private-key detection, a
-  1000 KB large-file check, whitespace fixers, YAML syntax, and ruff. A commit that fails a check
-  is refused.
+- Pre-commit hooks run before every commit: detect-secrets (secret scan), private-key detection,
+  a 1000 KB large-file check, whitespace fixers, YAML syntax, and ruff. A commit that fails a check
+  is refused. Known non-secrets would be listed in `.secrets.baseline` (there are none).
 - GitHub Actions (`.github/workflows/ci.yml`) runs on every push: Python lint and tests, the web
   build and unit tests, a check that the generated TypeScript types are up to date, and a gitleaks
   scan of the full history.
 - In the repository's **Settings → Code security**, secret scanning and push protection should be
   on (where GitHub offers them).
-- **Windows note:** if Smart App Control is on, it may block the `pre-commit.exe` launcher. Use
-  `uv run python -m pre_commit ...` as shown above; the installed git hook already works this way.
+- **Windows note:** if Smart App Control is on, it may block compiled programs such as the
+  `pre-commit.exe` launcher or a hook's own program. Use `uv run python -m pre_commit ...` as shown
+  above; the installed git hook already works this way, and the Python-based hooks are started
+  through Python for the same reason (ADR-021).
 
 ## Documents
 - `docs/PROJECT_CONCEPT.md`: vision and the three feedback channels
