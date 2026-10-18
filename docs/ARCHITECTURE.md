@@ -342,7 +342,10 @@ WebSocket `/ws/live` (one independent session per connection):
     `throttle` (numbers; weights and bias within ±30, throttle within ±1) or `activation` (`tanh`,
     `sigmoid`, `relu` or `linear`). Answered with a frame. The neuron is
     steer = f(w_left·d_left + w_right·d_right + bias) with d_left and d_right the far-left and
-    far-right ray readings, at a fixed throttle; it starts with all zeros and throttle 0.15.
+    far-right ray readings, at a fixed throttle; it starts with all zeros and throttle 0.15. Its
+    settings belong to the session (ADR-020): they survive `reset` and every `load_scenario`
+    (another track, more cars, a seed, or a detour through another driver); a new connection
+    starts from zeros again, and the browser sends back its last-seen settings after a reconnect.
 - server → client:
   - `scenario {track, policy, n_cars, seed, dt, time_limit, target_laps, v_max, wheelbase,
     car_half_width, ray_angles, ray_range}`: no geometry (use `GET tracks/{name}`).

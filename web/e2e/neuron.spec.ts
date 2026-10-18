@@ -194,3 +194,48 @@ test("a selected car's own inputs appear in the neuron view", async ({ page }) =
   await expect(page.getByText("Neuron of car 3")).toBeVisible();
   await expect(page.getByTestId("neuron-input-0")).not.toHaveText(first);
 });
+
+test("the neuron keeps its weights and settings through Reset and scenario changes", async ({
+  page,
+}) => {
+  await useNeuronDriver(page);
+  await goToNetwork(page);
+  await setNumber(page, "w_left", -12);
+  await setNumber(page, "w_right", 12);
+  await setNumber(page, "bias", 0.1);
+  await setNumber(page, "throttle", 0.24);
+  await page.getByTestId("select-activation").selectOption("sigmoid");
+  await expect(page.getByTestId("select-activation")).toHaveValue("sigmoid");
+
+  const expectKept = async () => {
+    await page.getByRole("link", { name: "Network" }).click();
+    await expect(page.getByTestId("number-w_left")).toHaveValue("-12.00");
+    await expect(page.getByTestId("number-w_right")).toHaveValue("12.00");
+    await expect(page.getByTestId("number-bias")).toHaveValue("0.10");
+    await expect(page.getByTestId("number-throttle")).toHaveValue("0.24");
+    await expect(page.getByTestId("select-activation")).toHaveValue("sigmoid");
+    await page.getByRole("link", { name: "Environment" }).click();
+  };
+
+  // Drive a little, then Reset.
+  await page.getByRole("link", { name: "Environment" }).click();
+  await page.getByTestId("btn-step").click();
+  await page.getByTestId("btn-reset").click();
+  await expect(page.getByTestId("hud-step")).toHaveText("0");
+  await expectKept();
+
+  // More cars, a random start, and a detour through another driver.
+  const cars = page.getByTestId("input-cars");
+  await cars.fill("3");
+  await cars.press("Enter");
+  await expect(page.getByTestId("select-car")).toBeVisible();
+  await expectKept();
+  await page.getByTestId("check-random-start").click();
+  await expect(page.getByTestId("check-random-start")).toBeChecked();
+  await expectKept();
+  await page.getByTestId("select-policy").selectOption("keyboard");
+  await expect(page.getByTestId("select-policy")).toHaveValue("keyboard");
+  await page.getByTestId("select-policy").selectOption("neuron");
+  await expect(page.getByTestId("select-policy")).toHaveValue("neuron");
+  await expectKept();
+});

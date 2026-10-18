@@ -332,3 +332,13 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   run, which is a cue to batch cars or speed up the sensors before the learning phases.
 - Open question: would a sigmoid neuron do better on a clockwise (mirrored) track, and is a second
   neuron for the throttle enough to widen the throttle window?
+
+### 2026-10-18 — Task 1.9 follow-up: the neuron keeps its settings
+- What changed: Reset already kept the weights; a scenario change (more cars, a random start,
+  another track, another driver) built a fresh all-zero neuron. Now a live session keeps one neuron
+  for its whole life, and the browser sends the last settings back after a reconnect (ADR-020).
+- What we observed: weights −12/+12, bias 0.1, throttle 0.24 and sigmoid survived Reset, 3 cars, a
+  random start and a detour through the keyboard driver, in the server tests and in the browser.
+- Surprise or difficulty: the browser test first failed because Playwright reused an `nd serve`
+  that had been started before the change; a running server keeps running the old code until it
+  is restarted.

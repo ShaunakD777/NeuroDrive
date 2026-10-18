@@ -497,13 +497,39 @@ def test_set_param_needs_the_neuron_driver_and_a_valid_message():
         assert isinstance(reply, ErrorMessage), command
 
 
-def test_parameters_survive_a_reset_but_a_new_scenario_starts_fresh():
+def test_neuron_settings_survive_reset_and_every_scenario_change_in_a_session():
     session = neuron_session()
+    set_param(session, "w_left", -7.0)
     set_param(session, "w_right", 7.0)
+    set_param(session, "bias", 0.2)
+    set_param(session, "activation", "sigmoid")
+    set_param(session, "throttle", 0.3)
+    expected = ([-7.0, 7.0], 0.2, "sigmoid", 0.3)
+
+    def settings(frame):
+        n = frame.selected.neuron
+        return (n.weights, n.bias, n.activation, n.throttle)
+
     (frame,) = send(session, type="reset")
-    assert frame.selected.neuron.weights == [0.0, 7.0]
-    send(session, type="load_scenario", track=TRACK, policy="neuron")
-    (frame,) = send(session, type="step")
+    assert settings(frame) == expected
+    for change in (
+        {"track": TRACK, "policy": "neuron", "n_cars": 4},
+        {"track": TRACK, "policy": "neuron", "n_cars": 4, "seed": 3},
+        {"track": TRACK, "policy": "neuron"},
+    ):
+        _, frame = send(session, type="load_scenario", **change)
+        assert settings(frame) == expected, change
+    # A detour through another driver keeps them too.
+    _, frame = send(session, type="load_scenario", track=TRACK, policy="keyboard")
+    assert frame.selected.neuron is None
+    _, frame = send(session, type="load_scenario", track=TRACK, policy="neuron")
+    assert settings(frame) == expected
+
+
+def test_a_new_session_starts_its_neuron_at_zero():
+    neuron_session_a = neuron_session()
+    set_param(neuron_session_a, "w_left", -7.0)
+    (frame,) = send(neuron_session(), type="step")  # another connection, another session
     assert frame.selected.neuron.weights == [0.0, 0.0]
 
 

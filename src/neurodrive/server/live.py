@@ -109,6 +109,9 @@ class LiveSession:
         self._policy: Policy | None = None
         self._keys: KeyboardPolicy | None = None
         self._neuron: NeuronPolicy | None = None
+        # The neuron driver's settings live for the whole session: Reset, a new track, more cars,
+        # a random start or a detour through another driver all keep the same weights.
+        self._saved_neuron: NeuronPolicy | None = None
         self._scenario: LoadScenario | None = None
         self._segments = np.zeros((0, 2, 2))
         self._action = np.zeros((0, 2))
@@ -213,7 +216,12 @@ class LiveSession:
         self._world = World(track)
         self._segments = edge_segments(track)
         self._keys = KeyboardPolicy() if command.policy == "keyboard" else None
-        self._neuron = NeuronPolicy() if command.policy == "neuron" else None
+        if command.policy == "neuron":
+            if self._saved_neuron is None:
+                self._saved_neuron = NeuronPolicy()  # the first neuron of the session: all zeros
+            self._neuron = self._saved_neuron
+        else:
+            self._neuron = None
         self._policy = self._keys or self._neuron or ConstantPolicy(0.0, CONSTANT_THROTTLE)
         self.playing = False
         self.selected = 0

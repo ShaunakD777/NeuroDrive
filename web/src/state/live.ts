@@ -7,6 +7,7 @@ import type {
   FrameMessage,
   KeyState,
   LoadScenario,
+  NeuronReadout,
   Pause,
   Play,
   Reset,
@@ -53,8 +54,26 @@ export interface ScenarioRequest {
   seed: number | null;
 }
 
+/** The neuron driver's settings, as the server last reported them. */
+export interface NeuronSettings {
+  w_left: number;
+  w_right: number;
+  bias: number;
+  throttle: number;
+  activation: "tanh" | "sigmoid" | "relu" | "linear";
+}
+
 export interface LiveState {
   status: ConnectionStatus;
+  /** True once the socket has been connected at least once (so a later "connected" is a reconnect). */
+  everConnected: boolean;
+  /**
+   * The neuron settings last seen. The server keeps them for a whole session (through Reset and
+   * scenario changes); a reconnect starts a new session, so the browser sends these back.
+   */
+  neuronSettings: NeuronSettings | null;
+  /** Set on a reconnect: restore `neuronSettings` when the first neuron readout arrives. */
+  restoreNeuron: boolean;
   tracks: TrackInfo[];
   /** The scenario the user last asked for; loaded again after a reconnect. */
   wanted: ScenarioRequest | null;
@@ -101,6 +120,9 @@ const NO_KEYS: DriveInput = { steer: 0, throttle: 0 };
 
 export const initialLive: LiveState = {
   status: "connecting",
+  everConnected: false,
+  neuronSettings: null,
+  restoreNeuron: false,
   tracks: [],
   wanted: null,
   scenario: null,
@@ -112,6 +134,19 @@ export const initialLive: LiveState = {
   keys: NO_KEYS,
 };
 
+const PARAM_ORDER = ["w_left", "w_right", "bias", "throttle", "activation"] as const;
+
+/** The settings part of a neuron readout. */
+export function settingsOf(readout: NeuronReadout): NeuronSettings {
+  return {
+    w_left: readout.weights[0],
+    w_right: readout.weights[1],
+    bias: readout.bias,
+    throttle: readout.throttle,
+    activation: readout.activation,
+  };
+}
+
 function isServerMessage(value: unknown): value is ServerMessage {
   if (typeof value !== "object" || value === null) return false;
   const type = (value as { type?: unknown }).type;
@@ -121,7 +156,12 @@ function isServerMessage(value: unknown): value is ServerMessage {
 export const useLive = create<LiveState & LiveActions>()((set, get) => ({
   ...initialLive,
 
-  setStatus: (status) => set({ status }),
+  setStatus: (status) => {
+    if (status !== "connected") return set({ status });
+    // A second "connected" means the server was lost and found again: a fresh session.
+    const reconnect = get().everConnected;
+    set({ status, everConnected: true, restoreNeuron: reconnect && get().neuronSettings !== null });
+  },
   setTracks: (tracks) => set({ tracks }),
   setGeometry: (geometry) => set({ geometry }),
   setActivations: (activations) => set({ activations }),
@@ -159,10 +199,24 @@ export const useLive = create<LiveState & LiveActions>()((set, get) => ({
         // driver with no keys held, so the keys we last sent no longer apply either.
         set({ scenario: message, frame: null, episodeEnd: null, error: null, keys: NO_KEYS });
         break;
-      case "frame":
+      case "frame": {
         // A frame at step 0 means a fresh start (after load or reset): any old ending is stale.
         set(message.step === 0 ? { frame: message, episodeEnd: null } : { frame: message });
+        const readout = message.selected?.neuron;
+        if (readout) {
+          const seen = settingsOf(readout);
+          const saved = get().neuronSettings;
+          if (get().restoreNeuron && saved !== null) {
+            set({ restoreNeuron: false });
+            for (const name of PARAM_ORDER) {
+              if (saved[name] !== seen[name]) get().send({ type: "set_param", name, value: saved[name] });
+            }
+          } else {
+            set({ neuronSettings: seen });
+          }
+        }
         break;
+      }
       case "episode_end":
         set({ episodeEnd: message });
         break;

@@ -210,3 +210,58 @@ describe("live store: commands", () => {
     expect(useLive.getState().send({ type: "play" })).toBe(false);
   });
 });
+
+describe("live store: neuron settings survive a reconnect", () => {
+  function neuronFrame(weights: [number, number], bias = 0, activation = "tanh" as const) {
+    const f = frame(0);
+    f.selected!.neuron = {
+      inputs: [0.2, 0.5],
+      input_rays: [0, 4],
+      weights,
+      bias,
+      contributions: [weights[0] * 0.2, weights[1] * 0.5],
+      z: 0,
+      output: 0,
+      activation,
+      throttle: 0.24,
+    };
+    return f;
+  }
+
+  it("remembers the settings from every frame that carries a neuron readout", () => {
+    useLive.getState().receive(neuronFrame([-12, 12], 0.1));
+    expect(useLive.getState().neuronSettings).toEqual({
+      w_left: -12,
+      w_right: 12,
+      bias: 0.1,
+      throttle: 0.24,
+      activation: "tanh",
+    });
+  });
+
+  it("after a reconnect, sends back every setting the new session lost", () => {
+    const { setStatus, receive } = useLive.getState();
+    setStatus("connected");
+    receive(neuronFrame([-12, 12], 0.1));
+    setStatus("disconnected");
+    setStatus("connected"); // the server came back: a brand-new session with a zero neuron
+    expect(useLive.getState().restoreNeuron).toBe(true);
+    receive(neuronFrame([0, 0], 0));
+    expect(sent).toEqual([
+      { type: "set_param", name: "w_left", value: -12 },
+      { type: "set_param", name: "w_right", value: 12 },
+      { type: "set_param", name: "bias", value: 0.1 },
+    ]);
+    expect(useLive.getState().restoreNeuron).toBe(false);
+    receive(neuronFrame([0, 0], 0)); // only once
+    expect(sent).toHaveLength(3);
+  });
+
+  it("does nothing on the first connection, or when nothing was ever seen", () => {
+    useLive.getState().setStatus("connected");
+    expect(useLive.getState().restoreNeuron).toBe(false);
+    useLive.getState().setStatus("disconnected");
+    useLive.getState().setStatus("connected");
+    expect(useLive.getState().restoreNeuron).toBe(false); // no settings were ever seen
+  });
+});
