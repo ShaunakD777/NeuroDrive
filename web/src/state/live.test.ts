@@ -167,6 +167,21 @@ describe("live store: commands", () => {
     expect(useLive.getState().activations?.curves.tanh[2]).toBe(0.76);
   });
 
+  it("prefers the default track when nothing was asked for, even if it is not listed first", () => {
+    useLive.setState({
+      ...initialLive,
+      tracks: [
+        { name: "monza_ccw", split: "heldout" },
+        { name: "monza_cw", split: "train" },
+        { name: "train_loop_01", split: "train" },
+      ],
+    });
+    useLive.getState().loadScenario({});
+    expect(sent.at(-1)).toMatchObject({ track: "train_loop_01" });
+    useLive.getState().loadScenario({ track: "monza_cw" });
+    expect(sent.at(-1)).toMatchObject({ track: "monza_cw" });
+  });
+
   it("does nothing when no track is known yet", () => {
     useLive.getState().loadScenario({ n_cars: 2 });
     expect(sent).toEqual([]);

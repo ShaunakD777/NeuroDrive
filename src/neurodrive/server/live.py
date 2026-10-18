@@ -15,6 +15,7 @@ and the pace stays smooth even when the timer ticks unevenly (Windows timers tic
 Real time is passed in, never read, so tests can drive the clock by hand.
 """
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -80,7 +81,13 @@ class TrackLibrary:
 
     def info(self) -> list[TrackInfo]:
         """Name and split of every track."""
-        return [TrackInfo(name=n, split=self.get(n).split) for n in self.names()]  # type: ignore[arg-type]
+        # Only the "split" field is needed, so read it from the file instead of building the
+        # whole track (a long track takes a moment to build).
+        infos = []
+        for n in self.names():
+            data = json.loads((self.directory / f"{n}.json").read_text(encoding="utf-8"))
+            infos.append(TrackInfo(name=n, split=data["split"]))
+        return infos
 
     def geometry(self, name: str) -> TrackGeometry:
         """Everything the browser needs to draw a track (see :class:`TrackGeometry`)."""

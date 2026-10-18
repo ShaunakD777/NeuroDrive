@@ -31,6 +31,7 @@ SPACING = 1.0  # target distance between neighbouring centreline samples, metres
 DEFAULT_WIDTH = 12.0  # metres
 _DENSE_PER_CORNER = 200  # fine samples per corner-to-corner piece before resampling
 _ALPHA = 0.5  # centripetal Catmull-Rom (knot spacing = distance ** 0.5)
+_CROSSING_BLOCK = 64  # segments of one edge compared at once by the edge check
 
 
 def _catmull_rom_closed(corners: Array, per_piece: int) -> Array:
@@ -97,17 +98,30 @@ def _crossing_pair(first: Array, second: Array, same_loop: bool) -> tuple[int, i
     ``first`` and ``second`` are vertex arrays (n, 2). Segment i joins vertex i to vertex i+1
     (wrapping round). When both are the same loop, a segment is not compared with itself or its
     two neighbours, which touch it at an end point without crossing it.
+
+    The segments of ``first`` are taken a block at a time. Two segments can only cross if their
+    bounding boxes overlap, so each block is compared only with the segments of ``second`` whose
+    boxes overlap the block's box: on a long track that skips almost every pair.
     """
     n = len(first)
     a, b = first, np.roll(first, -1, axis=0)
     c, d = second, np.roll(second, -1, axis=0)
-    hits = _segments_cross(a[:, None], b[:, None], c[None, :], d[None, :])
-    if same_loop:
-        idx = np.arange(n)
-        gap = np.abs(idx[:, None] - idx[None, :])
-        hits &= np.minimum(gap, n - gap) > 1
-    found = np.argwhere(hits)
-    return (int(found[0, 0]), int(found[0, 1])) if len(found) else None
+    lo2, hi2 = np.minimum(c, d), np.maximum(c, d)  # bounding box of each segment of `second`
+    for start in range(0, n, _CROSSING_BLOCK):
+        rows = np.arange(start, min(start + _CROSSING_BLOCK, n))
+        lo = np.minimum(a[rows], b[rows]).min(axis=0)
+        hi = np.maximum(a[rows], b[rows]).max(axis=0)
+        cols = np.flatnonzero(np.all((lo2 <= hi) & (hi2 >= lo), axis=1))
+        if len(cols) == 0:
+            continue
+        hits = _segments_cross(a[rows, None], b[rows, None], c[None, cols], d[None, cols])
+        if same_loop:
+            gap = np.abs(rows[:, None] - cols[None, :])
+            hits &= np.minimum(gap, n - gap) > 1
+        found = np.argwhere(hits)
+        if len(found):
+            return int(rows[found[0, 0]]), int(cols[found[0, 1]])
+    return None
 
 
 @dataclass(frozen=True)

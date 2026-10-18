@@ -118,6 +118,9 @@ export function attachSender(fn: Sender | null): void {
 
 const NO_KEYS: DriveInput = { steer: 0, throttle: 0 };
 
+/** The track loaded when the user has not chosen one (if the server has it). */
+export const DEFAULT_TRACK = "train_loop_01";
+
 export const initialLive: LiveState = {
   status: "connecting",
   everConnected: false,
@@ -179,7 +182,8 @@ export const useLive = create<LiveState & LiveActions>()((set, get) => ({
             n_cars: scenario.n_cars,
             seed: scenario.seed,
           });
-    const track = changes.track ?? base.track ?? tracks[0]?.name;
+    const fallback = tracks.find((t) => t.name === DEFAULT_TRACK)?.name ?? tracks[0]?.name;
+    const track = changes.track ?? base.track ?? fallback;
     if (track === undefined) return; // nothing to load yet
     const request: ScenarioRequest = {
       track,

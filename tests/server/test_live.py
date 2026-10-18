@@ -330,7 +330,13 @@ def test_track_geometry_has_matching_closed_loops():
 def test_rest_track_endpoints():
     client = TestClient(create_app())
     listing = client.get("/api/tracks").json()
-    assert listing == {"tracks": [{"name": TRACK, "split": "train"}]}
+    assert listing == {
+        "tracks": [
+            {"name": "monza_ccw", "split": "heldout"},
+            {"name": "monza_cw", "split": "train"},
+            {"name": TRACK, "split": "train"},
+        ]
+    }
     geometry = client.get(f"/api/tracks/{TRACK}").json()
     assert set(geometry) == {
         "name", "split", "width", "length", "start_s0", "centerline", "left", "right",

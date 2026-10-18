@@ -342,3 +342,19 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
 - Surprise or difficulty: the browser test first failed because Playwright reused an `nd serve`
   that had been started before the change; a running server keeps running the old code until it
   is restarted.
+
+### 2026-10-18 — Task 1.11 Half-size Monza, both directions
+- Concept: a real circuit, traced point by point from a map, scaled to half of Monza's 5,793 m. The
+  same road becomes two tracks: clockwise (Monza's racing direction, a training track) and
+  counter-clockwise (held out, never trained or tuned on).
+- Key equation(s) in words: the scale is half the real length divided by the traced outline's
+  length in pixels (1.65 m per pixel); y is flipped because image rows count downwards; driving the
+  other way is the same corner points in reverse order, starting from the same start line.
+- What we observed: 2,900 m a lap in both directions; long straights, three chicanes, the two
+  Lesmos and the Parabolica. The first trace had a 6.1 m bend at the T1 chicane, which left the
+  inside edge almost a point, so the chicane was drawn slightly wider: tightest bend now 11.3 m.
+- Surprise or difficulty: a track four times longer made the edge check compare 8 million pairs of
+  segments (2.4 s and 280 MB per load); comparing only segments whose boxes overlap brought it to
+  0.05 s. The track list then still built every track just to read its split, which delayed the
+  web page's first frame by over 5 s; it now reads only that field.
+- Open question: what time limit should a 2.9 km track have (task 1.12)?

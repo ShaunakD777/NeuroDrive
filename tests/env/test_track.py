@@ -224,3 +224,67 @@ def test_road_whose_edges_cross_is_rejected_but_a_thin_one_is_accepted():
     assert Track.from_dict(data | {"width": 0.5}).length > 0
     with pytest.raises(ValueError, match="crosses itself"):
         Track.from_dict(data | {"width": 12.0})
+
+
+# ── half-size Monza, both directions ────────────────────────────────────────────────────────
+
+
+@pytest.fixture(scope="module")
+def monza() -> dict[str, Track]:
+    return {d: Track.from_json(ROOT / "tracks" / f"monza_{d}.json") for d in ("cw", "ccw")}
+
+
+def turn_per_sample(track: Track) -> np.ndarray:
+    """Signed heading change from each sample to the next, radians (positive = turning left)."""
+    return np.angle(np.exp(1j * np.diff(np.append(track.heading, track.heading[0]))))
+
+
+def test_monza_is_half_the_real_length_in_both_directions(monza):
+    for track in monza.values():
+        assert track.length == pytest.approx(5793.0 / 2, rel=0.01)  # about 2.9 km
+        assert track.width == 12.0
+    assert monza["cw"].length == pytest.approx(monza["ccw"].length, abs=0.5)
+
+
+def test_monza_cw_is_clockwise_for_training_and_ccw_is_counter_clockwise_and_held_out(monza):
+    assert turn_per_sample(monza["cw"]).sum() == pytest.approx(-2 * np.pi, abs=1e-6)
+    assert turn_per_sample(monza["ccw"]).sum() == pytest.approx(2 * np.pi, abs=1e-6)
+    assert monza["cw"].split == "train" and monza["ccw"].split == "heldout"
+
+
+def test_both_directions_share_the_start_line_and_face_opposite_ways(monza):
+    cw, ccw = monza["cw"], monza["ccw"]
+    assert cw.points[0] == pytest.approx(ccw.points[0], abs=1e-9)
+    assert np.cos(cw.heading[0] - ccw.heading[0]) == pytest.approx(-1.0, abs=1e-3)
+
+
+def test_both_directions_are_the_same_road(monza):
+    # Every point of one centreline lies on the other (within a few centimetres of resampling).
+    proj = monza["ccw"].project(monza["cw"].points[::25])
+    assert np.abs(proj.e).max() < 0.1
+
+
+def test_monza_has_every_kind_of_corner(monza):
+    track = monza["cw"]
+    curvature = turn_per_sample(track) / track._seg_len.mean()  # 1 / radius, signed
+    radius = 1.0 / np.maximum(np.abs(curvature), 1e-12)
+    # Long straights: the longest stretch with no bend tighter than 500 m is over 400 m.
+    straight, longest = 0, 0
+    for r in radius:
+        straight = straight + 1 if r > 500 else 0
+        longest = max(longest, straight)
+    assert longest * track._seg_len.mean() > 400
+    # Tight chicanes (radius under 20 m) and both left and right bends.
+    assert radius.min() > 6.0  # still drivable: the edges never fold
+    assert radius.min() < 20.0
+    assert (curvature > 1 / 60).any() and (curvature < -1 / 60).any()
+    # The Parabolica: one long bend that turns the car round by close to 180 degrees.
+    turning = np.convolve(turn_per_sample(track), np.ones(250), mode="valid")
+    assert np.degrees(np.abs(turning).max()) > 150
+
+
+def test_a_car_can_be_placed_and_projected_anywhere_on_monza(monza):
+    track = monza["ccw"]
+    s = np.linspace(0, track.length, 40, endpoint=False)
+    x, y, _ = track.point_at(s)
+    assert track.project(np.stack([x, y], axis=1)).e == pytest.approx(0.0, abs=1e-6)
