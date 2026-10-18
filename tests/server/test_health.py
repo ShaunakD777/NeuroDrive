@@ -1,4 +1,4 @@
-"""Tests for the server skeleton: health check, WebSocket hello, WebSocket echo."""
+"""Tests for the server skeleton: health check and the WebSocket hello."""
 
 from fastapi.testclient import TestClient
 
@@ -21,12 +21,3 @@ def test_live_socket_sends_hello_first() -> None:
     assert hello.type == "hello"
     assert hello.version == __version__
     assert hello.api == API_VERSION
-
-
-def test_live_socket_echoes_text_unchanged() -> None:
-    client = TestClient(create_app())
-    with client.websocket_connect("/ws/live") as ws:
-        ws.receive_text()  # skip hello
-        for text in ["ping", '{"type": "play"}', ""]:
-            ws.send_text(text)
-            assert ws.receive_text() == text

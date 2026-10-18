@@ -50,6 +50,9 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Seed | The starting number for a random generator; the same seed gives the same "random" numbers. |
 | Driving Exam | The fixed test (tracks, starts, limits, metrics) that every network takes, however it was trained. |
 | Held-out track | A track never used during training or tuning; it tests generalisation. |
+| Transfer | Using a controller or model in a setting other than the one it was built or trained for (here: a neuron tuned on one loop, driven on Monza). |
+| Spatial grid | A speed-up that sorts objects into square cells, so a query only looks at objects in nearby cells instead of all of them. The answer is unchanged; only the work is less. |
+| Per-track time limit | The episode time limit set from the track's length: 2 laps at an average of 16 m/s, rounded up to a whole second (ADR-022). |
 | Median / IQR | The middle value / the range covering the middle half of results. |
 | Checkpoint | A saved snapshot of a network at a moment during training. |
 | Package | A folder of Python files that can be imported by name (`import neurodrive`). |
@@ -87,3 +90,59 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Pinning (versions) | Naming an exact tool version so a check behaves the same today and later. |
 | Checksum | A fingerprint of a file; comparing it with the published one proves a download was not altered. |
 | Linter / formatter | Tools (ruff) that flag likely mistakes and rewrite code into one consistent style. |
+| Weighted sum (z) | A neuron's total before squashing: each input times its weight, all added up, plus the bias. |
+| Linear activation | The "do nothing" activation: the output equals the weighted sum, with no limit on its range. |
+| Output range | The set of values an activation can produce (tanh −1..1, sigmoid 0..1, ReLU 0..∞); weights cannot change it. |
+| Centreline | The line down the middle of the road; the track is this line plus a width. |
+| Arc length (s) | Distance travelled along the road from its starting point, like a kilometre marker. |
+| Tangent | The unit-length direction the road points at a given place. |
+| Normal | A unit-length direction at right angles to the tangent; the left normal points to the left of the direction of travel. |
+| Offset curve | A curve made by pushing every point of another curve sideways by a fixed distance; the road edges are offsets of the centreline. |
+| Lateral offset (e) | How far a point is to the side of the centreline: positive on the left, negative on the right. |
+| Projection (onto the track) | Finding the nearest centreline point to a position, which gives its arc length s and lateral offset e. |
+| Catmull-Rom spline | A smooth curve that passes exactly through a list of corner points. |
+| Kinematic bicycle model | A simple car model: front wheel angle sets how fast the heading turns, with no tyre forces. |
+| Time step (dt) | The fixed slice of time (1/30 s) the simulation advances by each update. |
+| Semi-implicit Euler | An update order where speed changes first and the new speed is then used for heading and position, which is more stable than using old values everywhere. |
+| Curvature (kappa) | How sharply a path bends: 1 divided by the turn radius, in 1/metres. |
+| Grip limit | The cap on sideways acceleration (v squared times curvature); beyond it the car cannot turn tighter and runs wide. |
+| Drag | A slowing effect proportional to speed; with no throttle, speed shrinks by a fixed fraction each step. |
+| Raycast | Firing an imaginary line (a ray) from a point in a direction and finding the first thing it hits. |
+| Ray reading | The distance a ray travelled before hitting a wall, divided by the 50 m range, so it lies between 0 (wall touching) and 1 (nothing in range). |
+| Normalisation | Rescaling a number to a standard range (here 0 to 1) so every network input is on a similar scale. |
+| Cross product (2-D) | For vectors p and q, p_x*q_y - p_y*q_x; its sign says which side of p the vector q lies on. |
+| Property-based test (Hypothesis) | A test that checks a rule on many automatically generated inputs, including awkward ones, instead of a few hand-picked cases. |
+| Reference implementation | A slow, obviously correct version of an algorithm, used only in tests to check the fast version. |
+| World | The object that holds a track and N cars and advances them step by step, tracking progress and when each car's episode ends. |
+| Episode | One attempt: from placing the cars at the start until each car crashes, finishes, stalls or times out. |
+| Progress (P) | Total distance driven along the road since the start: forward adds, backward subtracts. |
+| Wrap-around (of arc length) | Treating the loop as circular, so going from 725 m to 3 m on a 731 m loop counts as +9 m, not -722 m. |
+| Windowed search | Looking for the nearest road point only among segments near where the car was a moment ago, which is faster and cannot jump to a far-away stretch of road. |
+| Crash | The car's side reaching a road edge: sideways offset beyond half the road width minus the car's half-width. |
+| Stall | Making less than 2 m of progress in the last 3 seconds (checked after the first 2 seconds). |
+| Time limit / timeout | The maximum episode length; a car still running when it is reached is stopped with reason "timeout". |
+| Observation | The 7 numbers a car sees each step: five ray readings, speed over top speed, and heading error over pi. |
+| Heading error | The angle between where the car points and where the road points, wrapped to between minus and plus pi; positive means pointing left of the road. |
+| Policy | A function from what a car sees (observation) to what it does (steer and throttle); a neural network is one kind of policy. |
+| Action | The two numbers a policy outputs each step: steer and throttle, each between -1 and 1. |
+| Episode recording | A saved episode: the start, every action, and the resulting states, enough to replay it exactly. |
+| Replay | Re-running a recording's actions from its start; with no hidden randomness it reproduces the original trajectory exactly. |
+| WebSocket | A connection that stays open so the server and browser can send each other messages at any moment, which live driving needs. |
+| Live session | One browser connection's own simulation: a loaded track and driver, a clock, a speed and a selected car. |
+| Frame (live) | One snapshot of every car sent to the browser: positions, speeds, actions and, for the selected car, rays and observation. |
+| Speed factor | How much faster or slower than real time the simulation runs; it changes steps per second, never the size of a step. |
+| Column arrays | Sending one list per quantity (all x, all y, ...) instead of one object per car; compact and fast to loop over. |
+| API version | A number (now v1.2) recording the shape of the messages between server and browser; new messages bump the minor number. |
+| Canvas | A drawing surface in the web page that code paints pixels onto; the track, cars and rays are drawn on one. |
+| Camera (drawing) | The choice of which world point sits at the centre of the canvas and how many pixels one metre takes up (zoom). |
+| HUD (heads-up display) | The numbers drawn over the picture: speed, steering and throttle, progress, ray distances and status. |
+| Store (web) | One shared object in the web app that views read from and write to; the live store holds the latest frame from the server. |
+| Neuron policy | A driver whose steering is one neuron: it reads the far-left and far-right rays, weights them, adds a bias, and passes the sum through an activation. |
+| Contribution | One input's share of the weighted sum: its weight times its value. |
+| Activation curve | A graph of an activation function: the weighted sum z along the bottom and the neuron's output up the side; a dot marks where the neuron is right now. |
+| Selection linking | Clicking something in one view (a car, a neuron) highlights the related thing in another view. |
+| Baseline | A simple reference controller every later method is compared against; here the hand-wired neuron. |
+| Positive feedback | An effect that makes its own cause bigger: with flipped weights the car steers towards the nearer wall, which makes that wall nearer still. |
+| Negative control | A run deliberately set up to fail (zero weights, flipped signs) to show that the success was caused by the thing being tested. |
+| Driving Exam (preview) | The fixed set of starts and limits every controller is judged on: 10 starts, 2 laps, 90 s. Built properly in Phase 5. |
+| Interquartile range (IQR) | The spread of the middle half of the results (25th to 75th percentile); reported with the median instead of a single best run. |

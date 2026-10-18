@@ -15,6 +15,10 @@ Rules this module supports (CLAUDE.md §4):
 
 import numpy as np
 
+# The type of a seeded generator. Other modules use this name in type hints, so that this file
+# stays the only place in the code base that mentions NumPy's random module.
+Rng = np.random.Generator
+
 
 def make_rng(seed: int) -> np.random.Generator:
     """Make a generator from a master seed.

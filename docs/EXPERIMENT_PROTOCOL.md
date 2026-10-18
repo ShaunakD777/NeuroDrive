@@ -39,7 +39,10 @@
 - **Starts per track:** 5 positions at 0 %, 20 %, 40 %, 60 % and 80 % of the track length,
   centred and aligned with the tangent, plus the same 5 with a +1.5 m lateral offset → 10 episodes
   per track.
-- **Limits:** 90 s time limit; target 2 laps; stall rule as in ARCHITECTURE §6.6.
+- **Limits:** target 2 laps; time limit per track, ceil(2 × track length / 16 m/s) (ADR-022:
+  92 s on `train_loop_01`, 363 s on the Monza tracks); stall rule as in ARCHITECTURE §6.6. (Until
+  2026-10-18 this read "90 s"; it changed before the exam was first implemented, and Study S1
+  used 90 s.)
 - **Policy mode:** deterministic (RL policies use their mean action).
 - **Per-episode metrics:**
   - `progress_m`: cumulative forward progress

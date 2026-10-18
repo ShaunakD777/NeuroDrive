@@ -126,6 +126,7 @@ These are created in Phase 0. If a task changes a command, update this section i
 | Lint and format | `uv run ruff check . && uv run ruff format .` |
 | Start backend (port 8000) | `uv run nd serve` |
 | Start web app (port 5173) | `cd web && npm install && npm run dev` |
+| Regenerate the track files in `tracks/` | `uv run python scripts/make_tracks.py` |
 | Train from a config | `uv run nd train --config configs/<name>.yaml` |
 | Run several seeds | `uv run nd sweep --config configs/<name>.yaml --seeds 0-4` |
 | Driving Exam on a checkpoint | `uv run nd exam --run runs/<run_id> --unit <n>` |

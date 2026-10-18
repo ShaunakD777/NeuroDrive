@@ -33,7 +33,7 @@ Status: v1 (planning). Changes to §6 contracts require an ADR in `DECISIONS.md`
 | Run storage (master copy) | Plain files: YAML, JSON, JSON-lines, `.npz` | — |
 | Run index for querying | SQLite via Python's built-in `sqlite3` (mirror of run folders, ADR-007) | Our own SQL |
 | Version control | Git + GitHub; phase branches and tags (ADR-014) | — |
-| Secret and hygiene checks | pre-commit hooks: gitleaks, private-key detection, large-file check, ruff | Tools |
+| Secret and hygiene checks | pre-commit hooks: detect-secrets, private-key detection, large-file check, ruff; gitleaks in CI | Tools |
 | Continuous integration | GitHub Actions: lint, tests, secret scan on every push | Tool |
 | Python tests | pytest (+ Hypothesis for geometry property tests) | Library |
 | Lint/format | ruff | Library |
@@ -224,8 +224,11 @@ for every method.
 - **Progress:** Δs wrapped into (−L_track/2, L_track/2]; cumulative progress P += Δs (driving
   backwards reduces P); laps = floor(P / L_track).
 - **Crash:** |e| > width/2 − car half-width.
-- **Episode ends** for a car when it crashes, reaches the time limit (config; default 60 s), stalls
-  (progress < 2 m over the last 3 s, checked after the first 2 s), or completes the target laps.
+- **Episode ends** for a car when it crashes, reaches the time limit (config; a bare `WorldConfig`
+  has 90 s, while the live server and the Driving Exam use the per-track limit
+  ceil(target laps × L_track / 16 m/s), ADR-022: 92 s on `train_loop_01`, 363 s on Monza), stalls
+  (progress < 2 m over the last 3 s, checked after the first 2 s), or completes the target laps
+  (config; default 2).
 
 ### 6.7 Feedback taps (feedback v1)
 - **Teacher label** `teacher(state) → action`. The scripted expert sees the *privileged full
@@ -267,6 +270,14 @@ For the **focus car(s)**: the full ForwardTrace at every step.
 Population replays may store pose-only (x, y, ψ, alive) to keep size down.
 Stored as `.npz`; sent to the browser as JSON with floats rounded to 4 significant digits.
 
+*Layout as built (task 1.6, `env/episode.py`):* for T steps and N cars, state arrays (`x`, `y`,
+`psi`, `v`, `alive`, `progress`, `rays`, `observation`) have T + 1 frames (frame t is the state
+before action t; frame T is the final state) and `action` has T entries. The start is stored as
+`start_s0`, `start_lateral`, `start_heading_offset` and `start_speed` (what `World.reset` needs to
+recreate it exactly, random draws included), plus the final `status` of each car. Metadata is JSON
+text inside the file and also holds the world rules (`world_config`) and `car_params`, so a replay
+rebuilds the same world. Replaying the actions reproduces every array bit for bit.
+
 ### 6.12 Learner contract (learner v1)
 Every learning method provides:
 - `name` and `feedback_kind` ∈ {`labels`, `episode_score`, `step_reward`, `none`}
@@ -300,11 +311,15 @@ Exam spec version, list of tracks, per-episode metrics (track, start index, prog
 crashed, lap times, mean speed, smoothness, time to crash), and aggregates per track and overall
 (median, IQR, completion rate). See `EXPERIMENT_PROTOCOL.md`.
 
-## 7. Server API (api v1.1, ADR-016)
+## 7. Server API (api v1.3, ADR-016, ADR-018, ADR-019)
 
 REST (`/api/...`):
 - `GET health` → `{status: "ok", version}` (`version` is the NeuroDrive package version)
-- `GET tracks`, `GET tracks/{name}` (geometry for drawing)
+- `GET tracks` → `{tracks: [{name, split}]}`; `GET tracks/{name}` → geometry for drawing:
+  `{name, split, width, length, start_s0, centerline, left, right}` (the last three are lists of
+  [x, y] points in metres rounded to 2 decimals; the loops are closed without repeating the first point)
+- `GET activations` → `{z, curves}`: z from −5 to 5 and, for each of tanh, sigmoid, relu and linear,
+  the function's values on those z (so the browser can draw the curves without computing them)
 - `GET runs`, `GET runs/{id}` (config, meta, metrics), `GET runs/{id}/checkpoints`
 - `GET runs/{id}/checkpoints/{unit}`: network as JSON
 - `GET runs/{id}/checkpoints/{unit}/diff?from={unit}`: per-weight change
@@ -314,14 +329,50 @@ REST (`/api/...`):
 - `POST explain/response` {run, units, output, input, range} → response curves
 - `POST compare` {run_ids} → aligned exam and budget tables
 
-WebSocket `/ws/live`:
-- client → server: `load_scenario`, `play`, `pause`, `step`, `set_speed`, `reset`, `select_car`,
-  `set_param` (e.g. neuron weights in Phase 1), `key_state` (manual driving)
-- server → client: `hello`, `scenario` (track + cars), `frame` (all cars: pose, alive, action;
-  selected car: rays, observation, ForwardTrace), `episode_end`, `error`
+WebSocket `/ws/live` (one independent session per connection):
 - `hello` is sent first, on connect: `{type: "hello", version, api}` (`api` is the message-contract
-  version, currently `"v1.1"`). Until task 1.7 the socket then simply echoes any text it receives.
-- Frames are throttled to at most 30 per second.
+  version, currently `"v1.3"`).
+- client → server (each has a `type` field):
+  - `load_scenario {track, policy, n_cars, seed}`: `policy` is `"keyboard"`, `"constant"` or
+    `"neuron"` (more arrive with later tasks); `n_cars` 1 to 100 (default 1); `seed` is an integer for a seeded
+    random start or null for the track's fixed start. Loads paused at step 0.
+  - `play`, `pause`, `step` (exactly one physics step, even while paused), `reset` (back to
+    step 0 with the same scenario and seed; stays paused or playing as before),
+    `set_speed {speed}` (0.1 to 8, default 1), `select_car {index}` (default 0),
+    `key_state {steer, throttle}` (each −1..1; used by the keyboard policy, ignored otherwise).
+  - `set_param {name, value}` (neuron driver only): `name` is `w_left`, `w_right`, `bias`,
+    `throttle` (numbers; weights and bias within ±30, throttle within ±1) or `activation` (`tanh`,
+    `sigmoid`, `relu` or `linear`). Answered with a frame. The neuron is
+    steer = f(w_left·d_left + w_right·d_right + bias) with d_left and d_right the far-left and
+    far-right ray readings, at a fixed throttle; it starts with all zeros and throttle 0.15. Its
+    settings belong to the session (ADR-020): they survive `reset` and every `load_scenario`
+    (another track, more cars, a seed, or a detour through another driver); a new connection
+    starts from zeros again, and the browser sends back its last-seen settings after a reconnect.
+- server → client:
+  - `scenario {track, policy, n_cars, seed, dt, time_limit, target_laps, v_max, wheelbase,
+    car_half_width, ray_angles, ray_range}`: no geometry (use `GET tracks/{name}`).
+  - `frame {step, time, playing, speed, cars, selected}`: `cars` holds one array per quantity, one
+    entry per car: `x`, `y`, `psi`, `v`, `alive`, `progress`, `status` (0 running, 1 crashed,
+    2 finished, 3 stalled, 4 timeout), `action` (a [steer, throttle] pair per car; the last action
+    applied, [0, 0] before the first step). `selected` is `{index, rays, observation}` for the
+    selected car (rays in metres, five numbers; observation is the 7-number vector; `neuron` is the
+    neuron driver's readout, see below, or null) or null.
+    Numbers are rounded: positions, speed and progress to 3 decimals, angles and the observation
+    to 4.
+  - `selected.neuron {inputs, input_rays, weights, bias, contributions, z, output, activation,
+    throttle}`: `inputs` are the two ray readings (0 to 1) the neuron reads, `input_rays` which of
+    the five rays they are (0 and 4), `contributions` the weight times input for each, `z` the
+    weighted sum (their total plus the bias) and `output` the activation of `z`, all computed by
+    Python.
+  - `episode_end {step, time, status, progress, laps}`: sent once when every car has stopped; the
+    session then pauses. `status` holds a name per car (`crashed`, `finished`, `stalled`,
+    `timeout`).
+  - `error {message}`: a bad message or a command that cannot be run; the connection stays open.
+- The world advances in fixed physics steps of 1/30 s. `set_speed` changes how many steps run per
+  second of real time (speed 2 = 60 steps per second), never the step size. While playing, one
+  frame is sent per max(1, speed) steps, so at most 30 frames per second on average (at speed 2
+  each frame covers two steps; at speed 0.5 there are 15 frames per second); `step` and `reset`
+  always answer with a frame.
 - In development the browser reaches both REST and WebSocket through the Vite dev server, which
   forwards `/api` and `/ws` to the Python server on port 8000 (ADR-015).
 
@@ -398,8 +449,8 @@ logs, run folders or test fixtures. Config files hold only experiment settings.
 names in committed files. `meta.json` records the git commit and library versions, not the user
 or host.
 
-**Safety net (layers):** `.gitignore` → pre-commit hooks (gitleaks, private-key detection,
-large-file check) → CI secret scan on every push → GitHub secret scanning and push protection
+**Safety net (layers):** `.gitignore` → pre-commit hooks (detect-secrets, private-key detection,
+large-file check) → CI gitleaks scan of the whole history on every push → GitHub secret scanning and push protection
 (enabled in the repository settings where available).
 
 **Branches, commits and versions:**

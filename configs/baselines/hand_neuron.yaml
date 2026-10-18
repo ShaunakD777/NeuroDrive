@@ -1,0 +1,19 @@
+# Hand-wired single-neuron baseline (task 1.10, study S1; see docs/studies/S1.md).
+#
+# One neuron steers; the throttle is fixed. With d_left and d_right the far-left (+60 degrees) and
+# far-right (-60 degrees) ray readings (observation entries 0 and 4):
+#     z     = w_left * d_left + w_right * d_right + bias
+#     steer = activation(z)            (positive steers right)
+# The weights have opposite signs, so the car steers away from the nearer wall.
+# It completes the Driving Exam's 2 laps in about 86 s on train_loop_01, from every exam start.
+#
+# The settings format here is informal until experiment/config.py (Phase 4) defines and validates it.
+name: hand_neuron
+policy: neuron
+inputs: [far_left_ray, far_right_ray]
+neuron:
+  w_left: -12.0
+  w_right: 12.0
+  bias: 0.0
+  activation: tanh
+  throttle: 0.24
