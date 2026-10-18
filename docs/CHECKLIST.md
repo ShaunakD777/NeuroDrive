@@ -17,7 +17,7 @@ released, add its tag (e.g. `phase-1`) to the phase's header row.
 | 0.4b | Views as pages + companion drawer + layout switch | ✅ | 2026-10-12 | ADR-017; hash routing, layout store; Vitest 14 passed; Playwright 6 passed (incl. no reload / no reconnect on page change); screenshots light, dark, phone |
 | 0.5 | Docs and conventions check | ✅ | 2026-10-12 | All runnable §6 commands run; 8 doc mismatches fixed + stale web lock file; open: pre-commit.exe blocked by Windows policy, `.env.example` vars unused, README stale (see journal) |
 | 0.6 | Version control safety net + release `phase-0` | ✅ | 2026-10-12 | ADR-014; planted secret blocked; CI green on GitHub (all 4 jobs, first run); secret scanning + push protection enabled by user |
-| **Phase 1** | **Milestone 1: One neuron can drive** | | | |
+| **Phase 1** | **Milestone 1: One neuron can drive** — tag `phase-1` | | | |
 | 1.1 | Activations and the single neuron | ✅ | 2026-10-13 | `uv run pytest` 44 passed (23 new); hand values (tanh(0.2)=0.19738) match to 1e-9; sigmoid safe at ±1000; ruff clean |
 | 1.2 | Track model | ✅ | 2026-10-13 | `uv run pytest` 70 passed (26 new in tests/env); circle: L=314.14 vs 314.16, e=+3.00 left / −3.00 right; train_loop_01 L=731 m, min bend radius 22.5 m, edges do not cross |
 | 1.3 | Car physics (batched) | ✅ | 2026-10-15 | `uv run pytest` 87 passed (17 new in tests/env/test_car.py); hand step v=10.2333, psi=−0.029316; v_max reached in 4.7 s; batch N=3 bit-identical to 3 single runs; grip limit holds at all speeds; §6.3 values kept unchanged |

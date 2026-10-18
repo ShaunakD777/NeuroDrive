@@ -378,3 +378,24 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   2 m. Sigmoid gained almost nothing from a clockwise track.
 - Open question: a network that sets its own throttle (Phase 2) could brake for the chicanes; how
   will learning find that?
+
+### 2026-10-18 — Phase 1 complete (tag `phase-1`)
+- What was built: activations and a single neuron (`core`); the track model (smooth centreline,
+  edges, projection) with `train_loop_01` and half-size Monza clockwise (train) and
+  counter-clockwise (held out); batched kinematic-bicycle physics with a grip limit; five raycast
+  sensors with a wall grid; progress, crash, stall, finish and a per-track time limit; policies
+  (constant, keyboard, neuron), an episode runner and recordings that replay bit for bit; a live
+  WebSocket session (api v1.3); the Environment view (canvas, HUD, controls, car selection) and
+  the Neuron view (inputs, weights, sum, activation curve, steering dial, live sliders). Studies S1
+  and S1b with figures and raw results. 234 Python tests, 58 web unit tests, 26 browser tests.
+- What was learned: weights are behaviour, and a sign flip turns a driver into a wall-seeker; an
+  output's range decides what behaviour is even possible (sigmoid cannot steer left); a working
+  controller can sit in a very narrow window (S1: throttle 0.23 to 0.25), and that window does not
+  transfer (S1b: on Monza no fixed throttle is both safe and fast enough); determinism makes every
+  result reproducible and every bug repeatable; a speed-up is only trusted when a test proves it
+  gives exactly the same numbers.
+- Decisions: ADR-018 to ADR-019 (live protocol v1.2 and v1.3), ADR-020 (the neuron keeps its
+  settings for the session), ADR-021 (detect-secrets locally, gitleaks in CI), ADR-022
+  (per-track time limit).
+- Open questions: how will a network that also sets the throttle learn to brake for chicanes?
+  Should the Playwright tests run in CI? Phone layout (deferred by the user).
