@@ -38,8 +38,12 @@ Alternatives considered · Consequences. Add new records at the bottom. Never de
 - **Consequences:** matches the reference video and works for imitation (regression), evolution and Gaussian policy-gradient RL (the tanh output is the mean of the Gaussian, and the sampled action is clipped). Untrained networks drive roughly straight. The environment still clips actions to [−1, 1]. Watch for saturation: large weighted sums push outputs near ±1, which gives all-or-nothing "bang-bang" driving and near-zero gradients (slope 1 − 0.99² ≈ 0.02). The exam's smoothness metric measures this.
 
 ### ADR-005 — Observation contract v1 (5 rays + speed + heading error)
-- **Status:** proposed → accepted at task 2.5 · **Decision:** ARCHITECTURE §6.4.
+- **Status:** accepted at task 2.5 (2026-10-19) · **Decision:** ARCHITECTURE §6.4.
   **Why:** same inputs for every method; matches the reference video; all normalised.
+  **Frozen:** `OBSERVATION_VERSION = "v1"` and `OBSERVATION_NAMES` in `env/sensors.py`;
+  `tests/env/test_contract.py` fails if the count, order, ranges or signs of the observation, or
+  the clipping and sign conventions of the action (§6.5), change. Any such change needs a new ADR
+  and a new version.
 
 ### ADR-006 — From-scratch rule: NumPy yes, ML frameworks no
 - **Status:** accepted · **Decision:** no torch/tf/jax/sklearn/autograd in `src/`. NumPy allowed for

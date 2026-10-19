@@ -451,3 +451,18 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   notice, because the network does react to its input.
 - Open question: Phase 3 should show that the gradients stay identical too, so learning cannot
   separate symmetric neurons.
+
+### 2026-10-19 — Task 2.5 Freeze the observation/action contract v1
+- Concept: every method must see the same 7 inputs and act through the same 2 outputs, otherwise
+  a difference in driving might come from the inputs and not from the learning algorithm.
+- Key equation(s) in words: the five rays are distance divided by 50 m, far-left to far-right;
+  speed is v divided by v_max; heading error is the wrapped angle between the car and the road
+  divided by pi, so it lies in (-1, 1] and facing backwards is +1 from either side. Positive steer
+  turns right; throttle +1 accelerates and -1 brakes; anything outside [-1, 1] is clipped.
+- What we observed: nothing needed to change in the behaviour; the contract was already what the
+  docs say. Three deliberately planted bugs (reversed ray order, heading error divided by 2 pi,
+  steer sign flipped) were each caught by the new test.
+- Surprise or difficulty: the observation range for the heading error excludes -1, because the
+  angle wrap puts the seam at +pi; the test pins this so nobody expects a -1.
+- Open question: o7 uses track knowledge (the road direction); is that a fair input once methods
+  are compared in Phase 8?

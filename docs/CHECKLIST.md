@@ -35,7 +35,7 @@ released, add its tag (e.g. `phase-1`) to the phase's header row.
 | 2.2 | Forward pass with trace | ✅ | 2026-10-19 | `uv run pytest` 281 passed (15 new in tests/core/nn/test_forward.py, 47 in tests/core/nn); hand 2-2-1: z1 = [−1.5, 1.5], a1 = ±0.905148, output −0.805148 to 1e-9; batch of 20 = row-by-row to 1e-9 for 3 specs; ruff clean; no contract change |
 | 2.3 | Population forward pass | ✅ | 2026-10-19 | `uv run pytest` 297 passed (16 new in tests/core/nn/test_population.py, 63 in tests/core/nn); N = 20 equals a loop of single forward passes (all z and a) to 1e-9; hand example [[1,1],[2,3]] gives 3 and 1.5; from_genomes agrees with Network.unflatten; ruff clean; no contract change |
 | 2.4 | Initialisation | ✅ | 2026-10-19 | `uv run pytest` 310 passed (13 new in tests/core/nn/test_init.py); Xavier weight variance within 3% of 2/(n_in+n_out) on 300×400 and 400×200 layers; same seed → identical network; `scripts/zero_init_demo.py`: spread across hidden neurons 0.0000 for zero and all-0.1 weights, 0.3635 / 0.2791 for Xavier; ruff clean; no contract change |
-| 2.5 | Freeze observation/action contract v1 | ☐ | | |
+| 2.5 | Freeze observation/action contract v1 | ✅ | 2026-10-19 | `uv run pytest` 323 passed (13 new in tests/env/test_contract.py); count, order, ray angles, ranges (o1–o6 in [0,1], o7 in (−1,1]), hand values, batch = single, random-action driving, action clipping and signs pinned; three planted bugs (ray order, o7 scale, steer sign) each failed the contract test; `OBSERVATION_VERSION`/`OBSERVATION_NAMES` added; ADR-005 accepted; ruff clean |
 | 2.6 | MLP / Population policies, multi-car | ☐ | | |
 | 2.7 | Network view v1 | ☐ | | |
 | 2.8 | Selection linking | ☐ | | |

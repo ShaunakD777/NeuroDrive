@@ -26,6 +26,7 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Xavier (Glorot) initialisation | Weights drawn evenly from [-a, a] with a = sqrt(6 / (n_in + n_out)), so the variance is 2 / (n_in + n_out) and the signal keeps a steady size from layer to layer. |
 | Saturation | A tanh or sigmoid neuron whose weighted sum is so large that the output sits at its limit (-1 or +1) and barely reacts to its input. |
 | Observation | The numbers the car's network receives each step (rays, speed, heading error). |
+| Contract (observation / action) | The fixed agreement on what the 7 input numbers and 2 output numbers mean, in what order and range. Every method uses it, so differences in driving come from the learning, not the inputs. Changing it needs a new version. |
 | Action | The numbers the network outputs (steer, throttle). |
 | Policy | Any rule that turns observations into actions. A network is one kind of policy. |
 | Episode | One drive from start until crash, time limit, stall or finish. |

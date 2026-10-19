@@ -212,6 +212,10 @@ Each step, in this order (semi-implicit Euler):
 Note: `o7` uses track knowledge (like the reference video's θ). This is documented and identical
 for every method.
 
+**Frozen at task 2.5 (ADR-005):** `OBSERVATION_VERSION = "v1"` and the names of the seven inputs
+are in `env/sensors.py`; `tests/env/test_contract.py` pins them. Changing §6.4 or §6.5 needs an
+ADR and a new version.
+
 ### 6.5 Action (action v1, 2 numbers)
 - `steer` ∈ [−1, 1]: −1 = full left, +1 = full right
 - `throttle` ∈ [−1, 1]: +1 = full acceleration, −1 = full braking
