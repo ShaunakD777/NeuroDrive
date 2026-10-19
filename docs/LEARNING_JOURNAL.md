@@ -399,3 +399,16 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   (per-track time limit).
 - Open questions: how will a network that also sets the throttle learn to brake for chicanes?
   Should the Playwright tests run in CI? Phone layout (deferred by the user).
+
+### 2026-10-19 — Task 2.1 Network spec and parameters
+- Concept: a layer is a weight matrix (one row per neuron, one column per input) plus a bias
+  vector; a network is a list of layers; all its numbers laid end to end are the genome.
+- Key equation(s) in words: a layer with n_in inputs and n_out neurons owns n_out times n_in
+  weights plus n_out biases. For [7,16,16,2]: 128 + 272 + 34 = 434. Flat order: each weight matrix
+  row by row, then that layer's biases, layer after layer.
+- What we observed: the hand example [2,2,1] flattens to 1 to 9 in order; flatten then unflatten
+  and save then load both return the same numbers bit for bit; 266 tests pass.
+- Surprise or difficulty: NumPy adds ".npz" to a file name you give it, so saving through an open
+  file keeps checkpoint names exactly as chosen.
+- Open question: how big must the initial random weights be so the 2 outputs do not saturate
+  (task 2.4)?

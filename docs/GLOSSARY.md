@@ -14,6 +14,10 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Layer | A group of neurons that all read the same inputs. |
 | Forward propagation | Computing the output by passing values layer by layer from inputs to outputs. |
 | Parameters | All weights and biases of a network. |
+| Weight matrix | One layer's weights as a table: one row per neuron, one column per input. Layer sizes 16 → 16 give a 16 × 16 matrix. |
+| Bias vector | One layer's biases as a list, one number per neuron. |
+| Network spec | The shape of a network (layer sizes, activation names, version) with none of its numbers. |
+| Flatten / unflatten | Laying all of a network's parameters out as one list (weights row by row, then biases, layer by layer), and the exact reverse. |
 | Initialisation | How the parameters are set before learning starts. |
 | Observation | The numbers the car's network receives each step (rays, speed, heading error). |
 | Action | The numbers the network outputs (steer, throttle). |
