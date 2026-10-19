@@ -524,3 +524,23 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   layer, and big output bars with words such as "right" and "accelerating".
 - Open question: with the output neuron selected, which inputs matter most? That is task 2.9
   (contributions and sensitivity).
+
+### 2026-10-19 — Task 2.9 Explain: contributions and sensitivity (finite differences)
+- Concept: two ways to ask why a network output what it did. Contributions say who pushed this
+  neuron and how hard, right now (a receipt for z). Sensitivity says how much the output would
+  move if one input changed a little (a slope).
+- Key equation(s) in words: contribution of input i to neuron j = weight from i to j times the
+  value of i; the contributions plus the bias add up to z. Sensitivity of output m to input k =
+  (output with input k nudged up by h, minus output with it nudged down by h) divided by 2h.
+- What we observed: in the 2-2-1 example the hidden neuron's receipt is 0.5 and -2 (total -1.5),
+  the output's is -1.810297 and +0.905148 plus a bias of 0.1 (z = -0.805148). The output's
+  sensitivity is +0.361413 to input 0 and -0.361413 to input 1, matching the chain rule by hand
+  to 1.8e-9. Over 200 random networks the receipts matched z - b to within 8.9e-16 (40 % of
+  neurons bit for bit; the rest only differ because the forward pass adds in another order).
+  When the hidden neurons are pushed into saturation (huge weights), every sensitivity falls
+  below 1e-6: the inputs can no longer reach the output.
+- Surprise or difficulty: contributions and sensitivity can disagree. A large contribution
+  through a saturated neuron has almost no sensitivity, because a saturated tanh is flat: the
+  input matters to the current value but a small change would not move it.
+- Open question: Phase 3 computes the same slopes exactly with backpropagation; will the two
+  agree to 1e-8 on every driving network, including ReLU ones with kinks?
