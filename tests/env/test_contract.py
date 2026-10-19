@@ -11,7 +11,14 @@ import numpy as np
 import pytest
 
 from neurodrive.core.rng import make_rng
-from neurodrive.env.car import DEFAULT_PARAMS, CarState, step_cars
+from neurodrive.env.car import (
+    ACTION_NAMES,
+    ACTION_SIZE,
+    ACTION_VERSION,
+    DEFAULT_PARAMS,
+    CarState,
+    step_cars,
+)
 from neurodrive.env.sensors import (
     OBSERVATION_NAMES,
     OBSERVATION_SIZE,
@@ -20,6 +27,7 @@ from neurodrive.env.sensors import (
     RAY_RANGE,
     build_observation,
     edge_grid,
+    observe,
 )
 from neurodrive.env.track import Track
 from neurodrive.env.world import World, WorldConfig
@@ -182,3 +190,21 @@ def test_out_of_range_actions_are_clipped_to_the_contract_range():
         clipped = drive(np.clip(steer, -1, 1), np.clip(throttle, -1, 1))
         wild = drive(steer, throttle)
         assert (wild.x, wild.y, wild.psi, wild.v) == (clipped.x, clipped.y, clipped.psi, clipped.v)
+
+
+def test_action_version_names_and_size():
+    assert ACTION_VERSION == "v1"
+    assert ACTION_NAMES == ("steer", "throttle")
+    assert ACTION_SIZE == 2
+
+
+def test_observe_is_build_observation_applied_to_the_world_state(loop):
+    world = World(loop, WorldConfig.for_track(loop))
+    world.reset(n=5, rng=make_rng(1), random_s0=True, lateral_jitter=1.0, speed=12.0)
+    grid = edge_grid(loop)
+    cars = world.cars
+    direct = build_observation(
+        grid, cars.x, cars.y, cars.psi, cars.v, world.road_heading, world.params.v_max
+    )
+    np.testing.assert_array_equal(observe(world, grid), direct)
+    assert observe(world, grid).shape == (5, OBSERVATION_SIZE)

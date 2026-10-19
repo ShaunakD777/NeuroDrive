@@ -286,6 +286,32 @@ test("several cars with a seeded random start: the same seed gives the same star
   await expect(page.getByTestId("input-seed")).toHaveCount(0);
 });
 
+test("random networks: 20 cars, each driven by its own brain", async ({ page }) => {
+  await page.goto("/#/environment");
+  await expect(page.getByTestId("hud-step")).toHaveText("0");
+  await page.getByTestId("select-policy").selectOption("random_networks");
+  await expect(page.getByTestId("select-policy")).toHaveValue("random_networks");
+  const cars = page.getByTestId("input-cars");
+  await cars.fill("20");
+  await cars.press("Enter");
+  await expect(page.getByTestId("select-car").locator("option")).toHaveCount(20);
+  await expect(page.getByTestId("hud-step")).toHaveText("0");
+
+  await page.getByTestId("btn-step").click();
+  await expect(page.getByTestId("hud-step")).toHaveText("1");
+  // All cars start on the same spot and see the same things, so any difference in what they do
+  // comes from their own networks.
+  const actions = new Set<string>();
+  for (const car of ["0", "5", "11", "19"]) {
+    await page.getByTestId("select-car").selectOption(car);
+    await expect(page.getByTestId("select-car")).toHaveValue(car);
+    const steer = await page.getByTestId("hud-steer").innerText();
+    const throttle = await page.getByTestId("hud-throttle").innerText();
+    actions.add(`${steer}/${throttle}`);
+  }
+  expect(actions.size).toBeGreaterThanOrEqual(3);
+});
+
 test("bad numbers are not sent: the box shows the real value again", async ({ page }) => {
   await page.goto("/#/environment");
   await expect(page.getByTestId("hud-step")).toHaveText("0");

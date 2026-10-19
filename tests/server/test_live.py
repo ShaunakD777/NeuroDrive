@@ -348,7 +348,7 @@ def test_rest_track_endpoints():
 def test_websocket_session_end_to_end():
     client = TestClient(create_app())
     with client.websocket_connect("/ws/live") as ws:
-        assert json.loads(ws.receive_text())["api"] == API_VERSION == "v1.3"
+        assert json.loads(ws.receive_text())["api"] == API_VERSION == "v1.4"
         ws.send_text(json.dumps({"type": "load_scenario", "track": TRACK, "policy": "constant"}))
         assert json.loads(ws.receive_text())["type"] == "scenario"
         assert json.loads(ws.receive_text())["step"] == 0
@@ -577,3 +577,82 @@ def test_websocket_set_param_end_to_end():
         assert frame["selected"]["neuron"]["bias"] == 1.0
         ws.send_text(json.dumps({"type": "set_param", "name": "activation", "value": "sigmoid"}))
         assert json.loads(ws.receive_text())["selected"]["neuron"]["activation"] == "sigmoid"
+
+
+# ── random networks: one brain per car (api v1.4) ───────────────────────────────────────────
+
+
+def drive_steps(session: LiveSession, steps: int) -> FrameMessage:
+    frame = None
+    for _ in range(steps):
+        frame = send(session, type="step")[0]
+    return frame
+
+
+def test_random_networks_scenario_loads_20_cars_and_reports_the_policy():
+    session = LiveSession(TrackLibrary(TRACKS))
+    scenario, frame = send(
+        session, type="load_scenario", track=TRACK, policy="random_networks", n_cars=20, seed=7
+    )
+    assert scenario.policy == "random_networks" and scenario.n_cars == 20 and scenario.seed == 7
+    assert len(frame.cars.x) == 20 and frame.selected.neuron is None
+    (error,) = send(session, type="set_param", name="bias", value=1.0)
+    assert isinstance(error, ErrorMessage) and "neuron" in error.message
+
+
+def test_random_networks_drive_differently_and_every_action_is_in_range():
+    session = loaded("random_networks", n_cars=20)  # no seed: all start on the line, seed 0 brains
+    frame = drive_steps(session, 30)
+    actions = frame.cars.action
+    assert len({tuple(a) for a in actions}) >= 15  # the cars choose differently
+    assert all(-1.0 <= v <= 1.0 for a in actions for v in a)
+    assert len(set(frame.cars.v)) >= 5  # and the cars have different speeds after one second
+
+
+def test_same_seed_same_drive_different_seed_different_drive():
+    a = drive_steps(loaded("random_networks", n_cars=20, seed=5), 40)
+    b = drive_steps(loaded("random_networks", n_cars=20, seed=5), 40)
+    c = drive_steps(loaded("random_networks", n_cars=20, seed=6), 40)
+    assert a.cars == b.cars
+    assert a.cars != c.cars
+
+
+def test_reset_replays_the_same_brains_and_starts():
+    session = loaded("random_networks", n_cars=20, seed=2)
+    first = drive_steps(session, 40)
+    (reset_frame,) = send(session, type="reset")
+    assert reset_frame.step == 0
+    assert drive_steps(session, 40).cars == first.cars
+
+
+def test_seed_none_means_seed_0_brains_and_no_random_starts():
+    none = loaded("random_networks", n_cars=5, seed=None)
+    zero = loaded("random_networks", n_cars=5, seed=0)
+    # seed None: every car starts on the start line; seed 0: seeded random starts
+    assert len(set(send(none, type="reset")[0].cars.x)) == 1
+    assert len(set(send(zero, type="reset")[0].cars.x)) == 5
+
+
+def test_a_single_random_network_car_works():
+    frame = drive_steps(loaded("random_networks", n_cars=1, seed=3), 10)
+    assert len(frame.cars.x) == 1
+
+
+def test_selecting_another_car_shows_that_cars_rays():
+    session = loaded("random_networks", n_cars=20, seed=4)
+    drive_steps(session, 20)
+    first = send(session, type="select_car", index=0)[0].selected
+    other = send(session, type="select_car", index=7)[0].selected
+    assert other.index == 7 and other.observation != first.observation
+
+
+def test_the_seed_picks_the_networks_themselves():
+    # Compared directly, because a seed also changes the random starts and would hide a brain bug.
+    def brains(seed):
+        return loaded("random_networks", n_cars=4, seed=seed)._policy.population.genomes()
+
+    assert (brains(5) == brains(5)).all()
+    assert not (brains(5) == brains(6)).all()
+    assert (brains(None) == brains(0)).all()  # seed None means seed 0
+    assert brains(5).shape == (4, 434)
+    assert len({tuple(row[:3]) for row in brains(5)}) == 4  # four different networks

@@ -48,9 +48,12 @@ export interface DriveInput {
 /** What a `load_scenario` message asks for. */
 export interface ScenarioRequest {
   track: string;
-  policy: "keyboard" | "constant" | "neuron";
+  policy: "keyboard" | "constant" | "neuron" | "random_networks";
   n_cars: number;
-  /** null: every car starts at the track's start line; a number: a seeded random start. */
+  /**
+   * null: every car starts at the track's start line; a number: a seeded random start. With
+   * "random_networks" the seed also picks the networks (seed 0 when null).
+   */
   seed: number | null;
 }
 

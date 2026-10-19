@@ -21,6 +21,13 @@ Array = NDArray[np.float64]
 
 DT = 1.0 / 30.0  # physics step, seconds
 
+# The action contract, frozen at task 2.5 (ADR-005, ARCHITECTURE §6.5): every driver outputs these
+# numbers per car, in this order, each in [-1, 1] (anything outside is clipped). Positive steer
+# turns right; positive throttle accelerates and negative brakes. A change needs a new ADR.
+ACTION_VERSION = "v1"
+ACTION_NAMES = ("steer", "throttle")
+ACTION_SIZE = len(ACTION_NAMES)
+
 
 @dataclass(frozen=True)
 class CarParams:

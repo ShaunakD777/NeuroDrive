@@ -139,13 +139,15 @@ export interface KeyState {
  * Load a track and a driver; the session starts paused at step 0.
  *
  * ``policy`` is ``"keyboard"`` (driven by ``key_state``), ``"constant"`` (every car holds steer 0,
- * throttle 0.3) or ``"neuron"`` (one shared neuron steers; change it with ``set_param``).
+ * throttle 0.3), ``"neuron"`` (one shared neuron steers; change it with ``set_param``) or
+ * ``"random_networks"`` (every car is driven by its own random [7, 16, 16, 2] network).
  * ``seed`` None starts every car at the track's start; an integer gives a seeded random start
- * (position, sideways offset and heading).
+ * (position, sideways offset and heading). For ``"random_networks"`` the same ``seed`` also picks
+ * the networks (seed 0 when None), so a seed always gives the same 20 drivers.
  */
 export interface LoadScenario {
   n_cars: number;
-  policy: "keyboard" | "constant" | "neuron";
+  policy: "keyboard" | "constant" | "neuron" | "random_networks";
   seed: number | null;
   track: string;
   type: "load_scenario";
@@ -202,7 +204,7 @@ export interface ScenarioMessage {
   car_half_width: number;
   dt: number;
   n_cars: number;
-  policy: "keyboard" | "constant" | "neuron";
+  policy: "keyboard" | "constant" | "neuron" | "random_networks";
   ray_angles: number[];
   ray_range: number;
   seed: number | null;

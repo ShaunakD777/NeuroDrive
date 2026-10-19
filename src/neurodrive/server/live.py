@@ -22,9 +22,17 @@ from typing import Any
 import numpy as np
 from pydantic import ValidationError
 
-from neurodrive.core.rng import make_rng
-from neurodrive.env.policies import ConstantPolicy, KeyboardPolicy, NeuronPolicy, Policy
-from neurodrive.env.sensors import RAY_ANGLES, RAY_RANGE, build_observation, edge_grid
+from neurodrive.core.nn.init import init_population
+from neurodrive.core.nn.spec import NetworkSpec
+from neurodrive.core.rng import child_rng, make_rng
+from neurodrive.env.policies import (
+    ConstantPolicy,
+    KeyboardPolicy,
+    NeuronPolicy,
+    Policy,
+    PopulationPolicy,
+)
+from neurodrive.env.sensors import RAY_ANGLES, RAY_RANGE, edge_grid, observe
 from neurodrive.env.track import Track
 from neurodrive.env.world import Status, World, WorldConfig
 from neurodrive.server.schemas import (
@@ -229,7 +237,13 @@ class LiveSession:
             self._neuron = self._saved_neuron
         else:
             self._neuron = None
-        self._policy = self._keys or self._neuron or ConstantPolicy(0.0, CONSTANT_THROTTLE)
+        if command.policy == "random_networks":
+            # One Xavier-initialised network per car, drawn from the seed's "init" stream (seed 0
+            # when none is given). Built once per load, so Reset replays the same brains.
+            rng = child_rng(make_rng(command.seed or 0), "init")
+            self._policy = PopulationPolicy(init_population(NetworkSpec(), command.n_cars, rng))
+        else:
+            self._policy = self._keys or self._neuron or ConstantPolicy(0.0, CONSTANT_THROTTLE)
         self.playing = False
         self.selected = 0
         self._reset_world()
@@ -272,11 +286,7 @@ class LiveSession:
         world = self._world
         assert world is not None
         if self._obs_step != world.step_count:
-            cars = world.cars
-            self._obs = build_observation(
-                self._segments, cars.x, cars.y, cars.psi, cars.v, world.road_heading,
-                world.params.v_max,
-            )  # fmt: skip
+            self._obs = observe(world, self._segments)
             self._obs_step = world.step_count
         return self._obs
 

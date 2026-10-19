@@ -466,3 +466,22 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   angle wrap puts the seam at +pi; the test pins this so nobody expects a -1.
 - Open question: o7 uses track knowledge (the road direction); is that a fair input once methods
   are compared in Phase 8?
+
+### 2026-10-19 — Task 2.6 MLP and Population policies, multi-car scenarios
+- Concept: one brain per car. A policy that wraps a network turns the 7 observations into the 2
+  actions; a population policy gives car i network i, all in one batched calculation.
+- Key equation(s) in words: the action of car i is the output of network i on observation i
+  (the forward pass of task 2.2); the world only clips it to [-1, 1].
+- What we observed: with seed 0, all 20 random brains choose different first actions, but 14 of
+  them brake from the start and never move (a car at speed 0 that brakes stays at 0, so it stalls)
+  and the other 6 crash within seconds. Seeds 1 and 2 are similar: random brains are very poor
+  drivers, and the best one covered about 96 m of a 731 m lap.
+- Surprise or difficulty: most random cars do nothing at all, not something wild. The stall comes
+  from the throttle output being negative for about half of random networks. Also, a seed in the
+  live scenario changes both the brains and the starts, so a test of the brains has to look at the
+  networks directly. A planted bug (the seed ignored for the brains) slipped through until it did.
+- Open question: will a fitness that rewards progress be enough to get evolution out of the
+  "braking at zero speed" trap in Phase 7?
+- Also done: the observation code duplicated in the episode runner and the live session is now one
+  function (`observe`), and the runner no longer casts the rays twice per step; the action contract
+  has named constants like the observation.

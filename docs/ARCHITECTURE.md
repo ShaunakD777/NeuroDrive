@@ -267,6 +267,13 @@ ForwardTrace for a chosen car index. Kinds: Keyboard, Neuron (Phase 1), MLP (one
 by all cars), Population (a different network per car), Expert, Stochastic (RL: Gaussian noise
 around the network output, with a deterministic mode for exams).
 
+*As built (task 2.6, `env/policies.py`):* `MLPPolicy` and `PopulationPolicy` accept only networks
+with 7 inputs and 2 outputs. Both keep `last_trace`, the ForwardTrace of the latest `act` call
+for every car, and `trace_for(car)` cuts out one car's trace. A population needs exactly one
+observation row per network. `env/sensors.py: observe(world, segments)` is the one place that
+builds a world's observation; the action contract has `ACTION_VERSION`, `ACTION_NAMES` and
+`ACTION_SIZE` in `env/car.py`.
+
 ### 6.11 Episode Recording (recording v1)
 Metadata: track, seed, dt, policy reference (run, unit, car indices), physics/observation versions.
 Per step, per car: x, y, ψ, v, alive, P, rays(5), observation(7), action(2).
@@ -315,7 +322,7 @@ Exam spec version, list of tracks, per-episode metrics (track, start index, prog
 crashed, lap times, mean speed, smoothness, time to crash), and aggregates per track and overall
 (median, IQR, completion rate). See `EXPERIMENT_PROTOCOL.md`.
 
-## 7. Server API (api v1.3, ADR-016, ADR-018, ADR-019)
+## 7. Server API (api v1.4, ADR-016, ADR-018, ADR-019, ADR-023)
 
 REST (`/api/...`):
 - `GET health` → `{status: "ok", version}` (`version` is the NeuroDrive package version)
@@ -335,11 +342,13 @@ REST (`/api/...`):
 
 WebSocket `/ws/live` (one independent session per connection):
 - `hello` is sent first, on connect: `{type: "hello", version, api}` (`api` is the message-contract
-  version, currently `"v1.3"`).
+  version, currently `"v1.4"`).
 - client → server (each has a `type` field):
-  - `load_scenario {track, policy, n_cars, seed}`: `policy` is `"keyboard"`, `"constant"` or
-    `"neuron"` (more arrive with later tasks); `n_cars` 1 to 100 (default 1); `seed` is an integer for a seeded
-    random start or null for the track's fixed start. Loads paused at step 0.
+  - `load_scenario {track, policy, n_cars, seed}`: `policy` is `"keyboard"`, `"constant"`,
+    `"neuron"` or `"random_networks"` (every car is driven by its own random [7,16,16,2] network;
+    the seed also picks the networks, seed 0 when null; more arrive with later tasks); `n_cars`
+    1 to 100 (default 1); `seed` is an integer for a seeded random start or null for the track's
+    fixed start. Loads paused at step 0.
   - `play`, `pause`, `step` (exactly one physics step, even while paused), `reset` (back to
     step 0 with the same scenario and seed; stays paused or playing as before),
     `set_speed {speed}` (0.1 to 8, default 1), `select_car {index}` (default 0),
