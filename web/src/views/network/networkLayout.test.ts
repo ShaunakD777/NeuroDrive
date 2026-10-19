@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   columnTitle,
+  describeThrottle,
   edgeDescription,
   edgeOpacity,
   edgeWidth,
@@ -118,5 +119,18 @@ describe("labels and numbers", () => {
     );
     expect(edgeDescription(0, 1, 0, 4, -1)).toBe("Ray +30° → Hidden 1, neuron 1: weight −1.0000");
     expect(edgeDescription(2, 3, 1, 4, 0.25)).toBe("Hidden 2, neuron 4 → Throttle: weight 0.2500");
+  });
+});
+
+describe("describeThrottle", () => {
+  it("puts a throttle command into words", () => {
+    expect([1, 0.4, 0, -0.03, -0.4, -1].map(describeThrottle)).toEqual([
+      "full throttle",
+      "accelerating",
+      "coasting",
+      "coasting",
+      "braking",
+      "hard braking",
+    ]);
   });
 });

@@ -15,6 +15,7 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Forward propagation | Computing the output by passing values layer by layer from inputs to outputs. |
 | Weighted sum (z) / activation (a) | z is a neuron's weights times its inputs plus its bias, before squashing; a is the output after the activation function. |
 | Forward trace | The record of every z and a in one forward pass, kept for display, explanation and backprop. |
+| Shared selection | The one place the web app remembers what the user picked (car, neuron, weight, output). Every view reads and changes it, so a click in one view updates all the others. |
 | Network diagram | A drawing of a network: a column of circles per layer, a line per weight. Line colour = weight sign, thickness = size of the weight, circle fill = the neuron's current activation. |
 | Random brain | A network with randomly initialised weights and no training. Drives poorly, and differently from every other random brain. |
 | Population (of networks) | N networks of the same shape whose weights are stacked into one array per layer, so all N run in one batched calculation, car i using network i. |

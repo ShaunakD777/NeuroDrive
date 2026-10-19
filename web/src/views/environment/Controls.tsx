@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { type ScenarioRequest, useLive } from "../../state/live";
+import { useSelection } from "../../state/selection";
 
 const SPEEDS = [0.5, 1, 2, 4, 8];
 const MAX_CARS = 100; // the server's limit for one scenario
@@ -226,7 +227,7 @@ export function Controls({
               value={selected}
               disabled={!ready}
               onChange={(e) => {
-                send({ type: "select_car", index: Number(e.target.value) });
+                useSelection.getState().selectCar(Number(e.target.value));
                 e.target.blur();
               }}
             >

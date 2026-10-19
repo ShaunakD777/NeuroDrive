@@ -816,8 +816,19 @@ body {
   stroke: var(--warn);
 }
 
-.net-edges .net-edge:hover {
-  stroke-opacity: 1;
+.net-edges .net-edge {
+  pointer-events: none;
+}
+
+.net-edge-hit {
+  stroke: transparent;
+  stroke-width: 7;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.net-edge-selected {
+  filter: drop-shadow(0 0 2px var(--text));
 }
 
 .net-dim {
@@ -841,7 +852,12 @@ body {
 }
 
 .net-node {
-  cursor: default;
+  cursor: pointer;
+}
+
+.net-node-selected .net-node-ring {
+  stroke: var(--text);
+  stroke-width: 3.5;
 }
 
 .net-node:hover .net-node-ring {
@@ -883,4 +899,199 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+
+/* ── Car stepper (Network view header) ───────────────────────── */
+
+.car-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 0.85rem;
+}
+
+.car-stepper button {
+  width: 28px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.car-stepper button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.car-stepper-label {
+  min-width: 6.5em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.car-stepper-compact .car-stepper-label {
+  min-width: 5.5em;
+}
+
+/* ── Compact network (side drawer) ───────────────────────────── */
+
+.cnet {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.84rem;
+}
+
+.cnet-section-title {
+  margin: 10px 0 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.cnet-section-title:first-child {
+  margin-top: 0;
+}
+
+.cnet-muted {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.cnet-row {
+  display: grid;
+  grid-template-columns: 7.2em 1fr 3.4em;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 3px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cnet-row:hover {
+  background: var(--bg);
+}
+
+.cnet-output {
+  grid-template-columns: 7.2em 1fr 3.4em;
+  grid-template-rows: auto auto;
+  padding: 6px;
+}
+
+.cnet-output .cnet-label,
+.cnet-output .cnet-value {
+  font-weight: 600;
+}
+
+.cnet-words {
+  grid-column: 2 / 4;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.cnet-selected {
+  border-color: var(--text);
+  background: var(--bg);
+}
+
+.cnet-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cnet-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.cnet-bar {
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.cnet-bar-big {
+  height: 14px;
+  border-radius: 7px;
+}
+
+.cnet-bar-mid {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--text-muted);
+}
+
+.cnet-bar-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+
+.cnet-fill-pos {
+  background: var(--accent);
+}
+
+.cnet-fill-neg {
+  background: var(--warn);
+}
+
+.cnet-cells {
+  display: grid;
+  gap: 3px;
+  padding: 0 6px;
+}
+
+.cnet-cell {
+  position: relative;
+  aspect-ratio: 1;
+  min-width: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.cnet-cell.cnet-selected {
+  border: 2px solid var(--text);
+}
+
+.cnet-cell-fill {
+  position: absolute;
+  inset: 0;
+}
+
+.cnet-readout {
+  margin: 10px 0 4px !important;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.cnet-open {
+  color: var(--accent);
+  font-size: 0.85rem;
 }

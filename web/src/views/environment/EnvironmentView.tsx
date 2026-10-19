@@ -1,8 +1,15 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useLive } from "../../state/live";
-import { useSelection } from "../../state/selection";
-import { type Camera, fitCamera, followCamera, nearestCar, type Size } from "./geometry";
+import { raysFor, useSelection } from "../../state/selection";
+import {
+  type Camera,
+  fitCamera,
+  followCamera,
+  nearestCar,
+  type Size,
+  worldToScreen,
+} from "./geometry";
 import { drawScene, readTheme } from "./draw";
 import { Hud } from "./Hud";
 import { Controls } from "./Controls";
@@ -36,9 +43,8 @@ export function EnvironmentView({
   const [zoom, setZoom] = useState(compact ? COMPACT_ZOOM : DEFAULT_ZOOM);
 
   const geometry = useLive((s) => s.geometry);
-  const neuronSelected = useSelection((s) => s.neuron !== null);
-  const neuronRays = useLive((s) => s.frame?.selected?.neuron?.input_rays ?? null);
-  const highlightAttribute = neuronSelected && neuronRays !== null ? neuronRays.join(",") : "";
+  // The rays the shared selection points at (a selected neuron, input or weight), for tests.
+  const highlightAttribute = useSelectedRays().join(",");
   const fitPoints = useMemo(
     () => (geometry === null ? [] : [...geometry.left, ...geometry.right]),
     [geometry],
@@ -70,9 +76,8 @@ export function EnvironmentView({
     if (canvas === null || !ctx || size.w === 0 || size.h === 0) return;
     const { frame, scenario, geometry: track } = useLive.getState();
     const selected = frame?.selected?.index ?? 0;
-    // When the neuron is selected (Network view), emphasise the two rays it reads.
-    const neuronRays = frame?.selected?.neuron?.input_rays ?? [];
-    const highlight = useSelection.getState().neuron === null ? [] : neuronRays;
+    // Emphasise the rays behind whatever is selected in the Network view (§8.2).
+    const highlight = raysFor(useSelection.getState(), frame?.selected);
     const car = frame === null ? null : frame.cars;
     const camera =
       mode === "follow" && car !== null && car.x.length > selected
@@ -91,6 +96,13 @@ export function EnvironmentView({
       compact,
       highlight,
     });
+    // Where each car is on screen (CSS pixels), so browser tests can click a particular car.
+    canvas.dataset.cars =
+      car === null
+        ? ""
+        : car.x
+            .map((x, i) => worldToScreen(camera, size, x, car.y[i]).map((v) => Math.round(v)).join(":"))
+            .join(",");
   }, [size, mode, zoom, compact, fitPoints]);
 
   // Redraw when anything the picture depends on changes, at most once per display frame.
@@ -128,10 +140,7 @@ export function EnvironmentView({
       event.clientY - rect.top,
       24,
     );
-    if (index !== null) {
-      useLive.getState().send({ type: "select_car", index });
-      useSelection.getState().select({ carId: index });
-    }
+    if (index !== null) useSelection.getState().selectCar(index);
   };
 
   const zoomBy = (factor: number) => setZoom((z) => Math.min(40, Math.max(1, z * factor)));
@@ -169,10 +178,19 @@ export function EnvironmentView({
       {!compact && (
         <p className="env-hint">
           Drive with the arrow keys or W A S D (up accelerates, down brakes). Press Play first: the
-          car only moves while the simulation runs. Click a car to select it. With the Neuron
-          driver, set its weights on the Network page.
+          car only moves while the simulation runs. Click a car to select it: the Network page
+          and the drawer then show that car. With the Neuron driver, set its weights on the
+          Network page.
         </p>
       )}
     </section>
   );
+}
+
+/** The rays highlighted for the current selection, as a React value (re-renders when it changes). */
+function useSelectedRays(): number[] {
+  const neuron = useSelection((s) => s.neuron);
+  const connection = useSelection((s) => s.connection);
+  const selected = useLive((s) => s.frame?.selected);
+  return raysFor({ neuron, connection }, selected);
 }

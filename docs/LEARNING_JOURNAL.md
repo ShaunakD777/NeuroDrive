@@ -503,3 +503,24 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   that compares them for exact equality caught the lag when I planted it.
 - Open question: with 16 neurons per layer it is hard to say what any one hidden neuron means;
   will the contribution view (task 2.9) make a decision easier to read than the diagram alone?
+
+### 2026-10-19 — Task 2.8 Selection linking (and a compact network for the drawer)
+- Concept: one shared selection drives every view. The car, neuron and weight the user points at
+  live in one store; the track, the full diagram and the drawer all read it and all change it.
+- Key equation(s) in words: none (plumbing). The only rule is a mapping: input k of the
+  observation, for k from 0 to 4, is ray k, so selecting it (or a weight leaving it) emphasises
+  that ray on the track; speed and heading error have no ray.
+- What we observed: clicking a car on the track switches the diagram to that car's weights; the
+  same steer neuron selected on car 1 stays selected on car 2 and shows car 2's own values
+  (z = 0.2097 on one car, for example); a cell clicked in the drawer is outlined in the full
+  diagram and the other way round.
+- Surprise or difficulty: two sources of truth fight unless one wins: the server decides which
+  car's details it sends, so the store copies the server's choice from every frame, and only an
+  explicit action (`selectCar`) sends the command, so following the server never echoes back.
+  Also, after a click the mouse is still over the circle, so the readout has to say "Selected"
+  whenever the thing shown is the selection, hovered or not.
+- Design note: the drawer's compact network was unreadable as a shrunken 41-circle diagram, so
+  it is now a summary for a narrow column: input bars, a strip of 16 coloured cells per hidden
+  layer, and big output bars with words such as "right" and "accelerating".
+- Open question: with the output neuron selected, which inputs matter most? That is task 2.9
+  (contributions and sensitivity).

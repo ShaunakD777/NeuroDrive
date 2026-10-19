@@ -114,6 +114,7 @@ test("hovering a circle or a line shows its exact values", async ({ page }) => {
   await goToNetwork(page);
   const readout = page.getByTestId("network-readout");
   await expect(readout).toContainText("Hover over a circle or a line");
+  await expect(readout).toContainText("click to keep it selected");
 
   await page.getByTestId("net-node-3-0").hover();
   await expect(readout).toContainText("Steer: z = ");
@@ -125,18 +126,35 @@ test("hovering a circle or a line shows its exact values", async ({ page }) => {
   // A line: its tooltip text holds the exact weight (4 decimals) and the two neurons it joins.
   const edge = page.getByTestId("net-edge-2-3-1"); // Hidden 2, neuron 4 -> Throttle
   const weight = Number(await edge.getAttribute("data-weight"));
-  const text = (await edge.locator("title").textContent()) ?? "";
+  const hit = page.getByTestId("net-hit-2-3-1"); // the wider, invisible line that takes the pointer
+  const text = (await hit.locator("title").textContent()) ?? "";
   expect(text).toContain("Hidden 2, neuron 4 → Throttle: weight ");
   expect(text).toContain(`${weight < 0 ? "−" : ""}${Math.abs(weight).toFixed(4)}`);
-  await edge.dispatchEvent("mouseover");
+  await hit.dispatchEvent("mouseover");
   await expect(readout).toContainText("Hidden 2, neuron 4 → Throttle: weight ");
 });
 
-test("the compact network also shows in the Environment page's drawer", async ({ page }) => {
+test("the compact network in the Environment page's drawer is a readable summary", async ({
+  page,
+}) => {
   await useRandomNetworks(page);
   const compact = page.getByTestId("network-view-compact");
   await expect(compact).toBeVisible();
-  await expect(compact.locator('[data-testid^="net-node-"]')).toHaveCount(41);
+  await expect(compact.locator('[data-testid^="cnet-input-"]')).toHaveCount(7);
+  await expect(compact.locator('[data-testid^="cnet-cell-"]')).toHaveCount(32);
+  await expect(compact.locator('[data-testid^="cnet-output-"]')).toHaveCount(2);
+  await expect(compact.getByTestId("cnet-input-0")).toContainText("Ray +60°");
+  await expect(compact.getByTestId("cnet-input-6")).toContainText("Heading error");
+  await expect(compact.getByTestId("cnet-output-0")).toContainText("Steer");
+  await expect(compact.getByTestId("cnet-output-1")).toContainText("Throttle");
+  // the output rows say what the numbers mean
+  await expect(compact.getByTestId("cnet-output-1")).toContainText(
+    /full throttle|accelerating|coasting|braking/,
+  );
+  await expect(compact.getByTestId("car-label")).toHaveText("Car 1 of 20");
+  await compact.getByTestId("cnet-open-full").click();
+  await expect(page).toHaveURL(/#\/network$/);
+  await expect(page.getByTestId("network-diagram")).toBeVisible();
 });
 
 test("the other drivers still get the Neuron view", async ({ page }) => {

@@ -68,6 +68,15 @@ export function num(x: number, digits = 2): string {
   return x < 0 && Number(text) !== 0 ? `−${text}` : text;
 }
 
+/** Words for a throttle command in [-1, 1]: positive accelerates, negative brakes. */
+export function describeThrottle(output: number): string {
+  if (output >= 0.7) return "full throttle";
+  if (output >= 0.05) return "accelerating";
+  if (output > -0.05) return "coasting";
+  if (output > -0.7) return "braking";
+  return "hard braking";
+}
+
 /** The labels of the seven inputs (observation v1), top to bottom. */
 export const INPUT_LABELS = [
   "Ray +60°",

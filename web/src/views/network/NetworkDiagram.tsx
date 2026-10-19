@@ -1,6 +1,7 @@
 import { memo, useMemo, useState } from "react";
 
 import type { NetworkMessage, NetworkTrace } from "../../api/generated";
+import { useSelection } from "../../state/selection";
 import {
   columnTitle,
   edgeDescription,
@@ -19,10 +20,21 @@ import {
 const FRAME: Frame = { width: 880, height: 470, marginX: 165, marginY: 40 };
 const NODE_RADIUS = 10;
 
+/** What the diagram is pointing at: the hovered thing, else the selected one (or nothing). */
 type Hover =
   | { kind: "node"; layer: number; index: number }
   | { kind: "edge"; layer: number; from: number; to: number }
   | null;
+
+const sameEdge = (h: Hover, e: { layer: number; from: number; to: number }) =>
+  h !== null && h.kind === "edge" && h.layer === e.layer && h.from === e.from && h.to === e.to;
+
+/** True when two pointers name the same circle or the same line. */
+function sameThing(a: Hover, b: Hover): boolean {
+  if (a === null || b === null) return false;
+  if (a.kind === "node" && b.kind === "node") return a.layer === b.layer && a.index === b.index;
+  return a.kind === "edge" && sameEdge(b, a);
+}
 
 interface EdgeData {
   layer: number;
@@ -55,12 +67,20 @@ function isRelated(hover: Hover, e: EdgeData): boolean {
 interface EdgesProps {
   network: NetworkMessage;
   nodes: Point[][];
+  /** What to emphasise: the hovered thing, else the selected one. */
   hover: Hover;
+  /** The selected connection, drawn with an outline. */
+  selected: Hover;
   onHover: (h: Hover) => void;
 }
 
-/** The lines. They only change when the network or the hover does, not on every frame. */
-const Edges = memo(function Edges({ network, nodes, hover, onHover }: EdgesProps) {
+/**
+ * The lines. They only change when the network, the hover or the selection does, not on every
+ * frame. Each weight has a visible line and a wider transparent "hit" line on top, so thin lines
+ * can still be pointed at and clicked.
+ */
+const Edges = memo(function Edges({ network, nodes, hover, selected, onHover }: EdgesProps) {
+  const toggleConnection = useSelection((s) => s.toggleConnection);
   const edges = useMemo(() => collectEdges(network), [network]);
   const layers = network.layer_sizes.length;
   return (
@@ -70,23 +90,36 @@ const Edges = memo(function Edges({ network, nodes, hover, onHover }: EdgesProps
         const b = nodes[e.layer + 1]?.[e.to];
         if (!a || !b) return null;
         const dimmed = !isRelated(hover, e);
+        const isSelected = sameEdge(selected, e);
+        const ref = { layer: e.layer, from: e.from, to: e.to };
         return (
-          <line
-            key={`${e.layer}-${e.from}-${e.to}`}
-            x1={a.x}
-            y1={a.y}
-            x2={b.x}
-            y2={b.y}
-            className={`net-edge net-edge-${signOf(e.weight)}${dimmed ? " net-dim" : ""}`}
-            strokeWidth={edgeWidth(e.weight)}
-            strokeOpacity={edgeOpacity(e.weight)}
-            data-testid={`net-edge-${e.layer}-${e.from}-${e.to}`}
-            data-weight={e.weight}
-            onMouseEnter={() => onHover({ kind: "edge", layer: e.layer, from: e.from, to: e.to })}
-            onMouseLeave={() => onHover(null)}
-          >
-            <title>{edgeDescription(e.layer, e.from, e.to, layers, e.weight)}</title>
-          </line>
+          <g key={`${e.layer}-${e.from}-${e.to}`}>
+            <line
+              x1={a.x}
+              y1={a.y}
+              x2={b.x}
+              y2={b.y}
+              className={`net-edge net-edge-${signOf(e.weight)}${dimmed ? " net-dim" : ""}${isSelected ? " net-edge-selected" : ""}`}
+              strokeWidth={edgeWidth(e.weight) + (isSelected ? 2 : 0)}
+              strokeOpacity={isSelected ? 1 : edgeOpacity(e.weight)}
+              data-testid={`net-edge-${e.layer}-${e.from}-${e.to}`}
+              data-weight={e.weight}
+              data-selected={isSelected}
+            />
+            <line
+              x1={a.x}
+              y1={a.y}
+              x2={b.x}
+              y2={b.y}
+              className="net-edge-hit"
+              data-testid={`net-hit-${e.layer}-${e.from}-${e.to}`}
+              onMouseEnter={() => onHover({ kind: "edge", ...ref })}
+              onMouseLeave={() => onHover(null)}
+              onClick={() => toggleConnection(ref)}
+            >
+              <title>{edgeDescription(e.layer, e.from, e.to, layers, e.weight)}</title>
+            </line>
+          </g>
         );
       })}
     </g>
@@ -148,6 +181,20 @@ export function NetworkDiagram({
   compact?: boolean;
 }) {
   const [hover, setHover] = useState<Hover>(null);
+  const selectedNeuron = useSelection((s) => s.neuron);
+  const selectedConnection = useSelection((s) => s.connection);
+  const toggleNeuron = useSelection((s) => s.toggleNeuron);
+  const selected: Hover = useMemo(
+    () =>
+      selectedNeuron !== null
+        ? { kind: "node", ...selectedNeuron }
+        : selectedConnection !== null
+          ? { kind: "edge", ...selectedConnection }
+          : null,
+    [selectedNeuron, selectedConnection],
+  );
+  // Hovering shows something for a moment; otherwise the selection stays emphasised.
+  const focus = hover ?? selected;
   const sizes = network.layer_sizes;
   const layers = sizes.length;
   const nodes = useMemo(() => layoutNodes(sizes, FRAME), [sizes]);
@@ -166,18 +213,14 @@ export function NetworkDiagram({
     return nodeDescription(layer, index, layers, a, z, bias, network.activations[layer - 1] ?? null);
   };
 
+  const describe = (h: NonNullable<Hover>): string =>
+    h.kind === "node"
+      ? describeNode(h.layer, h.index)
+      : edgeDescription(h.layer, h.from, h.to, layers, network.weights[h.layer]?.[h.to]?.[h.from] ?? 0);
   const hoverText =
-    hover === null
-      ? "Hover over a circle or a line to see its exact values."
-      : hover.kind === "node"
-        ? describeNode(hover.layer, hover.index)
-        : edgeDescription(
-            hover.layer,
-            hover.from,
-            hover.to,
-            layers,
-            network.weights[hover.layer]?.[hover.to]?.[hover.from] ?? 0,
-          );
+    focus === null
+      ? "Hover over a circle or a line to see its exact values; click to keep it selected."
+      : `${sameThing(focus, selected) ? "Selected: " : ""}${describe(focus)}`;
 
   return (
     <div className={compact ? "net-diagram net-compact" : "net-diagram"}>
@@ -207,20 +250,27 @@ export function NetworkDiagram({
           </text>
         ))}
 
-        <Edges network={network} nodes={nodes} hover={hover} onHover={setHover} />
+        <Edges network={network} nodes={nodes} hover={focus} selected={selected} onHover={setHover} />
 
         {nodes.map((column, layer) =>
           column.map((p, index) => {
             const a = trace.activations[layer]?.[index] ?? 0;
             const fill = nodeFill(a);
+            const isSelected =
+              selected !== null && selected.kind === "node" && selected.layer === layer && selected.index === index;
             return (
               <g
                 key={`${layer}-${index}`}
-                className="net-node"
+                className={isSelected ? "net-node net-node-selected" : "net-node"}
                 data-testid={`net-node-${layer}-${index}`}
                 data-activation={a}
+                data-selected={isSelected}
+                role="button"
+                aria-pressed={isSelected}
+                aria-label={nodeLabel(layer, index, layers)}
                 onMouseEnter={() => setHover({ kind: "node", layer, index })}
                 onMouseLeave={() => setHover(null)}
+                onClick={() => toggleNeuron({ layer, index }, layers)}
               >
                 <circle cx={p.x} cy={p.y} r={NODE_RADIUS} className="net-node-ring" />
                 <circle

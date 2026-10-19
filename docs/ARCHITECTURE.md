@@ -411,6 +411,8 @@ them (`npm run gen:types`), so the two sides cannot drift apart.
   own address (`#/environment`, `#/network`, `#/experiment`), switched with tabs in the top bar.
 - **Companion drawer:** every page has a collapsible side drawer showing a compact version of a
   linked view (for example a mini network beside the track), so cause and effect stay visible.
+  The compact network (task 2.8) is a summary built for a narrow column, not a shrunken diagram:
+  input bars, one strip of coloured cells per hidden layer, output bars with words, all clickable.
 - **Layout switch:** Page (default), Split (any two views side by side, resizable) and All (the
   three panels). The choice is remembered per browser.
 - The selection store (§8.1) and the live connection belong to the app, not to a page, so they
@@ -420,11 +422,21 @@ them (`npm run gen:types`), so the two sides cannot drift apart.
 `mode` (live | replay), `runId`, `unit` (checkpoint), `carId`, `neuron` {layer, index},
 `connection` {layer, from, to}, `step` (time index), `output` (steer | throttle), `whatIf` (input overrides).
 
+*As built (task 2.8, `web/src/state/selection.ts`):* `selectCar(i)` is the only way to change the
+car: it stores `carId` and sends `select_car` (the track click, the car picker and the Network
+view's ‹ › stepper all call it). The store follows the server: each frame's `selected.index` is
+copied into `carId` (the server resets it to 0 on every scenario load), and a new `scenario` clears
+`neuron`, `connection` and `output`. `toggleNeuron` and `toggleConnection` select or clear; a
+neuron and a connection replace each other, and an output neuron also sets `output`. Rays to
+emphasise come from `raysFor(selection, frame.selected)`: input k < 5 (or a weight leaving it) is
+ray k; the neuron driver's selected neuron gives its two rays.
+
 ### 8.2 Linking behaviour
 
 | User action | Environment view | Network view | Experiment view |
 |---|---|---|---|
 | Click a car | Highlight it, show its rays | Show its network with live activations | Mark its run/checkpoint |
+| Click an input neuron or a weight leaving it (2.8) | Emphasise that ray (the others fade) | Outline it; readout shows its live values | — |
 | Click an output neuron | Colour rays by sensitivity; colour trail by that output | Contribution bars; highlight strongest paths to inputs | Show the output's response curve across checkpoints |
 | Pause and drag a what-if slider | Ghost car shows the alternative action | Recompute activations (server `explain/forward`) | — |
 | Click a point on the trail | Jump to that step | Show the trace at that step | — |
