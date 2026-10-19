@@ -33,7 +33,7 @@ released, add its tag (e.g. `phase-1`) to the phase's header row.
 | **Phase 2** | **Multilayer network and Network view** | | | |
 | 2.1 | Network spec and parameters | ✅ | 2026-10-19 | `uv run pytest` 266 passed (32 new in tests/core/nn/test_network.py); [7,16,16,2] = 128 + 272 + 34 = 434 parameters; flatten → unflatten identical bit for bit; hand [2,2,1] flattens to 1…9; `.npz` save → load exact; ruff clean; no contract change |
 | 2.2 | Forward pass with trace | ✅ | 2026-10-19 | `uv run pytest` 281 passed (15 new in tests/core/nn/test_forward.py, 47 in tests/core/nn); hand 2-2-1: z1 = [−1.5, 1.5], a1 = ±0.905148, output −0.805148 to 1e-9; batch of 20 = row-by-row to 1e-9 for 3 specs; ruff clean; no contract change |
-| 2.3 | Population forward pass | ☐ | | |
+| 2.3 | Population forward pass | ✅ | 2026-10-19 | `uv run pytest` 297 passed (16 new in tests/core/nn/test_population.py, 63 in tests/core/nn); N = 20 equals a loop of single forward passes (all z and a) to 1e-9; hand example [[1,1],[2,3]] gives 3 and 1.5; from_genomes agrees with Network.unflatten; ruff clean; no contract change |
 | 2.4 | Initialisation | ☐ | | |
 | 2.5 | Freeze observation/action contract v1 | ☐ | | |
 | 2.6 | MLP / Population policies, multi-car | ☐ | | |

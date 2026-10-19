@@ -423,3 +423,16 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
 - Surprise or difficulty: rows of a batch are stored as rows, so the matrix is transposed; the
   maths in the docs is written for a single column vector.
 - Open question: does a batch give bit-identical results to single passes? Here only to 1e-9.
+
+### 2026-10-19 — Task 2.3 Population forward pass
+- Concept: stacked weights. N networks of one shape keep each layer as one array with a leading
+  network index, so one batched matrix product runs every network on its own car.
+- Key equation(s) in words: for car i, the weighted sums are network i's weight matrix times car
+  i's previous outputs plus network i's bias; then the activation. The same as one network, with
+  an extra index.
+- What we observed: 20 different random networks on 20 different observations match 20 separate
+  single passes to 1e-9; a hand example where the two networks give 3 and 1.5 (network 0 alone
+  would have given 8 for the second car).
+- Surprise or difficulty: a matrix-vector product per car is written as a matrix times a column
+  of height n_in, then the spare dimension is dropped.
+- Open question: how fast is this for hundreds of cars (Phase 7 performance check)?
