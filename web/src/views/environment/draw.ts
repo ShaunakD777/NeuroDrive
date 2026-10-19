@@ -1,7 +1,7 @@
 // Canvas 2D drawing of the world: road, cars and rays. It only turns what the server sent into
 // pixels; the colours come from the page's CSS variables, so light and dark themes both work.
 
-import type { FrameMessage, ScenarioMessage, TrackGeometry } from "../../api/generated";
+import type { FrameMessage, GhostPaths, ScenarioMessage, TrackGeometry } from "../../api/generated";
 import { maxAbs, rayWidth } from "../network/inspect";
 import {
   type Camera,
@@ -58,6 +58,11 @@ export interface Scene {
    * falls) and drawn thicker the stronger it is, instead of the usual distance colours.
    */
   raySensitivity: number[] | null;
+  /**
+   * The what-if ghost (ADR-026), or null: the selected car's next second if it held its real
+   * action (dashed path) or the what-if action (solid path, ending in a see-through ghost car).
+   */
+  ghost: GhostPaths | null;
 }
 
 const CAR_LENGTH_EXTRA = 2.0; // car length = wheelbase + this, metres (display only)
@@ -185,11 +190,82 @@ function drawCars(ctx: CanvasRenderingContext2D, theme: Theme, scene: Scene): vo
   }
 }
 
-/** Draw the whole scene: background, road, rays of the selected car, then the cars. */
+/** One car outline at a world pose, as a closed screen-space path. */
+function carPath(ctx: CanvasRenderingContext2D, scene: Scene, x: number, y: number, psi: number): void {
+  const { scenario } = scene;
+  if (scenario === null) return;
+  const length = scenario.wheelbase + CAR_LENGTH_EXTRA;
+  const width = 2 * scenario.car_half_width;
+  const corners = carCorners(x, y, psi, length, width).map(([wx, wy]) =>
+    worldToScreen(scene.camera, scene.size, wx, wy),
+  );
+  ctx.beginPath();
+  corners.forEach(([px, py], k) => (k === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py)));
+  ctx.closePath();
+}
+
+function polyline(ctx: CanvasRenderingContext2D, scene: Scene, points: number[][]): void {
+  ctx.beginPath();
+  points.forEach(([x, y], k) => {
+    const [px, py] = worldToScreen(scene.camera, scene.size, x, y);
+    if (k === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  });
+  ctx.stroke();
+}
+
+/** The two held-action paths (under the cars). */
+function drawGhostPaths(ctx: CanvasRenderingContext2D, theme: Theme, scene: Scene): void {
+  const ghost = scene.ghost;
+  if (ghost === null) return;
+  ctx.lineCap = "round";
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = theme.edge;
+  ctx.setLineDash([6, 5]);
+  polyline(ctx, scene, ghost.real);
+  ctx.setLineDash([]);
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = theme.accent;
+  polyline(ctx, scene, ghost.what_if);
+  // A small mark where holding the real action would end.
+  const [rx, ry] = worldToScreen(scene.camera, scene.size, ghost.real_end[0], ghost.real_end[1]);
+  ctx.fillStyle = theme.edge;
+  ctx.beginPath();
+  ctx.arc(rx, ry, 3, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/** The see-through ghost car at the end of the what-if path (over the cars). */
+function drawGhostCar(ctx: CanvasRenderingContext2D, theme: Theme, scene: Scene): void {
+  const ghost = scene.ghost;
+  if (ghost === null) return;
+  const [x, y, psi] = ghost.what_if_end;
+  ctx.globalAlpha = 0.45;
+  carPath(ctx, scene, x, y, psi);
+  ctx.fillStyle = theme.accent;
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.setLineDash([3, 3]);
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = theme.text;
+  ctx.stroke();
+  ctx.setLineDash([]);
+  if (!scene.compact) {
+    const [px, py] = worldToScreen(scene.camera, scene.size, x, y);
+    ctx.font = "600 11px system-ui, sans-serif";
+    ctx.textBaseline = "bottom";
+    ctx.fillStyle = theme.accent;
+    ctx.fillText("what-if", px + 8, py - 8);
+  }
+}
+
+/** Draw the whole scene: background, road, rays of the selected car, the cars, the ghost. */
 export function drawScene(ctx: CanvasRenderingContext2D, theme: Theme, scene: Scene): void {
   ctx.fillStyle = theme.bg;
   ctx.fillRect(0, 0, scene.size.w, scene.size.h);
   drawRoad(ctx, theme, scene);
   drawRays(ctx, theme, scene);
+  drawGhostPaths(ctx, theme, scene);
   drawCars(ctx, theme, scene);
+  drawGhostCar(ctx, theme, scene);
 }

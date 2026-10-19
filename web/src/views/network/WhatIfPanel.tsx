@@ -1,7 +1,6 @@
-import type { WhatIf } from "../../api/generated";
 import { useLive } from "../../state/live";
 import { useSelection } from "../../state/selection";
-import { applyOverrides, describeOutput, sliderRange } from "./inspect";
+import { describeOutput, sliderRange } from "./inspect";
 import { INPUT_LABELS, num, OUTPUT_LABELS } from "./networkLayout";
 
 /**
@@ -32,9 +31,8 @@ export function WhatIfPanel() {
   }
 
   const real = selected.observation;
-  const ask = (next: Record<number, number>) =>
-    // the server's own 7-number observation with some inputs changed, so always 7 numbers
-    send({ type: "what_if", observation: applyOverrides(real, next) as WhatIf["observation"] });
+  // Only the changed inputs travel; the server keeps the car's exact values for the rest.
+  const ask = (next: Record<number, number>) => send({ type: "what_if", overrides: next });
   const changed = Object.keys(overrides).length > 0;
   const showResult = changed && result !== null && result.car === selected.index && result.step === frame.step;
 

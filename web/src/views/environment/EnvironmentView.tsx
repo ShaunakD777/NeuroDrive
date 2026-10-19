@@ -2,7 +2,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 
 import { useLive } from "../../state/live";
 import { raysFor, useSelection } from "../../state/selection";
-import { raySensitivity } from "../network/inspect";
+import { activeGhost, ghostGap, raySensitivity } from "../network/inspect";
 import {
   type Camera,
   fitCamera,
@@ -44,6 +44,7 @@ export function EnvironmentView({
   const [zoom, setZoom] = useState(compact ? COMPACT_ZOOM : DEFAULT_ZOOM);
 
   const geometry = useLive((s) => s.geometry);
+  const frame = useLive((s) => s.frame);
   // The rays the shared selection points at (a selected neuron, input or weight), for tests.
   const highlightAttribute = useSelectedRays().join(",");
   // The selected output's sensitivity to each ray, when an output is selected (task 2.10).
@@ -51,6 +52,9 @@ export function EnvironmentView({
   const explain = useLive((s) => s.frame?.selected?.explain ?? null); // a stable object per frame
   const sensitivityRow = raySensitivity(explain, outputIndex(output));
   const sensitivityAttribute = sensitivityRow === null ? "" : sensitivityRow.join(",");
+  // The what-if ghost, while a what-if question about this car at this step is open (ADR-026).
+  const ghost = useGhost();
+  const ghostAttribute = ghost === null ? "" : ghost.what_if_end.join(",");
   const fitPoints = useMemo(
     () => (geometry === null ? [] : [...geometry.left, ...geometry.right]),
     [geometry],
@@ -103,6 +107,7 @@ export function EnvironmentView({
       compact,
       highlight,
       raySensitivity: sensitivityRays,
+      ghost: activeGhost(useLive.getState(), useSelection.getState().whatIf),
     });
     // Where each car is on screen (CSS pixels), so browser tests can click a particular car.
     canvas.dataset.cars =
@@ -177,18 +182,33 @@ export function EnvironmentView({
           data-testid="environment-canvas"
           data-highlighted-rays={highlightAttribute}
           data-ray-sensitivity={sensitivityAttribute}
+          data-ghost={ghostAttribute}
           style={{ width: size.w, height: size.h }}
           onPointerDown={onPointerDown}
           aria-label="Top-down view of the track and the cars"
           role="img"
         />
         <Hud compact={compact} />
-        {sensitivityRow !== null && !compact && (
-          <div className="ray-legend" data-testid="ray-legend">
-            Rays coloured by how {output} reacts to them: <span className="ray-legend-pos">blue</span>{" "}
-            = a longer ray pushes {output} {output === "steer" ? "right" : "up (accelerate)"},{" "}
-            <span className="ray-legend-neg">orange</span> = {output === "steer" ? "left" : "down (brake)"};
-            thicker = stronger.
+        {!compact && (ghost !== null || sensitivityRow !== null) && (
+          <div className="stage-legends">
+            {ghost !== null && (
+              <div className="stage-legend" data-testid="ghost-legend">
+                <strong>What-if ghost:</strong> where car {(frame?.selected?.index ?? 0) + 1} would
+                be in {ghost.seconds} s holding the what-if action (solid line, see-through car)
+                instead of its real action (dashed); the two endings are{" "}
+                <span data-testid="ghost-gap">{ghostGap(ghost).toFixed(1)}</span> m apart. Held
+                actions only: the network would really decide again every step.
+              </div>
+            )}
+            {sensitivityRow !== null && (
+              <div className="stage-legend" data-testid="ray-legend">
+                Rays coloured by how {output} reacts to them:{" "}
+                <span className="ray-legend-pos">blue</span> = a longer ray pushes {output}{" "}
+                {output === "steer" ? "right" : "up (accelerate)"},{" "}
+                <span className="ray-legend-neg">orange</span> ={" "}
+                {output === "steer" ? "left" : "down (brake)"}; thicker = stronger.
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -215,4 +235,12 @@ function useSelectedRays(): number[] {
 /** Index of a named output in the action (steer 0, throttle 1), or null. */
 function outputIndex(output: "steer" | "throttle" | null): number | null {
   return output === null ? null : output === "steer" ? 0 : 1;
+}
+
+/** The open what-if ghost as a React value (re-renders when it appears or goes). */
+function useGhost() {
+  const result = useLive((s) => s.whatIfResult);
+  const frame = useLive((s) => s.frame);
+  const overrides = useSelection((s) => s.whatIf);
+  return activeGhost({ whatIfResult: result, frame }, overrides);
 }

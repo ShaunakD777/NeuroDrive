@@ -8,7 +8,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
-API_VERSION = "v1.6"
+API_VERSION = "v1.7"
 
 
 class WireModel(BaseModel):
@@ -160,13 +160,14 @@ class SetParam(CommandModel):
 class WhatIf(CommandModel):
     """Ask what the selected car's network would output for a changed observation (paused only).
 
-    ``observation`` is the full 7-number observation to try, usually the current one with a few
-    inputs moved by the what-if sliders. Answered with an ``explanation`` message; nothing in the
-    simulation changes. Only valid for the random-networks driver and while the session is paused.
+    ``overrides`` maps an input index (0 to 6) to the value to try for it; every other input keeps
+    the car's exact current value (so an empty map asks about the car exactly as it is). Answered
+    with an ``explanation`` message; nothing in the simulation changes. Only valid for the
+    random-networks driver and while the session is paused (api v1.7, ADR-026).
     """
 
     type: Literal["what_if"] = "what_if"
-    observation: list[float] = Field(min_length=7, max_length=7)
+    overrides: dict[int, float] = Field(default_factory=dict)
 
 
 Command = Annotated[
@@ -306,6 +307,26 @@ class Explanation(WireModel):
     sensitivity: list[list[float]]
 
 
+class GhostPaths(WireModel):
+    """Where the selected car would go in the next ``seconds`` if it held one action (ADR-026).
+
+    Both paths start at the car's pose now and come from the car physics in Python: ``real`` holds
+    the action the network chooses for its real observation, ``what_if`` the action it chooses for
+    the tried one. Each is a list of [x, y] points in metres, one per physics step (the first is
+    the car's position now); ``real_end`` and ``what_if_end`` are the final [x, y, heading] for
+    drawing the car there. Holding one action for the whole time is a simplification: a driving
+    network decides again at every step. Rounded to 3 decimals (positions) and 4 (headings).
+    """
+
+    seconds: float
+    real_action: list[float]
+    what_if_action: list[float]
+    real: list[list[float]]
+    what_if: list[list[float]]
+    real_end: list[float]
+    what_if_end: list[float]
+
+
 class ExplanationMessage(WireModel):
     """Answer to ``what_if``: the selected car's network on a changed observation.
 
@@ -325,6 +346,7 @@ class ExplanationMessage(WireModel):
     explain: Explanation
     base_outputs: list[float]
     predicted_outputs: list[float]
+    ghost: GhostPaths
 
 
 class SelectedCar(WireModel):
@@ -406,6 +428,7 @@ WIRE_MODELS: tuple[type[WireModel], ...] = (
     NetworkTrace,
     OutputReceipt,
     Explanation,
+    GhostPaths,
     ExplanationMessage,
     WhatIf,
     SelectedCar,

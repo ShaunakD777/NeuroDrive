@@ -26,8 +26,9 @@ export function NetworkView({
 }
 
 /**
- * Previous / next car, wrapping around. It changes the shared selection, so the Environment view
- * follows (the selected car's rays, the HUD and the car picker).
+ * Choose the car from the Network page: previous / next (wrapping round) or straight to any car
+ * from the drop-down. It changes the shared selection, so the Environment view follows (the
+ * selected car's rays, the HUD and its own car picker).
  */
 function CarStepper({ index, count, compact }: { index: number; count: number; compact: boolean }) {
   const selectCar = useSelection((s) => s.selectCar);
@@ -42,8 +43,23 @@ function CarStepper({ index, count, compact }: { index: number; count: number; c
       >
         ‹
       </button>
+      <select
+        data-testid="car-pick"
+        aria-label="Car"
+        value={index}
+        onChange={(e) => {
+          selectCar(Number(e.target.value));
+          e.target.blur(); // so the arrow keys drive instead of changing this menu
+        }}
+      >
+        {Array.from({ length: count }, (_, i) => (
+          <option key={i} value={i}>
+            Car {i + 1}
+          </option>
+        ))}
+      </select>
       <span className="car-stepper-label" data-testid="car-label">
-        Car {index + 1} of {count}
+        of {count}
       </span>
       <button
         type="button"

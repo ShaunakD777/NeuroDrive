@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import type { Explanation, OutputReceipt } from "../../api/generated";
+import type { Explanation, ExplanationMessage, FrameMessage, OutputReceipt } from "../../api/generated";
 import {
-  applyOverrides,
+  activeGhost,
   describeOutput,
   maxAbs,
   nudgeSentence,
@@ -86,14 +86,41 @@ describe("sensitivity", () => {
 });
 
 describe("what-if inputs", () => {
-  it("applies only the overridden inputs", () => {
-    expect(applyOverrides([0.1, 0.2, 0.3], { 1: 0.9 })).toEqual([0.1, 0.9, 0.3]);
-    expect(applyOverrides([0.1, 0.2], {})).toEqual([0.1, 0.2]);
-  });
-
   it("keeps each slider in its input's range", () => {
     expect(sliderRange(0)).toEqual({ min: 0, max: 1 });
     expect(sliderRange(5)).toEqual({ min: 0, max: 1 });
     expect(sliderRange(6)).toEqual({ min: -1, max: 1 });
+  });
+});
+
+describe("activeGhost", () => {
+  const ghost = {
+    seconds: 1,
+    real_action: [0.1, 0.2],
+    what_if_action: [0.5, 0.2],
+    real: [
+      [0, 0],
+      [1, 0],
+    ],
+    what_if: [
+      [0, 0],
+      [1, 0.2],
+    ],
+    real_end: [1, 0, 0],
+    what_if_end: [1, 0.2, 0.1],
+  };
+  const result = { type: "explanation", car: 4, step: 12, ghost } as unknown as ExplanationMessage;
+  const frame = (step: number, car: number) => ({ step, selected: { index: car } }) as unknown as FrameMessage;
+
+  it("shows the ghost for the car and step the answer is about, while an input is overridden", () => {
+    expect(activeGhost({ whatIfResult: result, frame: frame(12, 4) }, { 0: 0.5 })).toBe(ghost);
+  });
+
+  it("hides it with no override, another step, another car, or no answer", () => {
+    expect(activeGhost({ whatIfResult: result, frame: frame(12, 4) }, {})).toBeNull();
+    expect(activeGhost({ whatIfResult: result, frame: frame(13, 4) }, { 0: 0.5 })).toBeNull();
+    expect(activeGhost({ whatIfResult: result, frame: frame(12, 5) }, { 0: 0.5 })).toBeNull();
+    expect(activeGhost({ whatIfResult: null, frame: frame(12, 4) }, { 0: 0.5 })).toBeNull();
+    expect(activeGhost({ whatIfResult: result, frame: null }, { 0: 0.5 })).toBeNull();
   });
 });

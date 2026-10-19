@@ -54,7 +54,8 @@ test("clicking a car on the track switches the network diagram to that car", asy
   await canvas.click({ position: { x: cars[alone][0], y: cars[alone][1] } });
   await expect(page.getByText(`The network of car ${alone + 1}`).first()).toBeVisible();
   await expect(page.getByTestId("select-car")).toHaveValue(String(alone));
-  await expect(page.getByTestId("car-label").first()).toHaveText(`Car ${alone + 1} of 20`);
+  await expect(page.getByTestId("car-pick").first()).toHaveValue(String(alone));
+  await expect(page.getByTestId("car-label").first()).toHaveText("of 20");
   await expect
     .poll(() => page.getByTestId("net-edge-0-0-0").first().getAttribute("data-weight"))
     .not.toBe(before);
@@ -65,15 +66,18 @@ test("the Network page's car switcher changes the Environment view's selected ca
 }) => {
   await useRandomNetworks(page);
   await page.getByRole("link", { name: "Network" }).click();
-  await expect(page.getByTestId("car-label").first()).toHaveText("Car 1 of 20");
+  await expect(page.getByTestId("car-pick").first()).toHaveValue("0");
+  await expect(page.getByTestId("car-label").first()).toHaveText("of 20");
   await page.getByTestId("car-next").first().click();
   await page.getByTestId("car-next").first().click();
-  await expect(page.getByTestId("car-label").first()).toHaveText("Car 3 of 20");
+  await expect(page.getByTestId("car-pick").first()).toHaveValue("2");
+  await expect(page.getByTestId("car-label").first()).toHaveText("of 20");
   await expect(page.getByText("The network of car 3")).toBeVisible();
   await page.getByTestId("car-prev").first().click();
   await page.getByTestId("car-prev").first().click();
   await page.getByTestId("car-prev").first().click(); // wraps round to the last car
-  await expect(page.getByTestId("car-label").first()).toHaveText("Car 20 of 20");
+  await expect(page.getByTestId("car-pick").first()).toHaveValue("19");
+  await expect(page.getByTestId("car-label").first()).toHaveText("of 20");
 
   await page.getByRole("link", { name: "Environment" }).click();
   await expect(page.getByTestId("select-car")).toHaveValue("19");
@@ -168,5 +172,6 @@ test("loading a new scenario clears the neuron selection", async ({ page }) => {
   await expect(page.getByTestId("select-car").locator("option")).toHaveCount(6);
   await page.getByRole("link", { name: "Network" }).click();
   await expect(page.getByTestId("net-node-2-2")).toHaveAttribute("aria-pressed", "false");
-  await expect(page.getByTestId("car-label").first()).toHaveText("Car 1 of 6");
+  await expect(page.getByTestId("car-pick").first()).toHaveValue("0");
+  await expect(page.getByTestId("car-label").first()).toHaveText("of 6");
 });

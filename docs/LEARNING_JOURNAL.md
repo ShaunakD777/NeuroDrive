@@ -564,3 +564,22 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   (ADR-025), because a live network has no address outside its session.
 - Open question: in study S2a, do the circling cars show same-sign ray sensitivities and the
   crashing cars tiny ones (saturation)?
+
+### 2026-10-19 — Task 2.10 follow-up: the what-if ghost car and choosing a car on the Network page
+- Concept: a what-if is easier to judge when you see where it leads. The ghost car shows where
+  the selected car would be in 2 s if it held the what-if action, next to a dashed path for
+  holding its real action. Both come from the same car physics as the simulation.
+- Key equation(s) in words: none new; the car model of task 1.3 is stepped 60 times with a fixed
+  steer and throttle, once for each action.
+- What we observed: car 5 at step 20 (about 2 m/s) with the +30 degree ray set to 0.9 and the
+  heading error to -0.9: steer drops from 0.464 to 0.204 and throttle from 0.345 to 0.147, and
+  the ghost ends 3.5 m from where the real action would take it. With a 1 s look-ahead the
+  ghost was hidden under the slow car, so the look-ahead is 2 s.
+- Surprise or difficulty: asking "what if nothing changes" did not return exactly the car's real
+  action, for two reasons: the browser's copy of the observation is rounded to 4 decimals, and
+  the real action came from the population's batched forward pass while the what-if used a
+  single-network pass (different summation order, last-bit differences that 60 physics steps
+  can push across a rounding boundary). Sending only the changed inputs and using one function
+  for both fixed it: no change now gives bit-identical actions and paths.
+- Open question: would a closed-loop ghost (the network deciding at every step) teach more
+  than a held action once a network can actually drive?

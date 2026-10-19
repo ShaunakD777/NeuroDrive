@@ -151,7 +151,8 @@ test("the compact network in the Environment page's drawer is a readable summary
   await expect(compact.getByTestId("cnet-output-1")).toContainText(
     /full throttle|accelerating|coasting|braking/,
   );
-  await expect(compact.getByTestId("car-label")).toHaveText("Car 1 of 20");
+  await expect(compact.getByTestId("car-pick")).toHaveValue("0");
+  await expect(compact.getByTestId("car-label")).toHaveText("of 20");
   await compact.getByTestId("cnet-open-full").click();
   await expect(page).toHaveURL(/#\/network$/);
   await expect(page.getByTestId("network-diagram")).toBeVisible();

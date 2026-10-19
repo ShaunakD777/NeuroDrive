@@ -27,6 +27,7 @@ from neurodrive.core.nn.init import init_population
 from neurodrive.core.nn.network import Network
 from neurodrive.core.nn.spec import NetworkSpec
 from neurodrive.core.rng import child_rng, make_rng
+from neurodrive.env.car import CarState, step_cars
 from neurodrive.env.policies import (
     ConstantPolicy,
     KeyboardPolicy,
@@ -48,6 +49,7 @@ from neurodrive.server.schemas import (
     Explanation,
     ExplanationMessage,
     FrameMessage,
+    GhostPaths,
     KeyState,
     LoadScenario,
     NetworkMessage,
@@ -73,6 +75,7 @@ MAX_CATCH_UP = 0.25  # real seconds of simulation owed after a stall; the rest i
 CONSTANT_THROTTLE = 0.3  # throttle of the "constant" policy
 RANDOM_START_LATERAL = 1.0  # metres: random-start sideways range for seeded scenarios
 RANDOM_START_HEADING = 0.1  # radians: random-start heading range for seeded scenarios
+GHOST_SECONDS = 2.0  # how far ahead the what-if ghost car is drawn (slow cars need time to part)
 
 
 class TrackLibrary:
@@ -387,13 +390,21 @@ class LiveSession:
             ]
         if self.playing:
             return [ErrorMessage(message="what_if works while paused: send pause first")]
-        tried = np.asarray(command.observation, dtype=np.float64)
-        if not np.all(np.isfinite(tried)):
-            return [ErrorMessage(message="what_if observation must hold finite numbers")]
         car = self.selected
-        network = policy.network_of(car)
         real = self._observe()[car]
-        base = policy.trace_of(self._observe(), car)
+        tried = real.copy()
+        for k, value in command.overrides.items():
+            if not 0 <= k < len(real):
+                return [
+                    ErrorMessage(message=f"what_if input {k} does not exist (0 to {len(real) - 1})")
+                ]
+            if not np.isfinite(value):
+                return [ErrorMessage(message="what_if values must be finite numbers")]
+            tried[k] = value  # the other inputs keep their exact values
+        network = policy.network_of(car)
+        base = forward(
+            network, real
+        )  # same function as the what-if, so equal inputs give equal bits
         slopes = sensitivity(network, real)
         predicted = base.output + slopes @ (tried - real)  # the straight-line guess
         trace = forward(network, tried)  # the car's own network on the tried observation
@@ -406,8 +417,36 @@ class LiveSession:
                 explain=_explanation(network, trace, tried),
                 base_outputs=np.round(base.output, 4).tolist(),
                 predicted_outputs=np.round(predicted, 4).tolist(),
+                ghost=self._ghost(car, base.output, trace.output),
             )
         ]
+
+    def _ghost(self, car: int, real_action: np.ndarray, what_if_action: np.ndarray) -> GhostPaths:
+        """Roll the selected car forward twice with the car physics, once per held action.
+
+        Two copies of the car start at its pose now; copy 0 holds the real action and copy 1 the
+        what-if action (each clipped to [-1, 1], as the world does) for GHOST_SECONDS. Only the car
+        moves: no track, crash or progress rules apply, so a path can cross the road edge.
+        """
+        world = self._world
+        assert world is not None
+        cars = world.cars
+        actions = np.clip(np.stack([real_action, what_if_action]), -1.0, 1.0)
+        state = CarState.from_pose(cars.x[car], cars.y[car], cars.psi[car], [cars.v[car]] * 2)
+        points = [np.column_stack([state.x, state.y])]
+        for _ in range(round(GHOST_SECONDS / world.dt)):
+            state = step_cars(state, actions[:, 0], actions[:, 1], world.params, world.dt)
+            points.append(np.column_stack([state.x, state.y]))
+        path = np.round(np.stack(points), 3)  # (steps + 1, 2 copies, 2)
+        return GhostPaths(
+            seconds=GHOST_SECONDS,
+            real_action=np.round(actions[0], 4).tolist(),
+            what_if_action=np.round(actions[1], 4).tolist(),
+            real=path[:, 0].tolist(),
+            what_if=path[:, 1].tolist(),
+            real_end=[*path[-1, 0].tolist(), round(float(state.psi[0]), 4)],
+            what_if_end=[*path[-1, 1].tolist(), round(float(state.psi[1]), 4)],
+        )
 
     def _neuron_readout(self, observation: np.ndarray) -> NeuronReadout | None:
         """The neuron driver's numbers for one car (None for the other drivers)."""

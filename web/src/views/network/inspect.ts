@@ -2,7 +2,13 @@
 // label and format numbers the server computed (contributions, sensitivities, what-if answers);
 // no network maths happens here (ADR-012).
 
-import type { Explanation, OutputReceipt } from "../../api/generated";
+import type {
+  ExplanationMessage,
+  Explanation,
+  FrameMessage,
+  GhostPaths,
+  OutputReceipt,
+} from "../../api/generated";
 import { describeSteer } from "./curve";
 import { describeThrottle, INPUT_LABELS, num, OUTPUT_LABELS } from "./networkLayout";
 
@@ -74,12 +80,26 @@ export function rayWidth(s: number, strongest: number): number {
   return 1.5 + 5.5 * Math.min(1, Math.abs(s) / Math.max(strongest, 1e-6));
 }
 
-/** The observation with what-if overrides applied (index -> value); the rest unchanged. */
-export function applyOverrides(observation: number[], overrides: Record<number, number>): number[] {
-  return observation.map((v, k) => (k in overrides ? overrides[k] : v));
-}
-
 /** The range a what-if slider may take: rays and speed 0..1, heading error −1..1. */
 export function sliderRange(k: number): { min: number; max: number } {
   return k === 6 ? { min: -1, max: 1 } : { min: 0, max: 1 };
+}
+
+/**
+ * The what-if ghost to draw, or null: only while some input is overridden and the server's answer
+ * is about the car and the step on screen (an answer for another moment is never shown).
+ */
+export function activeGhost(
+  live: { whatIfResult: ExplanationMessage | null; frame: FrameMessage | null },
+  overrides: Record<number, number>,
+): GhostPaths | null {
+  const { whatIfResult: result, frame } = live;
+  if (result === null || frame === null || Object.keys(overrides).length === 0) return null;
+  if (result.step !== frame.step || result.car !== frame.selected?.index) return null;
+  return result.ghost;
+}
+
+/** Distance in metres between where the two held-action paths end (display only). */
+export function ghostGap(ghost: GhostPaths): number {
+  return Math.hypot(ghost.what_if_end[0] - ghost.real_end[0], ghost.what_if_end[1] - ghost.real_end[1]);
 }

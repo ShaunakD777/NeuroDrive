@@ -322,7 +322,7 @@ Exam spec version, list of tracks, per-episode metrics (track, start index, prog
 crashed, lap times, mean speed, smoothness, time to crash), and aggregates per track and overall
 (median, IQR, completion rate). See `EXPERIMENT_PROTOCOL.md`.
 
-## 7. Server API (api v1.6, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025)
+## 7. Server API (api v1.7, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026)
 
 REST (`/api/...`):
 - `GET health` → `{status: "ok", version}` (`version` is the NeuroDrive package version)
@@ -344,7 +344,7 @@ REST (`/api/...`):
 
 WebSocket `/ws/live` (one independent session per connection):
 - `hello` is sent first, on connect: `{type: "hello", version, api}` (`api` is the message-contract
-  version, currently `"v1.6"`).
+  version, currently `"v1.7"`).
 - client → server (each has a `type` field):
   - `load_scenario {track, policy, n_cars, seed}`: `policy` is `"keyboard"`, `"constant"`,
     `"neuron"` or `"random_networks"` (every car is driven by its own random [7,16,16,2] network;
@@ -355,9 +355,11 @@ WebSocket `/ws/live` (one independent session per connection):
     step 0 with the same scenario and seed; stays paused or playing as before),
     `set_speed {speed}` (0.1 to 8, default 1), `select_car {index}` (default 0),
     `key_state {steer, throttle}` (each −1..1; used by the keyboard policy, ignored otherwise).
-  - `what_if {observation}` (random-networks driver only, paused only; ADR-025): the full
-    7-number observation to try for the selected car. Answered with `explanation`; the
-    simulation does not change. Refused with an `error` while playing.
+  - `what_if {overrides}` (random-networks driver only, paused only; ADR-025, ADR-026):
+    `overrides` maps an input index (0 to 6) to the value to try; the other inputs keep the
+    selected car's exact current values (`{}` asks about the car exactly as it is). Answered with
+    `explanation`; the simulation does not change. Refused with an `error` while playing, or for
+    an index outside 0 to 6 or a non-finite value.
   - `set_param {name, value}` (neuron driver only): `name` is `w_left`, `w_right`, `bias`,
     `throttle` (numbers; weights and bias within ±30, throttle within ±1) or `activation` (`tanh`,
     `sigmoid`, `relu` or `linear`). Answered with a frame. The neuron is
@@ -397,10 +399,14 @@ WebSocket `/ws/live` (one independent session per connection):
     value}` (output m's contributions from the last hidden layer, which add up with the bias to z)
     and `sensitivity[m][k]` = the central-difference slope of output m with respect to input k.
     Computed by `explain/` (task 2.9); rounded to 4 decimals.
-  - `explanation {car, step, observation, trace, explain, base_outputs, predicted_outputs}`:
-    the answer to `what_if`: the car's network on the tried observation (trace and explanation),
-    its real outputs now, and the straight-line prediction base + Σ_k sensitivity[m][k] · (tried_k −
-    real_k) from the real observation's sensitivity.
+  - `explanation {car, step, observation, trace, explain, base_outputs, predicted_outputs,
+    ghost}`: the answer to `what_if`: the car's network on the tried observation (trace and
+    explanation), its real outputs now, and the straight-line prediction base + Σ_k
+    sensitivity[m][k] · (tried_k − real_k) from the real observation's sensitivity. `ghost`
+    `{seconds, real_action, what_if_action, real, what_if, real_end, what_if_end}` (ADR-026): the
+    car physics run for 2 s from the car's pose, once holding the real action and once the
+    what-if action; `real` and `what_if` are [x, y] points (one per physics step), the `_end`
+    entries [x, y, heading]. The Environment view draws the paths and a see-through ghost car.
   - `episode_end {step, time, status, progress, laps}`: sent once when every car has stopped; the
     session then pauses. `status` holds a name per car (`crashed`, `finished`, `stalled`,
     `timeout`).
@@ -452,7 +458,7 @@ ray k; the neuron driver's selected neuron gives its two rays.
 | Click a car | Highlight it, show its rays | Show its network with live activations | Mark its run/checkpoint |
 | Click an input neuron or a weight leaving it (2.8) | Emphasise that ray (the others fade) | Outline it; readout shows its live values | — |
 | Click an output neuron | Colour rays by sensitivity; colour trail by that output | Contribution bars; highlight strongest paths to inputs | Show the output's response curve across checkpoints |
-| Pause and drag a what-if slider | Ghost car shows the alternative action | Recompute activations (server `explain/forward`) | — |
+| Pause and drag a what-if slider | Ghost car shows the alternative action (built: 2 s of held action, ADR-026) | Recompute activations (server `what_if`, ADR-025) | — |
 | Click a point on the trail | Jump to that step | Show the trace at that step | — |
 | Select a run and scrub the timeline | Replay that checkpoint's exam drive | Weights at that checkpoint, changes highlighted | Cursor on all charts |
 

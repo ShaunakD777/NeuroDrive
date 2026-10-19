@@ -351,7 +351,7 @@ def test_rest_track_endpoints():
 def test_websocket_session_end_to_end():
     client = TestClient(create_app())
     with client.websocket_connect("/ws/live") as ws:
-        assert json.loads(ws.receive_text())["api"] == API_VERSION == "v1.6"
+        assert json.loads(ws.receive_text())["api"] == API_VERSION == "v1.7"
         ws.send_text(json.dumps({"type": "load_scenario", "track": TRACK, "policy": "constant"}))
         assert json.loads(ws.receive_text())["type"] == "scenario"
         assert json.loads(ws.receive_text())["step"] == 0
@@ -795,24 +795,32 @@ def test_other_drivers_get_no_explanation():
         assert frame.selected.explain is None
 
 
-def test_what_if_at_the_real_observation_equals_the_real_output():
+def test_what_if_with_no_overrides_is_exactly_the_real_output():
     session = explained_session()
     (frame,) = send(session, type="pause")
-    (answer,) = send(session, type="what_if", observation=frame.selected.observation)
+    (answer,) = send(session, type="what_if", overrides={})
     assert isinstance(answer, ExplanationMessage)
     assert answer.car == 4 and answer.step == frame.step
-    assert answer.trace.activations[-1] == pytest.approx(answer.base_outputs, abs=2e-4)
-    assert answer.predicted_outputs == pytest.approx(answer.base_outputs, abs=2e-4)
+    assert answer.observation == frame.selected.observation
+    assert answer.trace.activations[-1] == answer.base_outputs  # bit-identical, then rounded
+    assert answer.predicted_outputs == answer.base_outputs
     assert answer.base_outputs == pytest.approx(frame.selected.trace.activations[-1], abs=1e-4)
+
+
+def test_what_if_changes_only_the_overridden_inputs():
+    session = explained_session()
+    (frame,) = send(session, type="pause")
+    (answer,) = send(session, type="what_if", overrides={"2": 0.75, "6": -0.5})
+    expected = list(frame.selected.observation)
+    expected[2], expected[6] = 0.75, -0.5
+    assert answer.observation == expected
 
 
 def test_what_if_on_the_left_ray_moves_steer_as_the_sensitivity_predicts():
     session = explained_session()
     (frame,) = send(session, type="pause")
     s_left = frame.selected.explain.sensitivity[0][0]  # steer with respect to the far-left ray
-    tried = list(frame.selected.observation)
-    tried[0] += 0.1
-    (answer,) = send(session, type="what_if", observation=tried)
+    (answer,) = send(session, type="what_if", overrides={0: frame.selected.observation[0] + 0.1})
     change = answer.trace.activations[-1][0] - answer.base_outputs[0]
     assert answer.predicted_outputs[0] - answer.base_outputs[0] == pytest.approx(
         0.1 * s_left, abs=2e-4
@@ -825,7 +833,7 @@ def test_what_if_on_the_left_ray_moves_steer_as_the_sensitivity_predicts():
 def test_what_if_changes_nothing_in_the_simulation():
     session = explained_session()
     (before,) = send(session, type="pause")
-    send(session, type="what_if", observation=[0.0] * 7)
+    send(session, type="what_if", overrides=dict.fromkeys(range(7), 0.0))
     (after,) = send(session, type="pause")
     assert after.step == before.step and after.cars == before.cars
     assert after.selected.trace == before.selected.trace
@@ -834,18 +842,79 @@ def test_what_if_changes_nothing_in_the_simulation():
 def test_what_if_is_refused_while_playing_and_for_other_drivers():
     session = explained_session()
     send(session, type="play")
-    (error,) = send(session, type="what_if", observation=[0.5] * 7)
+    (error,) = send(session, type="what_if", overrides={0: 0.5})
     assert isinstance(error, ErrorMessage) and "pause" in error.message
     neuron = loaded("neuron")
-    (error,) = send(neuron, type="what_if", observation=[0.5] * 7)
+    (error,) = send(neuron, type="what_if", overrides={0: 0.5})
     assert isinstance(error, ErrorMessage) and "network driver" in error.message
 
 
-def test_what_if_needs_seven_finite_numbers():
+def test_what_if_needs_existing_inputs_and_finite_values():
     session = explained_session()
-    (error,) = send(session, type="what_if", observation=[0.5] * 6)
+    (error,) = send(session, type="what_if", overrides={7: 0.5})
+    assert isinstance(error, ErrorMessage) and "input 7" in error.message
+    (error,) = send(session, type="what_if", overrides={-1: 0.5})
     assert isinstance(error, ErrorMessage)
-    bad = session.handle_text(
-        '{"type": "what_if", "observation": [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, NaN]}'
-    )
+    bad = session.handle_text('{"type": "what_if", "overrides": {"3": NaN}}')
     assert isinstance(bad[0], ErrorMessage)
+    (old_form,) = send(session, type="what_if", observation=[0.5] * 7)  # the v1.6 field is gone
+    assert isinstance(old_form, ErrorMessage)
+
+
+# ── the what-if ghost car (api v1.7) ─────────────────────────────────────────────────────────
+
+
+def ghost_for(session: LiveSession, change: dict[int, float]):
+    (frame,) = send(session, type="pause")
+    (answer,) = send(session, type="what_if", overrides=change)
+    return frame, answer.ghost, answer
+
+
+def test_ghost_paths_start_at_the_car_and_last_two_seconds():
+    session = explained_session()
+    frame, ghost, _ = ghost_for(session, {0: 0.9})
+    i = frame.selected.index
+    start = [frame.cars.x[i], frame.cars.y[i]]
+    assert ghost.seconds == 2.0
+    assert len(ghost.real) == len(ghost.what_if) == 61  # now + 60 steps of 1/30 s
+    assert ghost.real[0] == pytest.approx(start, abs=1e-3)
+    assert ghost.what_if[0] == pytest.approx(start, abs=1e-3)
+    assert ghost.real_end[:2] == ghost.real[-1] and ghost.what_if_end[:2] == ghost.what_if[-1]
+
+
+def test_ghost_actions_are_the_networks_answers_clipped():
+    session = explained_session()
+    _, ghost, answer = ghost_for(session, {0: 0.9, 6: 0.5})
+    assert ghost.real_action == pytest.approx(answer.base_outputs, abs=1e-4)
+    assert ghost.what_if_action == pytest.approx(answer.trace.activations[-1], abs=1e-4)
+    assert all(-1.0 <= a <= 1.0 for a in ghost.real_action + ghost.what_if_action)
+
+
+def test_ghost_paths_follow_the_car_physics():
+    from neurodrive.env.car import CarState, step_cars
+
+    session = explained_session()
+    frame, ghost, _ = ghost_for(session, {6: -0.8})
+    i = frame.selected.index
+    cars = session._world.cars
+    state = CarState.from_pose(cars.x[i], cars.y[i], cars.psi[i], cars.v[i])
+    steer, throttle = ghost.what_if_action
+    for _ in range(60):
+        state = step_cars(state, steer, throttle)
+    assert ghost.what_if[-1] == pytest.approx([state.x[0], state.y[0]], abs=2e-3)
+
+
+def test_unchanged_inputs_give_the_same_two_paths_and_a_change_moves_the_ghost():
+    session = explained_session()
+    frame, same, _ = ghost_for(session, {})
+    assert same.what_if == same.real
+    _, moved, _ = ghost_for(session, {6: 0.9})  # heading error far to one side
+    assert moved.what_if[-1] != moved.real[-1]
+    assert moved.real == same.real  # the real path does not depend on the question
+
+
+def test_ghost_never_moves_the_real_car():
+    session = explained_session()
+    before, _, _ = ghost_for(session, {0: 1.0, 4: 0.0})
+    (after,) = send(session, type="pause")
+    assert after.cars == before.cars and after.step == before.step
