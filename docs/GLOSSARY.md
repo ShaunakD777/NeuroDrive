@@ -22,6 +22,9 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Network spec | The shape of a network (layer sizes, activation names, version) with none of its numbers. |
 | Flatten / unflatten | Laying all of a network's parameters out as one list (weights row by row, then biases, layer by layer), and the exact reverse. |
 | Initialisation | How the parameters are set before learning starts. |
+| Symmetry (of neurons) | Neurons in a layer that start with identical weights compute identical things, and learning treats them alike, so they stay identical. Random initialisation breaks it. |
+| Xavier (Glorot) initialisation | Weights drawn evenly from [-a, a] with a = sqrt(6 / (n_in + n_out)), so the variance is 2 / (n_in + n_out) and the signal keeps a steady size from layer to layer. |
+| Saturation | A tanh or sigmoid neuron whose weighted sum is so large that the output sits at its limit (-1 or +1) and barely reacts to its input. |
 | Observation | The numbers the car's network receives each step (rays, speed, heading error). |
 | Action | The numbers the network outputs (steer, throttle). |
 | Policy | Any rule that turns observations into actions. A network is one kind of policy. |

@@ -436,3 +436,18 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
 - Surprise or difficulty: a matrix-vector product per car is written as a matrix times a column
   of height n_in, then the spare dimension is dropped.
 - Open question: how fast is this for hundreds of cars (Phase 7 performance check)?
+
+### 2026-10-19 — Task 2.4 Initialisation
+- Concept: weights start random so that neurons differ (symmetry breaking), and the scale of the
+  start matters: Xavier picks it from the layer sizes.
+- Key equation(s) in words: Xavier draws each weight evenly from minus a to plus a, where a is
+  the square root of 6 divided by (inputs plus neurons). The variance is then 2 divided by
+  (inputs plus neurons). For a 16 to 16 layer: a = 0.4330, variance 0.0625.
+- What we observed: the demo shows zero weights give outputs (0, 0) for every input, and equal
+  weights of 0.1 give 16 identical hidden neurons (spread 0.0000) with steer equal to throttle;
+  Xavier weights give spread 0.36 and 0.28 and different outputs. 200 random default networks
+  almost never hit the +-1 walls.
+- Surprise or difficulty: equal non-zero weights are as bad as zeros for symmetry, but harder to
+  notice, because the network does react to its input.
+- Open question: Phase 3 should show that the gradients stay identical too, so learning cannot
+  separate symmetric neurons.
