@@ -8,7 +8,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
-API_VERSION = "v1.4"
+API_VERSION = "v1.5"
 
 
 class WireModel(BaseModel):
@@ -226,13 +226,45 @@ class NeuronReadout(WireModel):
     throttle: float
 
 
+class NetworkMessage(WireModel):
+    """The weights of one car's network, sent when a scenario loads and when a car is selected.
+
+    ``car`` is the car the network belongs to. ``layer_sizes`` are the sizes of every layer from
+    the inputs to the outputs, e.g. [7, 16, 16, 2]; ``activations[l]`` is the activation name of
+    weight layer ``l``. ``weights[l]`` is the matrix W_l as ``n_out`` rows of ``n_in`` numbers (row
+    j holds the weights of neuron j of the next layer) and ``biases[l]`` is b_l. Numbers are
+    rounded to 4 decimals. They do not change while driving, so they are sent once, not per frame.
+    """
+
+    type: Literal["network"] = "network"
+    car: int
+    layer_sizes: list[int]
+    activations: list[Literal["tanh", "sigmoid", "relu", "linear"]]
+    weights: list[list[list[float]]]
+    biases: list[list[float]]
+
+
+class NetworkTrace(WireModel):
+    """Every value of one forward pass of the selected car's network, for the current state.
+
+    ``activations[0]`` is the observation (the inputs), ``activations[l]`` is a_l, the outputs of
+    weight layer ``l``, so the last entry is the action. ``weighted_sums[l - 1]`` is z_l, the
+    sums before the activation. Rounded to 4 decimals; all computed by Python.
+    """
+
+    activations: list[list[float]]
+    weighted_sums: list[list[float]]
+
+
 class SelectedCar(WireModel):
-    """Extra detail for the selected car: rays in metres, the observation and the neuron readout."""
+    """Extra detail for the selected car: rays in metres, the observation, the neuron readout
+    (neuron driver) or the network trace (random networks); the other is null."""
 
     index: int
     rays: list[float]
     observation: list[float]
     neuron: NeuronReadout | None
+    trace: NetworkTrace | None = None
 
 
 class ActivationCurves(WireModel):
@@ -298,6 +330,8 @@ WIRE_MODELS: tuple[type[WireModel], ...] = (
     ScenarioMessage,
     CarColumns,
     NeuronReadout,
+    NetworkMessage,
+    NetworkTrace,
     SelectedCar,
     ActivationCurves,
     FrameMessage,

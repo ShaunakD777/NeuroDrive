@@ -780,3 +780,107 @@ body {
   font: inherit;
   cursor: pointer;
 }
+
+/* ── Network diagram (multilayer networks) ───────────────────── */
+
+.network-view {
+  overflow: auto;
+}
+
+.net-intro {
+  margin-bottom: 8px !important;
+  font-size: 0.88rem;
+}
+
+.net-svg {
+  width: 100%;
+  max-width: 980px;
+  height: auto;
+  display: block;
+}
+
+.net-compact .net-svg {
+  max-width: 100%;
+}
+
+.net-edge {
+  fill: none;
+  stroke-linecap: round;
+}
+
+.net-edge-pos {
+  stroke: var(--accent);
+}
+
+.net-edge-neg {
+  stroke: var(--warn);
+}
+
+.net-edges .net-edge:hover {
+  stroke-opacity: 1;
+}
+
+.net-dim {
+  opacity: 0.08;
+}
+
+.net-node-ring {
+  fill: var(--surface);
+  stroke: var(--text-muted);
+  stroke-width: 1.5;
+}
+
+.net-fill-pos {
+  fill: var(--accent);
+  stroke: none;
+}
+
+.net-fill-neg {
+  fill: var(--warn);
+  stroke: none;
+}
+
+.net-node {
+  cursor: default;
+}
+
+.net-node:hover .net-node-ring {
+  stroke: var(--text);
+  stroke-width: 2.5;
+}
+
+.net-caption {
+  fill: var(--text-muted);
+  font-size: 13px;
+}
+
+.net-label {
+  fill: var(--text);
+  font-size: 13px;
+}
+
+.net-value {
+  fill: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.net-readout {
+  min-height: 1.4em;
+  margin: 6px 0 4px !important;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.net-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.net-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}

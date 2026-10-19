@@ -224,3 +224,57 @@ def test_random_brains_are_poor_drivers_stalling_or_crashing_never_finishing(loo
     assert status.count(Status.STALLED) >= 5 and status.count(Status.CRASHED) >= 3
     assert all(s in (Status.STALLED, Status.CRASHED) for s in status)
     assert world.progress.max() < loop.length / 2
+
+
+# ── trace_of and network_of: the current state, without touching last_trace ─────────────────
+
+
+def test_trace_of_is_that_cars_forward_pass_on_the_given_observations():
+    pop = population(5, seed=20)
+    obs = random_obs(5, seed=21)
+    policy = PopulationPolicy(pop)
+    for car in (0, 2, 4):
+        mine, alone = policy.trace_of(obs, car), forward(pop.network(car), obs[car])
+        mine_all = mine.activations + mine.weighted_sums
+        alone_all = alone.activations + alone.weighted_sums
+        for a, b in zip(mine_all, alone_all, strict=True):
+            np.testing.assert_array_equal(a, b)
+
+
+def test_trace_of_does_not_change_last_trace_and_works_before_any_act():
+    policy = PopulationPolicy(population(3, seed=22))
+    policy.trace_of(random_obs(3), 1)
+    assert policy.last_trace is None
+    policy.act(random_obs(3, seed=1))
+    kept = policy.last_trace
+    policy.trace_of(random_obs(3, seed=2), 0)
+    assert policy.last_trace is kept
+
+
+def test_mlp_trace_of_uses_the_shared_network():
+    net = init_network(SPEC, make_rng(23))
+    obs = random_obs(4, seed=24)
+    policy = MLPPolicy(net)
+    np.testing.assert_array_equal(policy.trace_of(obs, 3).output, forward(net, obs[3]).output)
+
+
+def test_network_of_gives_each_cars_own_network():
+    pop = population(4, seed=25)
+    policy = PopulationPolicy(pop)
+    for car in range(4):
+        assert policy.network_of(car).equals(pop.network(car))
+    shared = init_network(SPEC, make_rng(26))
+    assert MLPPolicy(shared).network_of(2) is shared
+
+
+def test_trace_of_and_network_of_check_the_car_index():
+    pop_policy, mlp = PopulationPolicy(population(3, 0)), MLPPolicy(Network.zeros(SPEC))
+    for bad in (3, -1):
+        with pytest.raises(IndexError):
+            pop_policy.trace_of(random_obs(3), bad)
+        with pytest.raises(IndexError):
+            mlp.trace_of(random_obs(3), bad)
+    with pytest.raises(IndexError):
+        pop_policy.network_of(3)
+    with pytest.raises(IndexError):
+        mlp.network_of(-1)

@@ -80,13 +80,15 @@ export interface CarColumns {
   y: number[];
 }
 /**
- * Extra detail for the selected car: rays in metres, the observation and the neuron readout.
+ * Extra detail for the selected car: rays in metres, the observation, the neuron readout
+ * (neuron driver) or the network trace (random networks); the other is null.
  */
 export interface SelectedCar {
   index: number;
   neuron: NeuronReadout | null;
   observation: number[];
   rays: number[];
+  trace: NetworkTrace | null;
 }
 /**
  * What the selected car's neuron saw and computed (neuron policy only).
@@ -105,6 +107,17 @@ export interface NeuronReadout {
   throttle: number;
   weights: number[];
   z: number;
+}
+/**
+ * Every value of one forward pass of the selected car's network, for the current state.
+ *
+ * ``activations[0]`` is the observation (the inputs), ``activations[l]`` is a_l, the outputs of
+ * weight layer ``l``, so the last entry is the action. ``weighted_sums[l - 1]`` is z_l, the
+ * sums before the activation. Rounded to 4 decimals; all computed by Python.
+ */
+export interface NetworkTrace {
+  activations: number[][];
+  weighted_sums: number[][];
 }
 
 /**
@@ -151,6 +164,36 @@ export interface LoadScenario {
   seed: number | null;
   track: string;
   type: "load_scenario";
+}
+
+/**
+ * The weights of one car's network, sent when a scenario loads and when a car is selected.
+ *
+ * ``car`` is the car the network belongs to. ``layer_sizes`` are the sizes of every layer from
+ * the inputs to the outputs, e.g. [7, 16, 16, 2]; ``activations[l]`` is the activation name of
+ * weight layer ``l``. ``weights[l]`` is the matrix W_l as ``n_out`` rows of ``n_in`` numbers (row
+ * j holds the weights of neuron j of the next layer) and ``biases[l]`` is b_l. Numbers are
+ * rounded to 4 decimals. They do not change while driving, so they are sent once, not per frame.
+ */
+export interface NetworkMessage {
+  activations: ("tanh" | "sigmoid" | "relu" | "linear")[];
+  biases: number[][];
+  car: number;
+  layer_sizes: number[];
+  type: "network";
+  weights: number[][][];
+}
+
+/**
+ * Every value of one forward pass of the selected car's network, for the current state.
+ *
+ * ``activations[0]`` is the observation (the inputs), ``activations[l]`` is a_l, the outputs of
+ * weight layer ``l``, so the last entry is the action. ``weighted_sums[l - 1]`` is z_l, the
+ * sums before the activation. Rounded to 4 decimals; all computed by Python.
+ */
+export interface NetworkTrace {
+  activations: number[][];
+  weighted_sums: number[][];
 }
 
 /**
@@ -225,13 +268,15 @@ export interface SelectCar {
 }
 
 /**
- * Extra detail for the selected car: rays in metres, the observation and the neuron readout.
+ * Extra detail for the selected car: rays in metres, the observation, the neuron readout
+ * (neuron driver) or the network trace (random networks); the other is null.
  */
 export interface SelectedCar {
   index: number;
   neuron: NeuronReadout | null;
   observation: number[];
   rays: number[];
+  trace: NetworkTrace | null;
 }
 /**
  * What the selected car's neuron saw and computed (neuron policy only).
@@ -250,6 +295,17 @@ export interface NeuronReadout {
   throttle: number;
   weights: number[];
   z: number;
+}
+/**
+ * Every value of one forward pass of the selected car's network, for the current state.
+ *
+ * ``activations[0]`` is the observation (the inputs), ``activations[l]`` is a_l, the outputs of
+ * weight layer ``l``, so the last entry is the action. ``weighted_sums[l - 1]`` is z_l, the
+ * sums before the activation. Rounded to 4 decimals; all computed by Python.
+ */
+export interface NetworkTrace {
+  activations: number[][];
+  weighted_sums: number[][];
 }
 
 /**

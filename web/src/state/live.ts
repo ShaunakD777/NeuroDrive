@@ -7,6 +7,7 @@ import type {
   FrameMessage,
   KeyState,
   LoadScenario,
+  NetworkMessage,
   NeuronReadout,
   Pause,
   Play,
@@ -38,7 +39,12 @@ export type Command =
   | SetParam;
 
 /** The messages the server sends that the store keeps (hello only confirms the connection). */
-export type ServerMessage = ScenarioMessage | FrameMessage | EpisodeEndMessage | ErrorMessage;
+export type ServerMessage =
+  | ScenarioMessage
+  | NetworkMessage
+  | FrameMessage
+  | EpisodeEndMessage
+  | ErrorMessage;
 
 export interface DriveInput {
   steer: number;
@@ -85,6 +91,11 @@ export interface LiveState {
   /** The activation functions sampled by the server, for drawing curves (null until fetched). */
   activations: ActivationCurves | null;
   frame: FrameMessage | null;
+  /**
+   * The weights of the selected car's network (random-networks driver only). The server sends
+   * them once per load and per car selection, not in every frame; `network.car` says whose they are.
+   */
+  network: NetworkMessage | null;
   episodeEnd: EpisodeEndMessage | null;
   /** The last error the server reported, or null. */
   error: string | null;
@@ -135,6 +146,7 @@ export const initialLive: LiveState = {
   geometry: null,
   activations: null,
   frame: null,
+  network: null,
   episodeEnd: null,
   error: null,
   keys: NO_KEYS,
@@ -156,7 +168,13 @@ export function settingsOf(readout: NeuronReadout): NeuronSettings {
 function isServerMessage(value: unknown): value is ServerMessage {
   if (typeof value !== "object" || value === null) return false;
   const type = (value as { type?: unknown }).type;
-  return type === "scenario" || type === "frame" || type === "episode_end" || type === "error";
+  return (
+    type === "scenario" ||
+    type === "network" ||
+    type === "frame" ||
+    type === "episode_end" ||
+    type === "error"
+  );
 }
 
 export const useLive = create<LiveState & LiveActions>()((set, get) => ({
@@ -204,7 +222,17 @@ export const useLive = create<LiveState & LiveActions>()((set, get) => ({
       case "scenario":
         // A new scenario: forget the old frame and ending. The server starts a new keyboard
         // driver with no keys held, so the keys we last sent no longer apply either.
-        set({ scenario: message, frame: null, episodeEnd: null, error: null, keys: NO_KEYS });
+        set({
+          scenario: message,
+          frame: null,
+          network: null,
+          episodeEnd: null,
+          error: null,
+          keys: NO_KEYS,
+        });
+        break;
+      case "network":
+        set({ network: message });
         break;
       case "frame": {
         // A frame at step 0 means a fresh start (after load or reset): any old ending is stale.

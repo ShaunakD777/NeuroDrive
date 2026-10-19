@@ -485,3 +485,21 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
 - Also done: the observation code duplicated in the episode runner and the live session is now one
   function (`observe`), and the runner no longer casts the rays twice per step; the action contract
   has named constants like the observation.
+
+### 2026-10-19 — Task 2.7 Network view v1
+- Concept: reading a network diagram. Each column is a layer, each line one entry of a weight
+  matrix, each circle one value of the forward trace. Line colour is the weight's sign, thickness
+  its size; a circle's fill is the neuron's activation right now.
+- Key equation(s) in words: nothing new; the picture shows z (weights times the previous layer's
+  values plus the bias) and a (the activation of z) from task 2.2. In the browser, hovering the
+  steer output of car 5 read z = 0.5383 and tanh(z) = 0.4917, and tanh(0.5383) is 0.4917.
+- What we observed: with 400 lines the diagram stays readable because weak weights are drawn faint
+  and strong ones thick and on top; hovering one neuron dims everything unrelated, so its incoming
+  and outgoing connections stand out. The input circles equal the rays divided by 50, and the
+  numbers change as the car moves.
+- Surprise or difficulty: the trace kept by the last `act` call belongs to the step before the
+  frame being drawn (the world moves after the policy decides), so a frame needs a trace computed
+  for its own observation, otherwise the input circles lag one step behind the rays. A test
+  that compares them for exact equality caught the lag when I planted it.
+- Open question: with 16 neurons per layer it is hard to say what any one hidden neuron means;
+  will the contribution view (task 2.9) make a decision easier to read than the diagram alone?

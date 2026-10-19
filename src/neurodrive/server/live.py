@@ -28,6 +28,7 @@ from neurodrive.core.rng import child_rng, make_rng
 from neurodrive.env.policies import (
     ConstantPolicy,
     KeyboardPolicy,
+    MLPPolicy,
     NeuronPolicy,
     Policy,
     PopulationPolicy,
@@ -43,6 +44,8 @@ from neurodrive.server.schemas import (
     FrameMessage,
     KeyState,
     LoadScenario,
+    NetworkMessage,
+    NetworkTrace,
     NeuronReadout,
     Pause,
     Play,
@@ -173,7 +176,7 @@ class LiveSession:
             if command.index >= self._world.n:
                 return [ErrorMessage(message=f"no car {command.index}: there are {self._world.n}")]
             self.selected = command.index
-            return [self._frame()]
+            return [*self._network_messages(), self._frame()]
         if isinstance(command, SetParam):
             if self._neuron is None:
                 return [ErrorMessage(message="set_param needs the neuron driver (policy 'neuron')")]
@@ -263,7 +266,7 @@ class LiveSession:
             ray_angles=[round(float(a), 6) for a in RAY_ANGLES],
             ray_range=RAY_RANGE,
         )
-        return [scenario, self._frame()]
+        return [scenario, *self._network_messages(), self._frame()]
 
     def _reset_world(self) -> None:
         assert self._world is not None and self._scenario is not None
@@ -327,7 +330,36 @@ class LiveSession:
                 rays=np.round(obs[i, :5] * RAY_RANGE, 3).tolist(),
                 observation=np.round(obs[i], 4).tolist(),
                 neuron=self._neuron_readout(obs[i]),
+                trace=self._network_trace(obs, i),
             ),
+        )
+
+    def _network_messages(self) -> list[WireModel]:
+        """The selected car's network as a ``network`` message (none for non-network drivers)."""
+        policy = self._policy
+        if not isinstance(policy, MLPPolicy | PopulationPolicy):
+            return []
+        net = policy.network_of(self.selected)
+        spec = net.spec
+        return [
+            NetworkMessage(
+                car=self.selected,
+                layer_sizes=list(spec.layer_sizes),
+                activations=[spec.activation_name(i) for i in range(spec.n_layers)],  # type: ignore[misc]
+                weights=[np.round(w, 4).tolist() for w in net.weights],
+                biases=[np.round(b, 4).tolist() for b in net.biases],
+            )
+        ]
+
+    def _network_trace(self, observations: np.ndarray, car: int) -> NetworkTrace | None:
+        """Every value of the selected car's forward pass on its current observation."""
+        policy = self._policy
+        if not isinstance(policy, MLPPolicy | PopulationPolicy):
+            return None
+        trace = policy.trace_of(observations, car)
+        return NetworkTrace(
+            activations=[np.round(a, 4).tolist() for a in trace.activations],
+            weighted_sums=[np.round(z, 4).tolist() for z in trace.weighted_sums],
         )
 
     def _neuron_readout(self, observation: np.ndarray) -> NeuronReadout | None:

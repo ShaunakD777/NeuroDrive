@@ -322,7 +322,7 @@ Exam spec version, list of tracks, per-episode metrics (track, start index, prog
 crashed, lap times, mean speed, smoothness, time to crash), and aggregates per track and overall
 (median, IQR, completion rate). See `EXPERIMENT_PROTOCOL.md`.
 
-## 7. Server API (api v1.4, ADR-016, ADR-018, ADR-019, ADR-023)
+## 7. Server API (api v1.5, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024)
 
 REST (`/api/...`):
 - `GET health` → `{status: "ok", version}` (`version` is the NeuroDrive package version)
@@ -342,7 +342,7 @@ REST (`/api/...`):
 
 WebSocket `/ws/live` (one independent session per connection):
 - `hello` is sent first, on connect: `{type: "hello", version, api}` (`api` is the message-contract
-  version, currently `"v1.4"`).
+  version, currently `"v1.5"`).
 - client → server (each has a `type` field):
   - `load_scenario {track, policy, n_cars, seed}`: `policy` is `"keyboard"`, `"constant"`,
     `"neuron"` or `"random_networks"` (every car is driven by its own random [7,16,16,2] network;
@@ -369,7 +369,8 @@ WebSocket `/ws/live` (one independent session per connection):
     2 finished, 3 stalled, 4 timeout), `action` (a [steer, throttle] pair per car; the last action
     applied, [0, 0] before the first step). `selected` is `{index, rays, observation}` for the
     selected car (rays in metres, five numbers; observation is the 7-number vector; `neuron` is the
-    neuron driver's readout, see below, or null) or null.
+    neuron driver's readout, see below, or null; `trace` is the network trace, see below, or
+    null) or null.
     Numbers are rounded: positions, speed and progress to 3 decimals, angles and the observation
     to 4.
   - `selected.neuron {inputs, input_rays, weights, bias, contributions, z, output, activation,
@@ -377,6 +378,15 @@ WebSocket `/ws/live` (one independent session per connection):
     the five rays they are (0 and 4), `contributions` the weight times input for each, `z` the
     weighted sum (their total plus the bias) and `output` the activation of `z`, all computed by
     Python.
+  - `network {car, layer_sizes, activations, weights, biases}` (random-networks driver only,
+    ADR-024): the weights of one car's network. `weights[l]` is the matrix W_l as n_out rows of
+    n_in numbers, `biases[l]` the vector b_l, `activations[l]` the activation name of layer `l`;
+    rounded to 4 decimals. Sent right after `scenario` and again after every `select_car`, because
+    the weights do not change while driving; `frame` messages do not repeat them.
+  - `selected.trace {activations, weighted_sums}` (random-networks driver only): every value of
+    the selected car's forward pass on its *current* observation. `activations[0]` is the
+    observation, `activations[l]` is a_l (the last one is the action), `weighted_sums[l - 1]` is
+    z_l; rounded to 4 decimals. The Network view draws it on top of the weights from `network`.
   - `episode_end {step, time, status, progress, laps}`: sent once when every car has stopped; the
     session then pauses. `status` holds a name per car (`crashed`, `finished`, `stalled`,
     `timeout`).

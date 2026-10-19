@@ -5,6 +5,7 @@ import math
 import shutil
 from pathlib import Path
 
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
@@ -15,6 +16,7 @@ from neurodrive.server.schemas import (
     EpisodeEndMessage,
     ErrorMessage,
     FrameMessage,
+    NetworkMessage,
     ScenarioMessage,
 )
 
@@ -348,7 +350,7 @@ def test_rest_track_endpoints():
 def test_websocket_session_end_to_end():
     client = TestClient(create_app())
     with client.websocket_connect("/ws/live") as ws:
-        assert json.loads(ws.receive_text())["api"] == API_VERSION == "v1.4"
+        assert json.loads(ws.receive_text())["api"] == API_VERSION == "v1.5"
         ws.send_text(json.dumps({"type": "load_scenario", "track": TRACK, "policy": "constant"}))
         assert json.loads(ws.receive_text())["type"] == "scenario"
         assert json.loads(ws.receive_text())["step"] == 0
@@ -591,9 +593,10 @@ def drive_steps(session: LiveSession, steps: int) -> FrameMessage:
 
 def test_random_networks_scenario_loads_20_cars_and_reports_the_policy():
     session = LiveSession(TrackLibrary(TRACKS))
-    scenario, frame = send(
+    scenario, network, frame = send(
         session, type="load_scenario", track=TRACK, policy="random_networks", n_cars=20, seed=7
     )
+    assert isinstance(network, NetworkMessage) and network.car == 0
     assert scenario.policy == "random_networks" and scenario.n_cars == 20 and scenario.seed == 7
     assert len(frame.cars.x) == 20 and frame.selected.neuron is None
     (error,) = send(session, type="set_param", name="bias", value=1.0)
@@ -641,8 +644,8 @@ def test_a_single_random_network_car_works():
 def test_selecting_another_car_shows_that_cars_rays():
     session = loaded("random_networks", n_cars=20, seed=4)
     drive_steps(session, 20)
-    first = send(session, type="select_car", index=0)[0].selected
-    other = send(session, type="select_car", index=7)[0].selected
+    first = send(session, type="select_car", index=0)[-1].selected
+    other = send(session, type="select_car", index=7)[-1].selected
     assert other.index == 7 and other.observation != first.observation
 
 
@@ -656,3 +659,91 @@ def test_the_seed_picks_the_networks_themselves():
     assert (brains(None) == brains(0)).all()  # seed None means seed 0
     assert brains(5).shape == (4, 434)
     assert len({tuple(row[:3]) for row in brains(5)}) == 4  # four different networks
+
+
+# ── the selected car's network: weights once, the trace in every frame (api v1.5) ───────────
+
+
+def network_of(session: LiveSession, car: int) -> NetworkMessage:
+    (message, _frame) = send(session, type="select_car", index=car)
+    assert isinstance(message, NetworkMessage)
+    return message
+
+
+def forward_from_message(network: NetworkMessage, observation: list[float]) -> list[float]:
+    """The network recomputed from the message's own numbers (what a client could check)."""
+    a = np.array(observation)
+    for w, b, name in zip(network.weights, network.biases, network.activations, strict=True):
+        z = np.array(w) @ a + np.array(b)
+        a = {"tanh": np.tanh, "linear": lambda v: v}[name](z)
+    return a.tolist()
+
+
+def test_network_message_comes_after_load_and_after_select_car():
+    session = LiveSession(TrackLibrary(TRACKS))
+    scenario, network, frame = send(
+        session, type="load_scenario", track=TRACK, policy="random_networks", n_cars=20, seed=3
+    )
+    assert isinstance(scenario, ScenarioMessage) and isinstance(frame, FrameMessage)
+    assert network.type == "network" and network.car == 0
+    assert network.layer_sizes == [7, 16, 16, 2] and network.activations == ["tanh"] * 3
+    assert [len(w) for w in network.weights] == [16, 16, 2]
+    assert [len(w[0]) for w in network.weights] == [7, 16, 16]
+    assert [len(b) for b in network.biases] == [16, 16, 2]
+    other = network_of(session, 5)
+    assert other.car == 5 and other.weights != network.weights  # a different brain
+
+
+def test_network_message_holds_that_cars_rounded_weights():
+    session = loaded("random_networks", n_cars=6, seed=1)
+    message = network_of(session, 4)
+    mine = session._policy.population.network(4)
+    np.testing.assert_allclose(message.weights[0], mine.weights[0], atol=5e-5)
+    np.testing.assert_allclose(message.biases[2], mine.biases[2], atol=5e-5)
+
+
+def test_the_frame_trace_has_every_layer_and_starts_with_the_observation():
+    session = loaded("random_networks", n_cars=20, seed=2)
+    frame = drive_steps(session, 15)
+    trace = frame.selected.trace
+    assert [len(a) for a in trace.activations] == [7, 16, 16, 2]
+    assert [len(z) for z in trace.weighted_sums] == [16, 16, 2]
+    assert trace.activations[0] == frame.selected.observation  # the input nodes are the rays etc.
+    assert all(-1.0 <= v <= 1.0 for a in trace.activations[1:] for v in a)  # tanh layers
+
+
+def test_the_trace_is_the_selected_cars_forward_pass_of_its_own_network():
+    session = loaded("random_networks", n_cars=20, seed=2)
+    for car in (0, 9, 19):
+        network = network_of(session, car)
+        frame = drive_steps(session, 5)
+        assert frame.selected.index == car
+        recomputed = forward_from_message(network, frame.selected.observation)
+        assert frame.selected.trace.activations[-1] == pytest.approx(recomputed, abs=2e-3)
+
+
+def test_the_trace_follows_the_current_step_and_the_selected_car():
+    session = loaded("random_networks", n_cars=20, seed=2)
+    early = drive_steps(session, 2).selected.trace.activations[0]
+    later = drive_steps(session, 10).selected.trace.activations[0]
+    assert early != later  # the inputs changed as the car moved
+    network_of(session, 6)
+    (frame,) = send(session, type="pause")
+    assert frame.selected.index == 6
+    assert frame.selected.trace.activations[0] == frame.selected.observation
+
+
+def test_other_drivers_send_no_network_and_no_trace():
+    for policy in ("keyboard", "constant", "neuron"):
+        session = LiveSession(TrackLibrary(TRACKS))
+        replies = send(session, type="load_scenario", track=TRACK, policy=policy, n_cars=3)
+        assert [type(m).__name__ for m in replies] == ["ScenarioMessage", "FrameMessage"]
+        assert replies[1].selected.trace is None
+        (frame,) = send(session, type="select_car", index=1)
+        assert isinstance(frame, FrameMessage) and frame.selected.trace is None
+
+
+def test_select_car_out_of_range_sends_only_an_error():
+    session = loaded("random_networks", n_cars=3, seed=1)
+    (reply,) = send(session, type="select_car", index=3)
+    assert isinstance(reply, ErrorMessage)
