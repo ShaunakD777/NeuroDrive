@@ -13,6 +13,8 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | ReLU | Activation that outputs 0 for negative inputs and the input itself otherwise. |
 | Layer | A group of neurons that all read the same inputs. |
 | Forward propagation | Computing the output by passing values layer by layer from inputs to outputs. |
+| Weighted sum (z) / activation (a) | z is a neuron's weights times its inputs plus its bias, before squashing; a is the output after the activation function. |
+| Forward trace | The record of every z and a in one forward pass, kept for display, explanation and backprop. |
 | Parameters | All weights and biases of a network. |
 | Weight matrix | One layer's weights as a table: one row per neuron, one column per input. Layer sizes 16 → 16 give a 16 × 16 matrix. |
 | Bias vector | One layer's biases as a list, one number per neuron. |

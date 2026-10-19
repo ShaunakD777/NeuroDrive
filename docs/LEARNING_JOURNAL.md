@@ -412,3 +412,14 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   file keeps checkpoint names exactly as chosen.
 - Open question: how big must the initial random weights be so the 2 outputs do not saturate
   (task 2.4)?
+
+### 2026-10-19 — Task 2.2 Forward pass with trace
+- Concept: forward propagation, layer by layer, keeping every intermediate value in a trace.
+- Key equation(s) in words: the weighted sums z are the weight matrix times the previous layer's
+  outputs plus the bias; the outputs a are the activation applied to z; a_0 is the observation.
+  For a batch the code computes A times W-transposed plus b, all rows at once.
+- What we observed: the hand 2-2-1 example gives z1 = [-1.5, 1.5], a1 = [-0.9051, 0.9051] and
+  output -0.8051; a batch of 20 matches one-at-a-time passes to 1e-9.
+- Surprise or difficulty: rows of a batch are stored as rows, so the matrix is transposed; the
+  maths in the docs is written for a single column vector.
+- Open question: does a batch give bit-identical results to single passes? Here only to 1e-9.

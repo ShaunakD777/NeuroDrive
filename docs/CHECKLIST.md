@@ -32,7 +32,7 @@ released, add its tag (e.g. `phase-1`) to the phase's header row.
 | 1.12 | Study S1b: neuron on Monza, both directions | ✅ | 2026-10-18 | Study S1b (`docs/studies/S1b.md`, `scripts/study_s1b.py`): per-track time limit 2 laps at 16 m/s (ADR-022; 363 s Monza, 92 s loop); no fixed throttle finishes on Monza either way (fastest safe 0.19 cw / 0.1825 ccw would need 392 s / 408 s); S1 baseline crashes in the first tight bend at 19 m/s vs a 12.5–15.7 m/s grip speed; sigmoid never steers left (best 215 m cw, 86 m ccw); `WallGrid` sensors bit-identical to the full search, 13× faster on Monza; pytest 234, Vitest 58, Playwright 26 |
 | **Phase 2** | **Multilayer network and Network view** | | | |
 | 2.1 | Network spec and parameters | ✅ | 2026-10-19 | `uv run pytest` 266 passed (32 new in tests/core/nn/test_network.py); [7,16,16,2] = 128 + 272 + 34 = 434 parameters; flatten → unflatten identical bit for bit; hand [2,2,1] flattens to 1…9; `.npz` save → load exact; ruff clean; no contract change |
-| 2.2 | Forward pass with trace | ☐ | | |
+| 2.2 | Forward pass with trace | ✅ | 2026-10-19 | `uv run pytest` 281 passed (15 new in tests/core/nn/test_forward.py, 47 in tests/core/nn); hand 2-2-1: z1 = [−1.5, 1.5], a1 = ±0.905148, output −0.805148 to 1e-9; batch of 20 = row-by-row to 1e-9 for 3 specs; ruff clean; no contract change |
 | 2.3 | Population forward pass | ☐ | | |
 | 2.4 | Initialisation | ☐ | | |
 | 2.5 | Freeze observation/action contract v1 | ☐ | | |
