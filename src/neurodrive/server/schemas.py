@@ -8,7 +8,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
-API_VERSION = "v1.5"
+API_VERSION = "v1.6"
 
 
 class WireModel(BaseModel):
@@ -157,8 +157,29 @@ class SetParam(CommandModel):
     value: float | str
 
 
+class WhatIf(CommandModel):
+    """Ask what the selected car's network would output for a changed observation (paused only).
+
+    ``observation`` is the full 7-number observation to try, usually the current one with a few
+    inputs moved by the what-if sliders. Answered with an ``explanation`` message; nothing in the
+    simulation changes. Only valid for the random-networks driver and while the session is paused.
+    """
+
+    type: Literal["what_if"] = "what_if"
+    observation: list[float] = Field(min_length=7, max_length=7)
+
+
 Command = Annotated[
-    LoadScenario | Play | Pause | Step | Reset | SetSpeed | SelectCar | KeyState | SetParam,
+    LoadScenario
+    | Play
+    | Pause
+    | Step
+    | Reset
+    | SetSpeed
+    | SelectCar
+    | KeyState
+    | SetParam
+    | WhatIf,
     Field(discriminator="type"),
 ]
 COMMAND_ADAPTER: TypeAdapter[Command] = TypeAdapter(Command)
@@ -256,6 +277,56 @@ class NetworkTrace(WireModel):
     weighted_sums: list[list[float]]
 
 
+class OutputReceipt(WireModel):
+    """Why one output has its value: the contributions of the last hidden layer (task 2.9).
+
+    ``output`` is 0 for steer and 1 for throttle. ``inputs`` are the last hidden layer's values
+    a_i, ``contributions`` the products W[output, i] * a_i (one per hidden neuron), ``bias`` the
+    output's bias, ``z`` the weighted sum (the contributions plus the bias) and ``value`` the
+    activation of z: the output itself. Rounded to 4 decimals.
+    """
+
+    output: int
+    inputs: list[float]
+    contributions: list[float]
+    bias: float
+    z: float
+    value: float
+
+
+class Explanation(WireModel):
+    """The explanation of the selected car's two outputs for one observation (task 2.9).
+
+    ``receipts[m]`` explains output m (steer, then throttle). ``sensitivity[m][k]`` is how much
+    output m moves per unit change of input k, measured by central differences: +0.4 means "if
+    input k rose by 0.1, output m would rise by about 0.04". Rounded to 4 decimals.
+    """
+
+    receipts: list[OutputReceipt]
+    sensitivity: list[list[float]]
+
+
+class ExplanationMessage(WireModel):
+    """Answer to ``what_if``: the selected car's network on a changed observation.
+
+    ``car`` and ``step`` say which car and which moment the question was about. ``observation``
+    is the observation that was tried, ``trace`` and ``explain`` the network's forward pass and
+    explanation for it, ``base_outputs`` what the car outputs for its real observation now, and
+    ``predicted_outputs`` what the real observation's sensitivity predicts for the tried one:
+    base + sum over k of sensitivity[m][k] * (tried_k - real_k). The prediction is a straight-line
+    guess; ``trace``'s last activations are the network's real answer. Rounded to 4 decimals.
+    """
+
+    type: Literal["explanation"] = "explanation"
+    car: int
+    step: int
+    observation: list[float]
+    trace: NetworkTrace
+    explain: Explanation
+    base_outputs: list[float]
+    predicted_outputs: list[float]
+
+
 class SelectedCar(WireModel):
     """Extra detail for the selected car: rays in metres, the observation, the neuron readout
     (neuron driver) or the network trace (random networks); the other is null."""
@@ -265,6 +336,7 @@ class SelectedCar(WireModel):
     observation: list[float]
     neuron: NeuronReadout | None
     trace: NetworkTrace | None = None
+    explain: Explanation | None = None
 
 
 class ActivationCurves(WireModel):
@@ -332,6 +404,10 @@ WIRE_MODELS: tuple[type[WireModel], ...] = (
     NeuronReadout,
     NetworkMessage,
     NetworkTrace,
+    OutputReceipt,
+    Explanation,
+    ExplanationMessage,
+    WhatIf,
     SelectedCar,
     ActivationCurves,
     FrameMessage,

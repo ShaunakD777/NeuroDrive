@@ -22,7 +22,9 @@ from typing import Any
 import numpy as np
 from pydantic import ValidationError
 
+from neurodrive.core.nn.forward import ForwardTrace, forward
 from neurodrive.core.nn.init import init_population
+from neurodrive.core.nn.network import Network
 from neurodrive.core.nn.spec import NetworkSpec
 from neurodrive.core.rng import child_rng, make_rng
 from neurodrive.env.policies import (
@@ -36,17 +38,22 @@ from neurodrive.env.policies import (
 from neurodrive.env.sensors import RAY_ANGLES, RAY_RANGE, edge_grid, observe
 from neurodrive.env.track import Track
 from neurodrive.env.world import Status, World, WorldConfig
+from neurodrive.explain.contributions import neuron_contributions
+from neurodrive.explain.sensitivity import sensitivity
 from neurodrive.server.schemas import (
     COMMAND_ADAPTER,
     CarColumns,
     EpisodeEndMessage,
     ErrorMessage,
+    Explanation,
+    ExplanationMessage,
     FrameMessage,
     KeyState,
     LoadScenario,
     NetworkMessage,
     NetworkTrace,
     NeuronReadout,
+    OutputReceipt,
     Pause,
     Play,
     Reset,
@@ -58,6 +65,7 @@ from neurodrive.server.schemas import (
     Step,
     TrackGeometry,
     TrackInfo,
+    WhatIf,
     WireModel,
 )
 
@@ -185,6 +193,8 @@ class LiveSession:
             except ValueError as exc:
                 return [ErrorMessage(message=str(exc))]
             return [self._frame()]
+        if isinstance(command, WhatIf):
+            return self._what_if(command)
         if isinstance(command, Reset):
             self._reset_world()
             self._restart_clock()
@@ -331,6 +341,7 @@ class LiveSession:
                 observation=np.round(obs[i], 4).tolist(),
                 neuron=self._neuron_readout(obs[i]),
                 trace=self._network_trace(obs, i),
+                explain=self._explain(obs, i),
             ),
         )
 
@@ -356,11 +367,47 @@ class LiveSession:
         policy = self._policy
         if not isinstance(policy, MLPPolicy | PopulationPolicy):
             return None
-        trace = policy.trace_of(observations, car)
-        return NetworkTrace(
-            activations=[np.round(a, 4).tolist() for a in trace.activations],
-            weighted_sums=[np.round(z, 4).tolist() for z in trace.weighted_sums],
-        )
+        return _wire_trace(policy.trace_of(observations, car))
+
+    def _explain(self, observations: np.ndarray, car: int) -> Explanation | None:
+        """Contributions and sensitivity of the selected car's two outputs, right now."""
+        policy = self._policy
+        if not isinstance(policy, MLPPolicy | PopulationPolicy):
+            return None
+        network = policy.network_of(car)
+        return _explanation(network, policy.trace_of(observations, car), observations[car])
+
+    def _what_if(self, command: WhatIf) -> list[WireModel]:
+        """The selected car's network on a changed observation; the simulation is untouched."""
+        policy, world = self._policy, self._world
+        assert world is not None
+        if not isinstance(policy, MLPPolicy | PopulationPolicy):
+            return [
+                ErrorMessage(message="what_if needs a network driver (policy 'random_networks')")
+            ]
+        if self.playing:
+            return [ErrorMessage(message="what_if works while paused: send pause first")]
+        tried = np.asarray(command.observation, dtype=np.float64)
+        if not np.all(np.isfinite(tried)):
+            return [ErrorMessage(message="what_if observation must hold finite numbers")]
+        car = self.selected
+        network = policy.network_of(car)
+        real = self._observe()[car]
+        base = policy.trace_of(self._observe(), car)
+        slopes = sensitivity(network, real)
+        predicted = base.output + slopes @ (tried - real)  # the straight-line guess
+        trace = forward(network, tried)  # the car's own network on the tried observation
+        return [
+            ExplanationMessage(
+                car=car,
+                step=world.step_count,
+                observation=np.round(tried, 4).tolist(),
+                trace=_wire_trace(trace),
+                explain=_explanation(network, trace, tried),
+                base_outputs=np.round(base.output, 4).tolist(),
+                predicted_outputs=np.round(predicted, 4).tolist(),
+            )
+        ]
 
     def _neuron_readout(self, observation: np.ndarray) -> NeuronReadout | None:
         """The neuron driver's numbers for one car (None for the other drivers)."""
@@ -397,3 +444,33 @@ class LiveSession:
                 )
             )
         return messages
+
+
+def _wire_trace(trace: ForwardTrace) -> NetworkTrace:
+    """A single-observation trace, rounded for the wire."""
+    return NetworkTrace(
+        activations=[np.round(a, 4).tolist() for a in trace.activations],
+        weighted_sums=[np.round(z, 4).tolist() for z in trace.weighted_sums],
+    )
+
+
+def _explanation(network: Network, trace: ForwardTrace, observation: np.ndarray) -> Explanation:
+    """Receipts of both outputs and the output-by-input sensitivity table (explain/, task 2.9)."""
+    last = network.spec.n_layers - 1
+    receipts = []
+    for m in range(network.spec.n_outputs):
+        r = neuron_contributions(network, trace, last, m)
+        receipts.append(
+            OutputReceipt(
+                output=m,
+                inputs=np.round(r.inputs, 4).tolist(),
+                contributions=np.round(r.contributions, 4).tolist(),
+                bias=round(r.bias, 4),
+                z=round(r.z, 4),
+                value=round(r.output, 4),
+            )
+        )
+    return Explanation(
+        receipts=receipts,
+        sensitivity=np.round(sensitivity(network, observation), 4).tolist(),
+    )

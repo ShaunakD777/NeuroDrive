@@ -2,6 +2,7 @@
 // pixels; the colours come from the page's CSS variables, so light and dark themes both work.
 
 import type { FrameMessage, ScenarioMessage, TrackGeometry } from "../../api/generated";
+import { maxAbs, rayWidth } from "../network/inspect";
 import {
   type Camera,
   carCorners,
@@ -51,6 +52,12 @@ export interface Scene {
   compact: boolean;
   /** Indices of rays to emphasise (the ones the selected neuron reads); empty for none. */
   highlight: number[];
+  /**
+   * The selected output's sensitivity to each of the five rays (task 2.10), or null. When set,
+   * each ray is coloured by its sign (accent = the output rises as the ray gets longer, warn = it
+   * falls) and drawn thicker the stronger it is, instead of the usual distance colours.
+   */
+  raySensitivity: number[] | null;
 }
 
 const CAR_LENGTH_EXTRA = 2.0; // car length = wheelbase + this, metres (display only)
@@ -123,8 +130,14 @@ function drawRays(ctx: CanvasRenderingContext2D, theme: Theme, scene: Scene): vo
     const [sx, sy] = worldToScreen(scene.camera, scene.size, x[i], y[i]);
     const [tx, ty] = worldToScreen(scene.camera, scene.size, ex, ey);
     const fraction = distance / scenario.ray_range;
-    ctx.lineWidth = emphasised ? 5 : hit ? 2 : 1;
-    ctx.strokeStyle = !hit ? theme.muted : fraction < 0.2 ? theme.bad : fraction < 0.5 ? theme.warn : theme.ok;
+    const s = scene.raySensitivity?.[k];
+    if (s !== undefined && scene.raySensitivity !== null) {
+      ctx.lineWidth = rayWidth(s, maxAbs(scene.raySensitivity));
+      ctx.strokeStyle = s < 0 ? theme.warn : theme.accent;
+    } else {
+      ctx.lineWidth = emphasised ? 5 : hit ? 2 : 1;
+      ctx.strokeStyle = !hit ? theme.muted : fraction < 0.2 ? theme.bad : fraction < 0.5 ? theme.warn : theme.ok;
+    }
     ctx.beginPath();
     ctx.moveTo(sx, sy);
     ctx.lineTo(tx, ty);
@@ -136,7 +149,9 @@ function drawRays(ctx: CanvasRenderingContext2D, theme: Theme, scene: Scene): vo
       ctx.fill();
       if (!scene.compact || emphasised) {
         ctx.fillStyle = theme.text;
-        ctx.fillText(`${distance.toFixed(1)} m`, tx + 6, ty);
+        // In sensitivity mode the slope replaces the distance (the HUD still lists the distances).
+        const label = s === undefined ? `${distance.toFixed(1)} m` : `s ${s >= 0 ? "+" : "−"}${Math.abs(s).toFixed(2)}`;
+        ctx.fillText(label, tx + 6, ty);
       }
     }
     ctx.globalAlpha = 1;

@@ -15,6 +15,7 @@ from neurodrive.server.schemas import (
     API_VERSION,
     EpisodeEndMessage,
     ErrorMessage,
+    ExplanationMessage,
     FrameMessage,
     NetworkMessage,
     ScenarioMessage,
@@ -350,7 +351,7 @@ def test_rest_track_endpoints():
 def test_websocket_session_end_to_end():
     client = TestClient(create_app())
     with client.websocket_connect("/ws/live") as ws:
-        assert json.loads(ws.receive_text())["api"] == API_VERSION == "v1.5"
+        assert json.loads(ws.receive_text())["api"] == API_VERSION == "v1.6"
         ws.send_text(json.dumps({"type": "load_scenario", "track": TRACK, "policy": "constant"}))
         assert json.loads(ws.receive_text())["type"] == "scenario"
         assert json.loads(ws.receive_text())["step"] == 0
@@ -747,3 +748,104 @@ def test_select_car_out_of_range_sends_only_an_error():
     session = loaded("random_networks", n_cars=3, seed=1)
     (reply,) = send(session, type="select_car", index=3)
     assert isinstance(reply, ErrorMessage)
+
+
+# ── the output inspector and what-if (api v1.6) ─────────────────────────────────────────────
+
+
+def explained_session(car: int = 4, steps: int = 12) -> LiveSession:
+    session = loaded("random_networks", n_cars=20, seed=None)
+    network_of(session, car)
+    drive_steps(session, steps)
+    return session
+
+
+def test_every_frame_explains_the_selected_cars_outputs_with_the_explain_module():
+    from neurodrive.core.nn.forward import forward
+    from neurodrive.explain.contributions import neuron_contributions
+    from neurodrive.explain.sensitivity import sensitivity
+
+    session = explained_session()
+    (frame,) = send(session, type="pause")
+    explain = frame.selected.explain
+    assert [r.output for r in explain.receipts] == [0, 1]
+    assert len(explain.sensitivity) == 2 and all(len(row) == 7 for row in explain.sensitivity)
+    network = session._policy.network_of(4)
+    obs = session._observe()[4]
+    trace = forward(network, obs)
+    for m, receipt in enumerate(explain.receipts):
+        r = neuron_contributions(network, trace, 2, m)
+        np.testing.assert_allclose(receipt.contributions, r.contributions, atol=5e-5)
+        assert receipt.bias == pytest.approx(r.bias, abs=5e-5)
+        assert receipt.z == pytest.approx(r.z, abs=5e-5)
+        assert receipt.value == pytest.approx(r.output, abs=5e-5)
+        assert receipt.value == frame.selected.trace.activations[-1][m]  # same number as the trace
+    np.testing.assert_allclose(explain.sensitivity, sensitivity(network, obs), atol=5e-5)
+
+
+def test_the_receipt_adds_up_to_z():
+    (frame,) = send(explained_session(), type="pause")
+    for receipt in frame.selected.explain.receipts:
+        assert sum(receipt.contributions) + receipt.bias == pytest.approx(receipt.z, abs=2e-3)
+
+
+def test_other_drivers_get_no_explanation():
+    for policy in ("keyboard", "constant", "neuron"):
+        frame = drive_steps(loaded(policy, n_cars=2), 3)
+        assert frame.selected.explain is None
+
+
+def test_what_if_at_the_real_observation_equals_the_real_output():
+    session = explained_session()
+    (frame,) = send(session, type="pause")
+    (answer,) = send(session, type="what_if", observation=frame.selected.observation)
+    assert isinstance(answer, ExplanationMessage)
+    assert answer.car == 4 and answer.step == frame.step
+    assert answer.trace.activations[-1] == pytest.approx(answer.base_outputs, abs=2e-4)
+    assert answer.predicted_outputs == pytest.approx(answer.base_outputs, abs=2e-4)
+    assert answer.base_outputs == pytest.approx(frame.selected.trace.activations[-1], abs=1e-4)
+
+
+def test_what_if_on_the_left_ray_moves_steer_as_the_sensitivity_predicts():
+    session = explained_session()
+    (frame,) = send(session, type="pause")
+    s_left = frame.selected.explain.sensitivity[0][0]  # steer with respect to the far-left ray
+    tried = list(frame.selected.observation)
+    tried[0] += 0.1
+    (answer,) = send(session, type="what_if", observation=tried)
+    change = answer.trace.activations[-1][0] - answer.base_outputs[0]
+    assert answer.predicted_outputs[0] - answer.base_outputs[0] == pytest.approx(
+        0.1 * s_left, abs=2e-4
+    )
+    assert abs(s_left) > 0.01  # this car's steer does react to the left ray
+    assert np.sign(change) == np.sign(s_left)
+    assert change == pytest.approx(0.1 * s_left, rel=0.5)  # roughly the predicted size
+
+
+def test_what_if_changes_nothing_in_the_simulation():
+    session = explained_session()
+    (before,) = send(session, type="pause")
+    send(session, type="what_if", observation=[0.0] * 7)
+    (after,) = send(session, type="pause")
+    assert after.step == before.step and after.cars == before.cars
+    assert after.selected.trace == before.selected.trace
+
+
+def test_what_if_is_refused_while_playing_and_for_other_drivers():
+    session = explained_session()
+    send(session, type="play")
+    (error,) = send(session, type="what_if", observation=[0.5] * 7)
+    assert isinstance(error, ErrorMessage) and "pause" in error.message
+    neuron = loaded("neuron")
+    (error,) = send(neuron, type="what_if", observation=[0.5] * 7)
+    assert isinstance(error, ErrorMessage) and "network driver" in error.message
+
+
+def test_what_if_needs_seven_finite_numbers():
+    session = explained_session()
+    (error,) = send(session, type="what_if", observation=[0.5] * 6)
+    assert isinstance(error, ErrorMessage)
+    bad = session.handle_text(
+        '{"type": "what_if", "observation": [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, NaN]}'
+    )
+    assert isinstance(bad[0], ErrorMessage)

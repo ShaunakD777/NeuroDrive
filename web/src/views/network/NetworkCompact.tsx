@@ -14,7 +14,7 @@ import {
  * A bar for one value. Unsigned values (0 to 1) grow from the left edge; signed values (-1 to 1)
  * grow from the middle, to the right for positive and to the left for negative.
  */
-function ValueBar({ value, signed, big = false }: { value: number; signed: boolean; big?: boolean }) {
+export function ValueBar({ value, signed, big = false }: { value: number; signed: boolean; big?: boolean }) {
   const v = Math.max(signed ? -1 : 0, Math.min(1, value));
   const style = signed
     ? { left: v >= 0 ? "50%" : `${50 + v * 50}%`, width: `${Math.abs(v) * 50}%` }

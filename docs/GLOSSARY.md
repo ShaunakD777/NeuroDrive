@@ -154,6 +154,7 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Neuron policy | A driver whose steering is one neuron: it reads the far-left and far-right rays, weights them, adds a bias, and passes the sum through an activation. |
 | Contribution | One input's share of the weighted sum: its weight times its value. |
 | Sensitivity | How much an output moves per unit change of one input, with the other inputs held still (the slope, or partial derivative). +0.4 means: if the input rose by 0.1, the output would rise by about 0.04. |
+| What-if | Asking what a network would output if some of its inputs were different, without changing the simulation. Compared with the sensitivity's prediction, it shows how far the straight-line guess holds. |
 | Central difference | Measuring a slope by nudging an input up by a small step h and down by h, then dividing the change in the output by 2h. Its error shrinks like h squared. |
 | Activation curve | A graph of an activation function: the weighted sum z along the bottom and the neuron's output up the side; a dot marks where the neuron is right now. |
 | Selection linking | Clicking something in one view (a car, a neuron) highlights the related thing in another view. |

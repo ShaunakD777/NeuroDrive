@@ -36,6 +36,7 @@ function frame(selectedIndex: number, step = 1): FrameMessage {
       observation: [0, 0, 0, 0, 0, 0, 0],
       neuron: null,
       trace: null,
+      explain: null,
     },
   };
 }

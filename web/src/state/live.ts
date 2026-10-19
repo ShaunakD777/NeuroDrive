@@ -4,6 +4,7 @@ import type {
   ActivationCurves,
   EpisodeEndMessage,
   ErrorMessage,
+  ExplanationMessage,
   FrameMessage,
   KeyState,
   LoadScenario,
@@ -19,6 +20,7 @@ import type {
   Step,
   TrackGeometry,
   TrackInfo,
+  WhatIf,
 } from "../api/generated";
 import type { ConnectionStatus } from "../api/ws";
 
@@ -36,12 +38,14 @@ export type Command =
   | SetSpeed
   | SelectCar
   | KeyState
-  | SetParam;
+  | SetParam
+  | WhatIf;
 
 /** The messages the server sends that the store keeps (hello only confirms the connection). */
 export type ServerMessage =
   | ScenarioMessage
   | NetworkMessage
+  | ExplanationMessage
   | FrameMessage
   | EpisodeEndMessage
   | ErrorMessage;
@@ -96,6 +100,11 @@ export interface LiveState {
    * them once per load and per car selection, not in every frame; `network.car` says whose they are.
    */
   network: NetworkMessage | null;
+  /**
+   * The server's answer to the last `what_if`, while it still applies: it is dropped as soon as a
+   * frame shows another step or another car, or a new scenario loads.
+   */
+  whatIfResult: ExplanationMessage | null;
   episodeEnd: EpisodeEndMessage | null;
   /** The last error the server reported, or null. */
   error: string | null;
@@ -147,6 +156,7 @@ export const initialLive: LiveState = {
   activations: null,
   frame: null,
   network: null,
+  whatIfResult: null,
   episodeEnd: null,
   error: null,
   keys: NO_KEYS,
@@ -171,6 +181,7 @@ function isServerMessage(value: unknown): value is ServerMessage {
   return (
     type === "scenario" ||
     type === "network" ||
+    type === "explanation" ||
     type === "frame" ||
     type === "episode_end" ||
     type === "error"
@@ -226,6 +237,7 @@ export const useLive = create<LiveState & LiveActions>()((set, get) => ({
           scenario: message,
           frame: null,
           network: null,
+          whatIfResult: null,
           episodeEnd: null,
           error: null,
           keys: NO_KEYS,
@@ -234,9 +246,17 @@ export const useLive = create<LiveState & LiveActions>()((set, get) => ({
       case "network":
         set({ network: message });
         break;
+      case "explanation":
+        set({ whatIfResult: message });
+        break;
       case "frame": {
         // A frame at step 0 means a fresh start (after load or reset): any old ending is stale.
         set(message.step === 0 ? { frame: message, episodeEnd: null } : { frame: message });
+        // A what-if answer belongs to one car at one moment.
+        const result = get().whatIfResult;
+        if (result !== null && (result.step !== message.step || result.car !== message.selected?.index)) {
+          set({ whatIfResult: null });
+        }
         const readout = message.selected?.neuron;
         if (readout) {
           const seen = settingsOf(readout);

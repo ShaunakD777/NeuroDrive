@@ -322,7 +322,7 @@ Exam spec version, list of tracks, per-episode metrics (track, start index, prog
 crashed, lap times, mean speed, smoothness, time to crash), and aggregates per track and overall
 (median, IQR, completion rate). See `EXPERIMENT_PROTOCOL.md`.
 
-## 7. Server API (api v1.5, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024)
+## 7. Server API (api v1.6, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025)
 
 REST (`/api/...`):
 - `GET health` → `{status: "ok", version}` (`version` is the NeuroDrive package version)
@@ -336,13 +336,15 @@ REST (`/api/...`):
 - `GET runs/{id}/checkpoints/{unit}/diff?from={unit}`: per-weight change
 - `POST runs` (launch from a config), `POST runs/{id}/stop`
 - `POST replay` {run, unit, track, seed, focus_cars} → Episode Recording
-- `POST explain/forward` {network ref, observation} → ForwardTrace + contributions + sensitivity (what-if)
+- `POST explain/forward` {network ref, observation} → ForwardTrace + contributions + sensitivity
+  (deferred to Phase 5, when checkpoints give networks a reference; live what-if uses the
+  `what_if` WebSocket command instead, ADR-025)
 - `POST explain/response` {run, units, output, input, range} → response curves
 - `POST compare` {run_ids} → aligned exam and budget tables
 
 WebSocket `/ws/live` (one independent session per connection):
 - `hello` is sent first, on connect: `{type: "hello", version, api}` (`api` is the message-contract
-  version, currently `"v1.5"`).
+  version, currently `"v1.6"`).
 - client → server (each has a `type` field):
   - `load_scenario {track, policy, n_cars, seed}`: `policy` is `"keyboard"`, `"constant"`,
     `"neuron"` or `"random_networks"` (every car is driven by its own random [7,16,16,2] network;
@@ -353,6 +355,9 @@ WebSocket `/ws/live` (one independent session per connection):
     step 0 with the same scenario and seed; stays paused or playing as before),
     `set_speed {speed}` (0.1 to 8, default 1), `select_car {index}` (default 0),
     `key_state {steer, throttle}` (each −1..1; used by the keyboard policy, ignored otherwise).
+  - `what_if {observation}` (random-networks driver only, paused only; ADR-025): the full
+    7-number observation to try for the selected car. Answered with `explanation`; the
+    simulation does not change. Refused with an `error` while playing.
   - `set_param {name, value}` (neuron driver only): `name` is `w_left`, `w_right`, `bias`,
     `throttle` (numbers; weights and bias within ±30, throttle within ±1) or `activation` (`tanh`,
     `sigmoid`, `relu` or `linear`). Answered with a frame. The neuron is
@@ -387,6 +392,15 @@ WebSocket `/ws/live` (one independent session per connection):
     the selected car's forward pass on its *current* observation. `activations[0]` is the
     observation, `activations[l]` is a_l (the last one is the action), `weighted_sums[l - 1]` is
     z_l; rounded to 4 decimals. The Network view draws it on top of the weights from `network`.
+  - `selected.explain {receipts, sensitivity}` (random-networks driver only, ADR-025): for the
+    selected car's current observation, `receipts[m]` = `{output, inputs, contributions, bias, z,
+    value}` (output m's contributions from the last hidden layer, which add up with the bias to z)
+    and `sensitivity[m][k]` = the central-difference slope of output m with respect to input k.
+    Computed by `explain/` (task 2.9); rounded to 4 decimals.
+  - `explanation {car, step, observation, trace, explain, base_outputs, predicted_outputs}`:
+    the answer to `what_if`: the car's network on the tried observation (trace and explanation),
+    its real outputs now, and the straight-line prediction base + Σ_k sensitivity[m][k] · (tried_k −
+    real_k) from the real observation's sensitivity.
   - `episode_end {step, time, status, progress, laps}`: sent once when every car has stopped; the
     session then pauses. `status` holds a name per car (`crashed`, `finished`, `stalled`,
     `timeout`).
@@ -447,6 +461,14 @@ ray k; the neuron driver's selected neuron gives its two rays.
 2. Contributions: c_i = W[j, i] · a_i for each incoming connection, sorted; total = Σ c_i + b_j.
 3. Sensitivity: ∂output / ∂input_k for each sensor (finite differences in Phase 2, backprop from Phase 3).
 4. History: response curve of the output against one input at several checkpoints.
+
+*As built (task 2.10):* clicking an output neuron (or the drawer's output row) selects it; the
+Network page then shows `OutputInspector` (value in words, the receipt's six largest rows plus
+"the rest" and the bias, the sensitivity of the output to all seven inputs with a sentence for the
+strongest) and, while paused, `WhatIfPanel` (a slider per input; each move sends `what_if`; a
+table shows now / what-if / predicted). The Environment view colours the selected car's rays by
+that output's sensitivity (blue positive, orange negative, thicker = stronger) with a legend.
+What-if overrides and answers belong to one car at one step and are dropped when either changes.
 
 ## 9. Performance plan
 - Targets: live view at 30 fps with 50 cars; one GA generation (50 cars × 60 s simulated) in ≤ 5 s

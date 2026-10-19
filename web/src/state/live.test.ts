@@ -26,6 +26,7 @@ function frame(step: number, playing = false): FrameMessage {
       observation: [0, 0, 0, 0, 0, 0, 0],
       neuron: null,
       trace: null,
+      explain: null,
     },
   };
 }

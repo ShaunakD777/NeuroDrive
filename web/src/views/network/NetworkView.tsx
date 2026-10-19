@@ -4,6 +4,8 @@ import { useLive } from "../../state/live";
 import { useSelection } from "../../state/selection";
 import { NetworkCompact } from "./NetworkCompact";
 import { NetworkDiagram } from "./NetworkDiagram";
+import { OutputInspector } from "./OutputInspector";
+import { WhatIfPanel } from "./WhatIfPanel";
 import { NeuronView } from "./NeuronView";
 
 /**
@@ -74,7 +76,12 @@ function MultilayerView({ compact, headerExtra }: { compact: boolean; headerExtr
   } else if (compact) {
     body = <NetworkCompact network={network} trace={trace} />;
   } else {
-    body = <NetworkDiagram network={network} trace={trace} car={selected.index} />;
+    body = (
+      <>
+        <NetworkDiagram network={network} trace={trace} car={selected.index} />
+        <Inspection />
+      </>
+    );
   }
 
   return (
@@ -89,5 +96,28 @@ function MultilayerView({ compact, headerExtra }: { compact: boolean; headerExtr
       </div>
       {body}
     </section>
+  );
+}
+
+/** The output inspector and the what-if panel, once an output neuron is selected (task 2.10). */
+function Inspection() {
+  const output = useSelection((s) => s.output);
+  const explain = useLive((s) => s.frame?.selected?.explain ?? null);
+  const network = useLive((s) => s.network);
+  if (output === null) {
+    return (
+      <p className="hint inspection-hint" data-testid="inspection-hint">
+        Click Steer or Throttle (on the right of the diagram) to see why it has its value and what it
+        reacts to.
+      </p>
+    );
+  }
+  if (explain === null || network === null) return null;
+  const index = output === "steer" ? 0 : 1;
+  return (
+    <div className="inspection">
+      <OutputInspector explain={explain} network={network} output={index} />
+      <WhatIfPanel />
+    </div>
   );
 }

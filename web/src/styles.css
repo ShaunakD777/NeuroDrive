@@ -1095,3 +1095,164 @@ body {
   color: var(--accent);
   font-size: 0.85rem;
 }
+
+/* ── Output inspector and what-if (task 2.10) ────────────────── */
+
+.inspection-hint {
+  margin-top: 6px !important;
+}
+
+.inspection {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px 28px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.inspector h3,
+.whatif h4,
+.inspector h4 {
+  margin: 0 0 6px;
+}
+
+.inspector h4,
+.whatif h4 {
+  margin-top: 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.inspector-headline {
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.inspector-tabs {
+  display: inline-flex;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.inspector-tabs button,
+.whatif-head button {
+  padding: 3px 12px;
+  border: none;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.inspector-tabs button + button {
+  border-left: 1px solid var(--border);
+}
+
+.inspector-tabs button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--surface);
+}
+
+.inspector-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.84rem;
+}
+
+.inspector-row {
+  display: grid;
+  grid-template-columns: 10.5em 1fr 4em;
+  align-items: center;
+  gap: 8px;
+}
+
+.inspector-muted {
+  color: var(--text-muted);
+}
+
+.inspector-sum {
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.whatif-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.whatif-head button {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.whatif-head button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.whatif-row {
+  display: grid;
+  grid-template-columns: 7.5em 1fr 3.4em;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.84rem;
+}
+
+.whatif-row input {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.whatif-changed {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.whatif-table {
+  margin-top: 10px;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.whatif-table th,
+.whatif-table td {
+  padding: 3px 10px 3px 0;
+  text-align: left;
+}
+
+.whatif-table thead th {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.ray-legend {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  max-width: 340px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.8rem;
+}
+
+.ray-legend-pos {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.ray-legend-neg {
+  color: var(--warn);
+  font-weight: 600;
+}

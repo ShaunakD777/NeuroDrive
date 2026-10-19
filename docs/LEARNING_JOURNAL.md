@@ -544,3 +544,23 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   input matters to the current value but a small change would not move it.
 - Open question: Phase 3 computes the same slopes exactly with backpropagation; will the two
   agree to 1e-8 on every driving network, including ReLU ones with kinks?
+
+### 2026-10-19 — Task 2.10 Output inspector v1 and what-if
+- Concept: explaining one decision. The inspector shows the value in words, the receipt of
+  contributions that made it, and the sensitivity to each input; the what-if panel lets you test
+  the sensitivity's prediction against the network's real answer.
+- Key equation(s) in words: predicted output = output now + sum over inputs of (sensitivity times
+  the change in that input). It is a straight-line guess from the slope; the what-if value is the
+  network's real answer for the changed inputs.
+- What we observed: car 5 (seed-0 random brain, step 12) steers 0.492 ("right"); its biggest
+  contributions come from hidden-2 neurons 9 and 7 (+0.189, +0.154). Moving the far-left ray from
+  0.14 to 0.24 gave steer 0.496 against a predicted 0.497: the straight line is very good for a
+  small nudge. Every one of its five ray sensitivities is positive (+0.05 to +0.38): a longer ray
+  in any direction pushes it to steer right. A wall-avoiding driver needs opposite signs for the
+  left and right rays (like S1's hand neuron), so this random brain cannot be a good driver.
+- Surprise or difficulty: a question about a moving car is stale 30 times a second, so what-if is
+  allowed only while paused, and both the sliders and the answer are dropped on the next step.
+  Choosing where the computation lives (frame, command or REST) was a real design decision
+  (ADR-025), because a live network has no address outside its session.
+- Open question: in study S2a, do the circling cars show same-sign ray sensitivities and the
+  crashing cars tiny ones (saturation)?

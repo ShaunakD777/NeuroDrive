@@ -2,6 +2,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 
 import { useLive } from "../../state/live";
 import { raysFor, useSelection } from "../../state/selection";
+import { raySensitivity } from "../network/inspect";
 import {
   type Camera,
   fitCamera,
@@ -45,6 +46,11 @@ export function EnvironmentView({
   const geometry = useLive((s) => s.geometry);
   // The rays the shared selection points at (a selected neuron, input or weight), for tests.
   const highlightAttribute = useSelectedRays().join(",");
+  // The selected output's sensitivity to each ray, when an output is selected (task 2.10).
+  const output = useSelection((s) => s.output);
+  const explain = useLive((s) => s.frame?.selected?.explain ?? null); // a stable object per frame
+  const sensitivityRow = raySensitivity(explain, outputIndex(output));
+  const sensitivityAttribute = sensitivityRow === null ? "" : sensitivityRow.join(",");
   const fitPoints = useMemo(
     () => (geometry === null ? [] : [...geometry.left, ...geometry.right]),
     [geometry],
@@ -78,6 +84,7 @@ export function EnvironmentView({
     const selected = frame?.selected?.index ?? 0;
     // Emphasise the rays behind whatever is selected in the Network view (§8.2).
     const highlight = raysFor(useSelection.getState(), frame?.selected);
+    const sensitivityRays = raySensitivity(frame?.selected?.explain, outputIndex(useSelection.getState().output));
     const car = frame === null ? null : frame.cars;
     const camera =
       mode === "follow" && car !== null && car.x.length > selected
@@ -95,6 +102,7 @@ export function EnvironmentView({
       selected,
       compact,
       highlight,
+      raySensitivity: sensitivityRays,
     });
     // Where each car is on screen (CSS pixels), so browser tests can click a particular car.
     canvas.dataset.cars =
@@ -168,12 +176,21 @@ export function EnvironmentView({
           className="env-canvas"
           data-testid="environment-canvas"
           data-highlighted-rays={highlightAttribute}
+          data-ray-sensitivity={sensitivityAttribute}
           style={{ width: size.w, height: size.h }}
           onPointerDown={onPointerDown}
           aria-label="Top-down view of the track and the cars"
           role="img"
         />
         <Hud compact={compact} />
+        {sensitivityRow !== null && !compact && (
+          <div className="ray-legend" data-testid="ray-legend">
+            Rays coloured by how {output} reacts to them: <span className="ray-legend-pos">blue</span>{" "}
+            = a longer ray pushes {output} {output === "steer" ? "right" : "up (accelerate)"},{" "}
+            <span className="ray-legend-neg">orange</span> = {output === "steer" ? "left" : "down (brake)"};
+            thicker = stronger.
+          </div>
+        )}
       </div>
       {!compact && (
         <p className="env-hint">
@@ -193,4 +210,9 @@ function useSelectedRays(): number[] {
   const connection = useSelection((s) => s.connection);
   const selected = useLive((s) => s.frame?.selected);
   return raysFor({ neuron, connection }, selected);
+}
+
+/** Index of a named output in the action (steer 0, throttle 1), or null. */
+function outputIndex(output: "steer" | "throttle" | null): number | null {
+  return output === null ? null : output === "steer" ? 0 : 1;
 }

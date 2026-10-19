@@ -58,6 +58,10 @@ export interface SelectionActions {
   toggleNeuron: (ref: NeuronRef, layers: number) => void;
   /** Select a connection, or clear it if it is already selected. Clears the neuron. */
   toggleConnection: (ref: ConnectionRef) => void;
+  /** Set what-if input `k` to `value` (the other overrides stay). */
+  setWhatIf: (k: number, value: number) => void;
+  /** Remove every what-if override. */
+  clearWhatIf: () => void;
 }
 
 export const initialSelection: SelectionState = {
@@ -107,6 +111,9 @@ export const useSelection = create<SelectionState & SelectionActions>()((set, ge
     }
     set({ connection: ref, neuron: null, output: null });
   },
+
+  setWhatIf: (k, value) => set({ whatIf: { ...get().whatIf, [k]: value } }),
+  clearWhatIf: () => set({ whatIf: {} }),
 }));
 
 /** Number of rays: inputs 0 to 4 of the observation are the rays, far-left to far-right. */
@@ -137,12 +144,19 @@ export function raysFor(
 
 // Follow the server: its frames say which car is selected (it starts at car 0 after every
 // scenario load), and a new scenario may have a different network, so neuron and connection
-// selections from the old one no longer apply.
+// selections from the old one no longer apply. What-if overrides describe one car at one moment,
+// so they are dropped when the step or the car changes.
 useLive.subscribe((live, previous) => {
   const selection = useSelection.getState();
   if (live.scenario !== previous.scenario && live.scenario !== null) {
-    useSelection.setState({ neuron: null, connection: null, output: null });
+    useSelection.setState({ neuron: null, connection: null, output: null, whatIf: {} });
   }
+  const moved =
+    live.frame !== null &&
+    previous.frame !== null &&
+    (live.frame.step !== previous.frame.step ||
+      live.frame.selected?.index !== previous.frame.selected?.index);
+  if (moved && Object.keys(selection.whatIf).length > 0) useSelection.setState({ whatIf: {} });
   const index = live.frame?.selected?.index;
   if (index !== undefined && index !== selection.carId) {
     useSelection.setState({ carId: index });

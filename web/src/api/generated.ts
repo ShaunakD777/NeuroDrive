@@ -52,6 +52,93 @@ export interface ErrorMessage {
 }
 
 /**
+ * The explanation of the selected car's two outputs for one observation (task 2.9).
+ *
+ * ``receipts[m]`` explains output m (steer, then throttle). ``sensitivity[m][k]`` is how much
+ * output m moves per unit change of input k, measured by central differences: +0.4 means "if
+ * input k rose by 0.1, output m would rise by about 0.04". Rounded to 4 decimals.
+ */
+export interface Explanation {
+  receipts: OutputReceipt[];
+  sensitivity: number[][];
+}
+/**
+ * Why one output has its value: the contributions of the last hidden layer (task 2.9).
+ *
+ * ``output`` is 0 for steer and 1 for throttle. ``inputs`` are the last hidden layer's values
+ * a_i, ``contributions`` the products W[output, i] * a_i (one per hidden neuron), ``bias`` the
+ * output's bias, ``z`` the weighted sum (the contributions plus the bias) and ``value`` the
+ * activation of z: the output itself. Rounded to 4 decimals.
+ */
+export interface OutputReceipt {
+  bias: number;
+  contributions: number[];
+  inputs: number[];
+  output: number;
+  value: number;
+  z: number;
+}
+
+/**
+ * Answer to ``what_if``: the selected car's network on a changed observation.
+ *
+ * ``car`` and ``step`` say which car and which moment the question was about. ``observation``
+ * is the observation that was tried, ``trace`` and ``explain`` the network's forward pass and
+ * explanation for it, ``base_outputs`` what the car outputs for its real observation now, and
+ * ``predicted_outputs`` what the real observation's sensitivity predicts for the tried one:
+ * base + sum over k of sensitivity[m][k] * (tried_k - real_k). The prediction is a straight-line
+ * guess; ``trace``'s last activations are the network's real answer. Rounded to 4 decimals.
+ */
+export interface ExplanationMessage {
+  base_outputs: number[];
+  car: number;
+  explain: Explanation;
+  observation: number[];
+  predicted_outputs: number[];
+  step: number;
+  trace: NetworkTrace;
+  type: "explanation";
+}
+/**
+ * The explanation of the selected car's two outputs for one observation (task 2.9).
+ *
+ * ``receipts[m]`` explains output m (steer, then throttle). ``sensitivity[m][k]`` is how much
+ * output m moves per unit change of input k, measured by central differences: +0.4 means "if
+ * input k rose by 0.1, output m would rise by about 0.04". Rounded to 4 decimals.
+ */
+export interface Explanation {
+  receipts: OutputReceipt[];
+  sensitivity: number[][];
+}
+/**
+ * Why one output has its value: the contributions of the last hidden layer (task 2.9).
+ *
+ * ``output`` is 0 for steer and 1 for throttle. ``inputs`` are the last hidden layer's values
+ * a_i, ``contributions`` the products W[output, i] * a_i (one per hidden neuron), ``bias`` the
+ * output's bias, ``z`` the weighted sum (the contributions plus the bias) and ``value`` the
+ * activation of z: the output itself. Rounded to 4 decimals.
+ */
+export interface OutputReceipt {
+  bias: number;
+  contributions: number[];
+  inputs: number[];
+  output: number;
+  value: number;
+  z: number;
+}
+/**
+ * Every value of one forward pass of the selected car's network, for the current state.
+ *
+ * ``activations[0]`` is the observation (the inputs), ``activations[l]`` is a_l, the outputs of
+ * weight layer ``l``, so the last entry is the action. ``weighted_sums[l - 1]`` is z_l, the
+ * sums before the activation. Rounded to 4 decimals; all computed by Python.
+ */
+export interface NetworkTrace {
+  activations: number[][];
+  weighted_sums: number[][];
+}
+
+/**
  * One snapshot of the world: while playing (at most 30 per second) and after commands.
  */
 export interface FrameMessage {
@@ -84,11 +171,39 @@ export interface CarColumns {
  * (neuron driver) or the network trace (random networks); the other is null.
  */
 export interface SelectedCar {
+  explain: Explanation | null;
   index: number;
   neuron: NeuronReadout | null;
   observation: number[];
   rays: number[];
   trace: NetworkTrace | null;
+}
+/**
+ * The explanation of the selected car's two outputs for one observation (task 2.9).
+ *
+ * ``receipts[m]`` explains output m (steer, then throttle). ``sensitivity[m][k]`` is how much
+ * output m moves per unit change of input k, measured by central differences: +0.4 means "if
+ * input k rose by 0.1, output m would rise by about 0.04". Rounded to 4 decimals.
+ */
+export interface Explanation {
+  receipts: OutputReceipt[];
+  sensitivity: number[][];
+}
+/**
+ * Why one output has its value: the contributions of the last hidden layer (task 2.9).
+ *
+ * ``output`` is 0 for steer and 1 for throttle. ``inputs`` are the last hidden layer's values
+ * a_i, ``contributions`` the products W[output, i] * a_i (one per hidden neuron), ``bias`` the
+ * output's bias, ``z`` the weighted sum (the contributions plus the bias) and ``value`` the
+ * activation of z: the output itself. Rounded to 4 decimals.
+ */
+export interface OutputReceipt {
+  bias: number;
+  contributions: number[];
+  inputs: number[];
+  output: number;
+  value: number;
+  z: number;
 }
 /**
  * What the selected car's neuron saw and computed (neuron policy only).
@@ -216,6 +331,23 @@ export interface NeuronReadout {
 }
 
 /**
+ * Why one output has its value: the contributions of the last hidden layer (task 2.9).
+ *
+ * ``output`` is 0 for steer and 1 for throttle. ``inputs`` are the last hidden layer's values
+ * a_i, ``contributions`` the products W[output, i] * a_i (one per hidden neuron), ``bias`` the
+ * output's bias, ``z`` the weighted sum (the contributions plus the bias) and ``value`` the
+ * activation of z: the output itself. Rounded to 4 decimals.
+ */
+export interface OutputReceipt {
+  bias: number;
+  contributions: number[];
+  inputs: number[];
+  output: number;
+  value: number;
+  z: number;
+}
+
+/**
  * Stop the simulation clock.
  */
 export interface Pause {
@@ -272,11 +404,39 @@ export interface SelectCar {
  * (neuron driver) or the network trace (random networks); the other is null.
  */
 export interface SelectedCar {
+  explain: Explanation | null;
   index: number;
   neuron: NeuronReadout | null;
   observation: number[];
   rays: number[];
   trace: NetworkTrace | null;
+}
+/**
+ * The explanation of the selected car's two outputs for one observation (task 2.9).
+ *
+ * ``receipts[m]`` explains output m (steer, then throttle). ``sensitivity[m][k]`` is how much
+ * output m moves per unit change of input k, measured by central differences: +0.4 means "if
+ * input k rose by 0.1, output m would rise by about 0.04". Rounded to 4 decimals.
+ */
+export interface Explanation {
+  receipts: OutputReceipt[];
+  sensitivity: number[][];
+}
+/**
+ * Why one output has its value: the contributions of the last hidden layer (task 2.9).
+ *
+ * ``output`` is 0 for steer and 1 for throttle. ``inputs`` are the last hidden layer's values
+ * a_i, ``contributions`` the products W[output, i] * a_i (one per hidden neuron), ``bias`` the
+ * output's bias, ``z`` the weighted sum (the contributions plus the bias) and ``value`` the
+ * activation of z: the output itself. Rounded to 4 decimals.
+ */
+export interface OutputReceipt {
+  bias: number;
+  contributions: number[];
+  inputs: number[];
+  output: number;
+  value: number;
+  z: number;
 }
 /**
  * What the selected car's neuron saw and computed (neuron policy only).
@@ -375,4 +535,20 @@ export interface TrackListResponse {
 export interface TrackInfo {
   name: string;
   split: "train" | "heldout";
+}
+
+/**
+ * Ask what the selected car's network would output for a changed observation (paused only).
+ *
+ * ``observation`` is the full 7-number observation to try, usually the current one with a few
+ * inputs moved by the what-if sliders. Answered with an ``explanation`` message; nothing in the
+ * simulation changes. Only valid for the random-networks driver and while the session is paused.
+ */
+export interface WhatIf {
+  /**
+   * @minItems 7
+   * @maxItems 7
+   */
+  observation: [number, number, number, number, number, number, number];
+  type: "what_if";
 }
