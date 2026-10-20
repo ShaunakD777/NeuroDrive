@@ -583,3 +583,23 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   for both fixed it: no change now gives bit-identical actions and paths.
 - Open question: would a closed-loop ghost (the network deciding at every step) teach more
   than a held action once a network can actually drive?
+
+### 2026-10-20 — Task 2.11: decision trail and looking back
+- Concept: one frame shows one decision; a trail shows the sequence. Colouring the trail by the
+  selected output turns "how did it steer all the way to the wall?" into a picture, and looking
+  back at a step shows what the network saw and computed at that moment.
+- Key equation(s) in words: none new. The weights never change while driving, so the trace at step
+  t is just the forward pass on the observation stored for step t; recomputed by the same
+  function, it equals the live one bit for bit.
+- What we observed: seed 1, car 12 drives 311 steps (about 78 m, up to 12.8 m/s) almost straight
+  (largest |steer| 0.38, mostly about 0.02 to 0.05) and leaves the road in a bend. At its last step
+  the +60 degree ray reads 0.022 (wall 1.1 m away on the left), yet it steers -0.021, slightly
+  towards the wall: its sensitivity to that ray is only -0.004, while to the -30 degree ray it is
+  +1.25. This random brain listens to the wrong ray. Looking back costs about 0.2 ms per step;
+  60 s of 20 cars take 3.8 MB on the server.
+- Surprise or difficulty: random brains are slow, so their trails bunch up under the car at normal
+  zoom; a click near the car could mean the car or a recent trail point, so the nearer of the two
+  wins. On Windows `Trail.tsx` and `trail.ts` count as the same file name, so the helpers became
+  `trailLayout.ts`.
+- Open question: when trained networks drive whole laps, will 60 s of trail be enough to find the
+  moment a run went wrong, or will Phase 5's replays take over that job?

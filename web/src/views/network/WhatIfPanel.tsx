@@ -1,4 +1,5 @@
 import { useLive } from "../../state/live";
+import { useMoment } from "../../state/playback";
 import { useSelection } from "../../state/selection";
 import { describeOutput, sliderRange } from "./inspect";
 import { INPUT_LABELS, num, OUTPUT_LABELS } from "./networkLayout";
@@ -16,9 +17,20 @@ export function WhatIfPanel() {
   const overrides = useSelection((s) => s.whatIf);
   const setWhatIf = useSelection((s) => s.setWhatIf);
   const clearWhatIf = useSelection((s) => s.clearWhatIf);
+  const moment = useMoment();
 
   const selected = frame?.selected ?? null;
   if (frame === null || selected === null) return null;
+  if (moment !== null) {
+    return (
+      <section className="whatif" data-testid="whatif-panel">
+        <h4>What if?</h4>
+        <p className="hint" data-testid="whatif-past-hint">
+          What-if asks about the car now. Go back to now to try changing its inputs.
+        </p>
+      </section>
+    );
+  }
   if (frame.playing) {
     return (
       <section className="whatif" data-testid="whatif-panel">

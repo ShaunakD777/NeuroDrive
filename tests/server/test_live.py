@@ -351,7 +351,7 @@ def test_rest_track_endpoints():
 def test_websocket_session_end_to_end():
     client = TestClient(create_app())
     with client.websocket_connect("/ws/live") as ws:
-        assert json.loads(ws.receive_text())["api"] == API_VERSION == "v1.7"
+        assert json.loads(ws.receive_text())["api"] == API_VERSION == "v1.8"
         ws.send_text(json.dumps({"type": "load_scenario", "track": TRACK, "policy": "constant"}))
         assert json.loads(ws.receive_text())["type"] == "scenario"
         assert json.loads(ws.receive_text())["step"] == 0
@@ -918,3 +918,125 @@ def test_ghost_never_moves_the_real_car():
     before, _, _ = ghost_for(session, {0: 1.0, 4: 0.0})
     (after,) = send(session, type="pause")
     assert after.cars == before.cars and after.step == before.step
+
+
+# ── decision trail and scrubbing (task 2.11, ADR-027) ────────────────────────────────────────
+
+
+def trail_session(car: int = 4, steps: int = 30) -> tuple[LiveSession, dict[int, FrameMessage]]:
+    """20 random networks, car ``car`` selected at step 0, then ``steps`` steps; frames by step."""
+    session = loaded("random_networks", n_cars=20, seed=None)
+    (_net, first) = send(session, type="select_car", index=car)
+    frames = {first.step: first}
+    for _ in range(steps):
+        frame = send(session, type="step")[0]
+        frames[frame.step] = frame
+    return session, frames
+
+
+def browser_trail(frames) -> dict[int, tuple[float, float, list[float]]]:
+    """Rebuild the trail the way the browser does: replace, then append."""
+    trail: dict[int, tuple[float, float, list[float]]] = {}
+    for frame in frames:
+        t = frame.selected.trail
+        if t.replace:
+            trail = {}
+        for k, s in enumerate(t.steps):
+            trail[s] = (t.x[k], t.y[k], t.action[k])
+    return trail
+
+
+def test_the_trail_is_the_cars_real_path_and_the_actions_it_took():
+    session, frames = trail_session()
+    trail = browser_trail(frames[s] for s in sorted(frames))
+    assert sorted(trail) == list(range(30))  # one point per step taken, nothing else
+    for t, (x, y, action) in trail.items():
+        assert (x, y) == (frames[t].cars.x[4], frames[t].cars.y[4])  # where it was at step t
+        assert action == frames[t + 1].cars.action[4]  # what it decided there
+
+
+def test_a_new_car_gets_its_whole_trail_and_later_frames_only_new_points():
+    session, frames = trail_session()
+    assert frames[0].selected.trail.replace and frames[0].selected.trail.steps == []
+    assert all(not frames[t].selected.trail.replace for t in range(1, 31))
+    assert all(frames[t].selected.trail.steps == [t - 1] for t in range(1, 31))
+    (_net, other) = send(session, type="select_car", index=7)
+    assert other.selected.trail.replace and other.selected.trail.steps == list(range(30))
+    assert other.selected.trail.x[5] == frames[5].cars.x[7]
+    (again,) = send(session, type="pause")
+    assert not again.selected.trail.replace and again.selected.trail.steps == []
+
+
+def test_at_double_speed_each_frame_carries_the_two_steps_it_covers():
+    session, _ = trail_session(steps=0)
+    send(session, type="set_speed", speed=2)
+    send(session, type="play")
+    frames = [m for _, m in run_clock(session, 1.0) if isinstance(m, FrameMessage)]
+    for frame in frames:
+        assert frame.selected.trail.steps == [frame.step - 2, frame.step - 1]
+
+
+def test_inspect_step_gives_exactly_what_the_live_frame_showed_at_that_step():
+    session, frames = trail_session()
+    for t in range(30):
+        (moment,) = send(session, type="inspect_step", step=t)
+        live = frames[t]
+        assert moment.car == 4 and moment.step == t and moment.time == live.time
+        assert (moment.x, moment.y, moment.psi, moment.v) == (
+            live.cars.x[4], live.cars.y[4], live.cars.psi[4], live.cars.v[4]
+        )  # fmt: skip
+        assert moment.rays == live.selected.rays
+        assert moment.observation == live.selected.observation
+        assert moment.trace == live.selected.trace  # bit-identical, then rounded the same way
+        assert moment.explain == live.selected.explain
+        assert moment.action == frames[t + 1].cars.action[4]
+        assert moment.trace.activations[-1] == pytest.approx(moment.action, abs=1e-3)
+
+
+def test_inspect_step_never_moves_the_simulation():
+    session, frames = trail_session()
+    send(session, type="inspect_step", step=3)
+    (after,) = send(session, type="pause")
+    assert after.step == 30 and after.cars == frames[30].cars
+
+
+def test_inspect_step_needs_a_pause_and_a_remembered_step():
+    session, _ = trail_session(steps=5)
+    (error,) = send(session, type="inspect_step", step=5)  # step 5 has not been decided yet
+    assert isinstance(error, ErrorMessage) and "steps 0 to 4" in error.message
+    send(session, type="play")
+    (error,) = send(session, type="inspect_step", step=2)
+    assert isinstance(error, ErrorMessage) and "pause" in error.message
+    send(session, type="pause")
+    send(session, type="reset")
+    (error,) = send(session, type="inspect_step", step=2)  # a reset forgets the old drive
+    assert isinstance(error, ErrorMessage) and "nothing yet" in error.message
+
+
+def test_only_the_last_trail_seconds_are_remembered(monkeypatch):
+    import neurodrive.server.live as live
+
+    monkeypatch.setattr(live, "TRAIL_SECONDS", 0.5)  # 15 steps
+    session, _ = trail_session(steps=40)
+    (_net, frame) = send(session, type="select_car", index=4)
+    assert frame.selected.trail.steps == list(range(25, 40))
+    assert isinstance(send(session, type="inspect_step", step=24)[0], ErrorMessage)
+    assert send(session, type="inspect_step", step=25)[0].step == 25
+
+
+def test_a_crashed_cars_trail_stops_where_it_crashed():
+    session = loaded("random_networks", n_cars=20, seed=None)
+    drive_steps(session, 200)
+    (frame,) = send(session, type="pause")
+    car = frame.cars.status.index(1)  # the first crashed car
+    (_net, frame) = send(session, type="select_car", index=car)
+    steps = frame.selected.trail.steps
+    assert steps == list(range(len(steps))) and len(steps) < 200
+
+
+def test_moments_work_for_drivers_without_a_network():
+    session = loaded("constant", n_cars=2)
+    frames = [send(session, type="step")[0] for _ in range(3)]
+    (moment,) = send(session, type="inspect_step", step=1)
+    assert moment.trace is None and moment.explain is None
+    assert (moment.x, moment.y) == (frames[0].cars.x[0], frames[0].cars.y[0])

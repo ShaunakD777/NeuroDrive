@@ -197,6 +197,7 @@ export interface SelectedCar {
   observation: number[];
   rays: number[];
   trace: NetworkTrace | null;
+  trail: TrailPoints | null;
 }
 /**
  * The explanation of the selected car's two outputs for one observation (task 2.9).
@@ -254,6 +255,22 @@ export interface NetworkTrace {
   activations: number[][];
   weighted_sums: number[][];
 }
+/**
+ * Points of the selected car's decision trail (ADR-027): where it was and what it decided.
+ *
+ * Entry i says: at step ``steps[i]`` the car was at (``x[i]``, ``y[i]``) and chose ``action[i]``
+ * ([steer, throttle]) from there. Only steps at which the car was still running are listed.
+ * ``replace`` true means "these are all the points the session remembers for this car" (after a
+ * load, a reset or a car change); false means "add these new points to the ones you have".
+ * Rounded to 3 decimals.
+ */
+export interface TrailPoints {
+  action: number[][];
+  replace: boolean;
+  steps: number[];
+  x: number[];
+  y: number[];
+}
 
 /**
  * Where the selected car would go in the next ``seconds`` if it held one action (ADR-026).
@@ -295,6 +312,17 @@ export interface HelloMessage {
 }
 
 /**
+ * Look at the selected car at an earlier step of the drive (paused only; api v1.8, ADR-027).
+ *
+ * ``step`` must be one of the steps the session still remembers (the last ``trail_seconds`` of
+ * the drive). Answered with a ``moment`` message; the simulation itself stays where it is.
+ */
+export interface InspectStep {
+  step: number;
+  type: "inspect_step";
+}
+
+/**
  * The manual-driving input held right now: steer and throttle, each in [-1, 1].
  */
 export interface KeyState {
@@ -319,6 +347,68 @@ export interface LoadScenario {
   seed: number | null;
   track: string;
   type: "load_scenario";
+}
+
+/**
+ * Answer to ``inspect_step``: the selected car at an earlier step, recomputed by Python.
+ *
+ * ``x``, ``y``, ``psi`` and ``v`` are its pose and speed then, ``rays`` the five ray lengths in
+ * metres, ``observation`` what its network read, ``action`` what it chose. ``trace`` and
+ * ``explain`` are its network's forward pass and explanation for that observation, exactly as a
+ * frame at that step showed them (null for drivers without a network). Rounded like a frame.
+ */
+export interface MomentMessage {
+  action: number[];
+  car: number;
+  explain: Explanation | null;
+  observation: number[];
+  psi: number;
+  rays: number[];
+  step: number;
+  time: number;
+  trace: NetworkTrace | null;
+  type: "moment";
+  v: number;
+  x: number;
+  y: number;
+}
+/**
+ * The explanation of the selected car's two outputs for one observation (task 2.9).
+ *
+ * ``receipts[m]`` explains output m (steer, then throttle). ``sensitivity[m][k]`` is how much
+ * output m moves per unit change of input k, measured by central differences: +0.4 means "if
+ * input k rose by 0.1, output m would rise by about 0.04". Rounded to 4 decimals.
+ */
+export interface Explanation {
+  receipts: OutputReceipt[];
+  sensitivity: number[][];
+}
+/**
+ * Why one output has its value: the contributions of the last hidden layer (task 2.9).
+ *
+ * ``output`` is 0 for steer and 1 for throttle. ``inputs`` are the last hidden layer's values
+ * a_i, ``contributions`` the products W[output, i] * a_i (one per hidden neuron), ``bias`` the
+ * output's bias, ``z`` the weighted sum (the contributions plus the bias) and ``value`` the
+ * activation of z: the output itself. Rounded to 4 decimals.
+ */
+export interface OutputReceipt {
+  bias: number;
+  contributions: number[];
+  inputs: number[];
+  output: number;
+  value: number;
+  z: number;
+}
+/**
+ * Every value of one forward pass of the selected car's network, for the current state.
+ *
+ * ``activations[0]`` is the observation (the inputs), ``activations[l]`` is a_l, the outputs of
+ * weight layer ``l``, so the last entry is the action. ``weighted_sums[l - 1]`` is z_l, the
+ * sums before the activation. Rounded to 4 decimals; all computed by Python.
+ */
+export interface NetworkTrace {
+  activations: number[][];
+  weighted_sums: number[][];
 }
 
 /**
@@ -413,7 +503,8 @@ export interface Reset {
  *
  * ``dt`` is the physics step in seconds, ``ray_angles`` the sensor directions in radians
  * relative to the heading (left positive), ``ray_range`` the sensor range in metres. Track
- * geometry is not included: fetch ``GET /api/tracks/{track}``.
+ * geometry is not included: fetch ``GET /api/tracks/{track}``. ``trail_seconds`` is how much
+ * of the drive the session remembers for the decision trail (ADR-027).
  */
 export interface ScenarioMessage {
   car_half_width: number;
@@ -426,6 +517,7 @@ export interface ScenarioMessage {
   target_laps: number;
   time_limit: number;
   track: string;
+  trail_seconds: number;
   type: "scenario";
   v_max: number;
   wheelbase: number;
@@ -450,6 +542,7 @@ export interface SelectedCar {
   observation: number[];
   rays: number[];
   trace: NetworkTrace | null;
+  trail: TrailPoints | null;
 }
 /**
  * The explanation of the selected car's two outputs for one observation (task 2.9).
@@ -506,6 +599,22 @@ export interface NeuronReadout {
 export interface NetworkTrace {
   activations: number[][];
   weighted_sums: number[][];
+}
+/**
+ * Points of the selected car's decision trail (ADR-027): where it was and what it decided.
+ *
+ * Entry i says: at step ``steps[i]`` the car was at (``x[i]``, ``y[i]``) and chose ``action[i]``
+ * ([steer, throttle]) from there. Only steps at which the car was still running are listed.
+ * ``replace`` true means "these are all the points the session remembers for this car" (after a
+ * load, a reset or a car change); false means "add these new points to the ones you have".
+ * Rounded to 3 decimals.
+ */
+export interface TrailPoints {
+  action: number[][];
+  replace: boolean;
+  steps: number[];
+  x: number[];
+  y: number[];
 }
 
 /**
@@ -575,6 +684,23 @@ export interface TrackListResponse {
 export interface TrackInfo {
   name: string;
   split: "train" | "heldout";
+}
+
+/**
+ * Points of the selected car's decision trail (ADR-027): where it was and what it decided.
+ *
+ * Entry i says: at step ``steps[i]`` the car was at (``x[i]``, ``y[i]``) and chose ``action[i]``
+ * ([steer, throttle]) from there. Only steps at which the car was still running are listed.
+ * ``replace`` true means "these are all the points the session remembers for this car" (after a
+ * load, a reset or a car change); false means "add these new points to the ones you have".
+ * Rounded to 3 decimals.
+ */
+export interface TrailPoints {
+  action: number[][];
+  replace: boolean;
+  steps: number[];
+  x: number[];
+  y: number[];
 }
 
 /**

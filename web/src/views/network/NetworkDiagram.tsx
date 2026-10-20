@@ -174,11 +174,14 @@ export function NetworkDiagram({
   trace,
   car,
   compact = false,
+  atStep = null,
 }: {
   network: NetworkMessage;
   trace: NetworkTrace;
   car: number;
   compact?: boolean;
+  /** The earlier step the trace belongs to (task 2.11), or null for the present. */
+  atStep?: number | null;
 }) {
   const [hover, setHover] = useState<Hover>(null);
   const selectedNeuron = useSelection((s) => s.neuron);
@@ -227,7 +230,8 @@ export function NetworkDiagram({
       {!compact && (
         <p className="net-intro">
           The network of car {car + 1}: {sizes.join(" → ")} neurons, {parameters} numbers. Each line is one
-          weight, each circle one neuron; a circle shows its value right now.
+          weight, each circle one neuron; a circle shows its value{" "}
+          {atStep === null ? "right now" : `at step ${atStep}`}.
         </p>
       )}
       <svg

@@ -50,8 +50,10 @@ from neurodrive.server.schemas import (
     ExplanationMessage,
     FrameMessage,
     GhostPaths,
+    InspectStep,
     KeyState,
     LoadScenario,
+    MomentMessage,
     NetworkMessage,
     NetworkTrace,
     NeuronReadout,
@@ -67,6 +69,7 @@ from neurodrive.server.schemas import (
     Step,
     TrackGeometry,
     TrackInfo,
+    TrailPoints,
     WhatIf,
     WireModel,
 )
@@ -76,6 +79,65 @@ CONSTANT_THROTTLE = 0.3  # throttle of the "constant" policy
 RANDOM_START_LATERAL = 1.0  # metres: random-start sideways range for seeded scenarios
 RANDOM_START_HEADING = 0.1  # radians: random-start heading range for seeded scenarios
 GHOST_SECONDS = 2.0  # how far ahead the what-if ghost car is drawn (slow cars need time to part)
+TRAIL_SECONDS = 60.0  # how much of the drive the session remembers for the decision trail (ADR-027)
+
+
+class DriveMemory:
+    """The last ``capacity`` steps of a live drive, for every car (ADR-027).
+
+    Before each physics step t the session calls :meth:`record` with every car's state at step t:
+    pose (x, y, psi), speed v, observation o_t (7 numbers), the action a_t chosen from it, whether
+    the car was still running, and the time. Step t lives in row ``t % capacity`` of fixed-size
+    arrays, so the oldest step is overwritten once ``capacity`` steps are stored and memory never
+    grows (60 s of 100 cars is about 19 MB). The observation is stored at full precision, so a
+    past forward pass recomputed from it is bit-identical to the one made live.
+    """
+
+    def __init__(self, capacity: int, n_cars: int) -> None:
+        self.capacity = capacity
+        self.x = np.zeros((capacity, n_cars))
+        self.y = np.zeros((capacity, n_cars))
+        self.psi = np.zeros((capacity, n_cars))
+        self.v = np.zeros((capacity, n_cars))
+        self.observation = np.zeros((capacity, n_cars, 7))
+        self.action = np.zeros((capacity, n_cars, 2))
+        self.alive = np.zeros((capacity, n_cars), dtype=bool)
+        self.time = np.zeros(capacity)
+        self.end = 0  # one past the last recorded step
+
+    @property
+    def first(self) -> int:
+        """The oldest step still remembered."""
+        return max(0, self.end - self.capacity)
+
+    def has(self, step: int) -> bool:
+        return self.first <= step < self.end
+
+    def record(self, world: World, observation: np.ndarray, action: np.ndarray) -> None:
+        """Store step ``world.step_count``: the state before the action, and the action."""
+        t = world.step_count
+        assert t == self.end, "steps must be recorded in order"
+        row, cars = t % self.capacity, world.cars
+        self.x[row], self.y[row], self.psi[row], self.v[row] = cars.x, cars.y, cars.psi, cars.v
+        self.observation[row] = observation
+        self.action[row] = action
+        self.alive[row] = world.status == Status.RUNNING
+        self.time[row] = world.time
+        self.end = t + 1
+
+    def trail(self, car: int, start: int, *, replace: bool) -> TrailPoints:
+        """Car ``car``'s remembered steps from ``start`` on (only those where it was running)."""
+        steps = np.arange(max(start, self.first), self.end)
+        rows = steps % self.capacity
+        keep = self.alive[rows, car]
+        steps, rows = steps[keep], rows[keep]
+        return TrailPoints(
+            replace=replace,
+            steps=steps.tolist(),
+            x=np.round(self.x[rows, car], 3).tolist(),
+            y=np.round(self.y[rows, car], 3).tolist(),
+            action=np.round(self.action[rows, car], 3).tolist(),
+        )
 
 
 class TrackLibrary:
@@ -148,6 +210,9 @@ class LiveSession:
         self._obs_step = -1
         self._due = 0.0
         self._last_tick: float | None = None
+        self._memory = DriveMemory(1, 0)
+        self._trail_sent = 0  # the next step whose trail point the browser has not been sent
+        self._trail_full = True  # send the whole trail with the next frame (new car or new drive)
 
     # ── incoming messages ───────────────────────────────────────────────────────────────────
 
@@ -187,6 +252,7 @@ class LiveSession:
             if command.index >= self._world.n:
                 return [ErrorMessage(message=f"no car {command.index}: there are {self._world.n}")]
             self.selected = command.index
+            self._trail_full = True  # the new car's whole trail goes with the next frame
             return [*self._network_messages(), self._frame()]
         if isinstance(command, SetParam):
             if self._neuron is None:
@@ -198,6 +264,8 @@ class LiveSession:
             return [self._frame()]
         if isinstance(command, WhatIf):
             return self._what_if(command)
+        if isinstance(command, InspectStep):
+            return self._inspect(command)
         if isinstance(command, Reset):
             self._reset_world()
             self._restart_clock()
@@ -278,6 +346,7 @@ class LiveSession:
             car_half_width=world.params.half_width,
             ray_angles=[round(float(a), 6) for a in RAY_ANGLES],
             ray_range=RAY_RANGE,
+            trail_seconds=TRAIL_SECONDS,
         )
         return [scenario, *self._network_messages(), self._frame()]
 
@@ -296,6 +365,10 @@ class LiveSession:
             )
         self._action = np.zeros((scenario.n_cars, 2))
         self._obs_step = -1
+        capacity = round(TRAIL_SECONDS / self._world.dt)
+        self._memory = DriveMemory(capacity, scenario.n_cars)  # a new drive: forget the old one
+        self._trail_sent = 0
+        self._trail_full = True
 
     def _observe(self) -> np.ndarray:
         """The (N, 7) observation of every car now (computed once per step)."""
@@ -313,7 +386,9 @@ class LiveSession:
         for _ in range(steps):
             if world.done:
                 break
-            action = np.clip(np.asarray(policy.act(self._observe()), dtype=np.float64), -1.0, 1.0)
+            obs = self._observe()
+            action = np.clip(np.asarray(policy.act(obs), dtype=np.float64), -1.0, 1.0)
+            self._memory.record(world, obs, action)  # step t: the state, then what was decided
             world.step(action[:, 0], action[:, 1])
             self._action = action
 
@@ -345,8 +420,48 @@ class LiveSession:
                 neuron=self._neuron_readout(obs[i]),
                 trace=self._network_trace(obs, i),
                 explain=self._explain(obs, i),
+                trail=self._trail_update(),
             ),
         )
+
+    def _trail_update(self) -> TrailPoints:
+        """The selected car's trail points the browser does not have yet (all of them after a
+        load, a reset or a car change; otherwise the steps taken since the last frame)."""
+        replace = self._trail_full
+        start = self._memory.first if replace else self._trail_sent
+        points = self._memory.trail(self.selected, start, replace=replace)
+        self._trail_sent = self._memory.end
+        self._trail_full = False
+        return points
+
+    def _inspect(self, command: InspectStep) -> list[WireModel]:
+        """The selected car at a remembered step, recomputed from the stored observation."""
+        if self.playing:
+            return [ErrorMessage(message="inspect_step works while paused: send pause first")]
+        memory, t = self._memory, command.step
+        if not memory.has(t):
+            span = "nothing yet" if memory.end == 0 else f"steps {memory.first} to {memory.end - 1}"
+            return [ErrorMessage(message=f"step {t} is not remembered ({span})")]
+        row, car = t % memory.capacity, self.selected
+        observations = memory.observation[row]  # every car's observation at step t, full precision
+        obs = observations[car]
+        return [
+            MomentMessage(
+                car=car,
+                step=t,
+                time=round(float(memory.time[row]), 4),
+                x=round(float(memory.x[row, car]), 3),
+                y=round(float(memory.y[row, car]), 3),
+                psi=round(float(memory.psi[row, car]), 4),
+                v=round(float(memory.v[row, car]), 3),
+                rays=np.round(obs[:5] * RAY_RANGE, 3).tolist(),
+                observation=np.round(obs, 4).tolist(),
+                action=np.round(memory.action[row, car], 3).tolist(),
+                # the same functions a live frame uses, on the same numbers: the same trace
+                trace=self._network_trace(observations, car),
+                explain=self._explain(observations, car),
+            )
+        ]
 
     def _network_messages(self) -> list[WireModel]:
         """The selected car's network as a ``network`` message (none for non-network drivers)."""

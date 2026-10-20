@@ -8,7 +8,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
-API_VERSION = "v1.7"
+API_VERSION = "v1.8"
 
 
 class WireModel(BaseModel):
@@ -170,6 +170,17 @@ class WhatIf(CommandModel):
     overrides: dict[int, float] = Field(default_factory=dict)
 
 
+class InspectStep(CommandModel):
+    """Look at the selected car at an earlier step of the drive (paused only; api v1.8, ADR-027).
+
+    ``step`` must be one of the steps the session still remembers (the last ``trail_seconds`` of
+    the drive). Answered with a ``moment`` message; the simulation itself stays where it is.
+    """
+
+    type: Literal["inspect_step"] = "inspect_step"
+    step: int = Field(ge=0)
+
+
 Command = Annotated[
     LoadScenario
     | Play
@@ -180,7 +191,8 @@ Command = Annotated[
     | SelectCar
     | KeyState
     | SetParam
-    | WhatIf,
+    | WhatIf
+    | InspectStep,
     Field(discriminator="type"),
 ]
 COMMAND_ADAPTER: TypeAdapter[Command] = TypeAdapter(Command)
@@ -194,7 +206,8 @@ class ScenarioMessage(WireModel):
 
     ``dt`` is the physics step in seconds, ``ray_angles`` the sensor directions in radians
     relative to the heading (left positive), ``ray_range`` the sensor range in metres. Track
-    geometry is not included: fetch ``GET /api/tracks/{track}``.
+    geometry is not included: fetch ``GET /api/tracks/{track}``. ``trail_seconds`` is how much
+    of the drive the session remembers for the decision trail (ADR-027).
     """
 
     type: Literal["scenario"] = "scenario"
@@ -210,6 +223,7 @@ class ScenarioMessage(WireModel):
     car_half_width: float
     ray_angles: list[float]
     ray_range: float
+    trail_seconds: float
 
 
 class CarColumns(WireModel):
@@ -349,6 +363,47 @@ class ExplanationMessage(WireModel):
     ghost: GhostPaths
 
 
+class TrailPoints(WireModel):
+    """Points of the selected car's decision trail (ADR-027): where it was and what it decided.
+
+    Entry i says: at step ``steps[i]`` the car was at (``x[i]``, ``y[i]``) and chose ``action[i]``
+    ([steer, throttle]) from there. Only steps at which the car was still running are listed.
+    ``replace`` true means "these are all the points the session remembers for this car" (after a
+    load, a reset or a car change); false means "add these new points to the ones you have".
+    Rounded to 3 decimals.
+    """
+
+    replace: bool
+    steps: list[int]
+    x: list[float]
+    y: list[float]
+    action: list[list[float]]
+
+
+class MomentMessage(WireModel):
+    """Answer to ``inspect_step``: the selected car at an earlier step, recomputed by Python.
+
+    ``x``, ``y``, ``psi`` and ``v`` are its pose and speed then, ``rays`` the five ray lengths in
+    metres, ``observation`` what its network read, ``action`` what it chose. ``trace`` and
+    ``explain`` are its network's forward pass and explanation for that observation, exactly as a
+    frame at that step showed them (null for drivers without a network). Rounded like a frame.
+    """
+
+    type: Literal["moment"] = "moment"
+    car: int
+    step: int
+    time: float
+    x: float
+    y: float
+    psi: float
+    v: float
+    rays: list[float]
+    observation: list[float]
+    action: list[float]
+    trace: NetworkTrace | None
+    explain: Explanation | None
+
+
 class SelectedCar(WireModel):
     """Extra detail for the selected car: rays in metres, the observation, the neuron readout
     (neuron driver) or the network trace (random networks); the other is null."""
@@ -359,6 +414,7 @@ class SelectedCar(WireModel):
     neuron: NeuronReadout | None
     trace: NetworkTrace | None = None
     explain: Explanation | None = None
+    trail: TrailPoints | None = None
 
 
 class ActivationCurves(WireModel):
@@ -431,6 +487,9 @@ WIRE_MODELS: tuple[type[WireModel], ...] = (
     GhostPaths,
     ExplanationMessage,
     WhatIf,
+    InspectStep,
+    TrailPoints,
+    MomentMessage,
     SelectedCar,
     ActivationCurves,
     FrameMessage,

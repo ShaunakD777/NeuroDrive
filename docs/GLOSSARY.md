@@ -14,6 +14,7 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Layer | A group of neurons that all read the same inputs. |
 | Forward propagation | Computing the output by passing values layer by layer from inputs to outputs. |
 | Weighted sum (z) / activation (a) | z is a neuron's weights times its inputs plus its bias, before squashing; a is the output after the activation function. |
+| Look back (scrubbing) | Moving through the remembered steps of a drive (the trail slider, or a click on a trail point) to see what the car saw and what its network computed at that moment. The simulation does not move; Python recomputes that step's trace from the stored observation. |
 | Forward trace | The record of every z and a in one forward pass, kept for display, explanation and backprop. |
 | Shared selection | The one place the web app remembers what the user picked (car, neuron, weight, output). Every view reads and changes it, so a click in one view updates all the others. |
 | Network diagram | A drawing of a network: a column of circles per layer, a line per weight. Line colour = weight sign, thickness = size of the weight, circle fill = the neuron's current activation. |
@@ -154,6 +155,7 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Neuron policy | A driver whose steering is one neuron: it reads the far-left and far-right rays, weights them, adds a bias, and passes the sum through an activation. |
 | Contribution | One input's share of the weighted sum: its weight times its value. |
 | Sensitivity | How much an output moves per unit change of one input, with the other inputs held still (the slope, or partial derivative). +0.4 means: if the input rose by 0.1, the output would rise by about 0.04. |
+| Decision trail | The line drawn behind the selected car showing where it has been in the last 60 s; coloured by the selected output (blue = steer right or accelerate, orange = steer left or brake, thicker = stronger), so you can see the sequence of decisions, not just one. |
 | Ghost car | A see-through copy of the selected car drawn where it would be in 2 s if it held the what-if action, next to a dashed path for holding its real action. Computed by the Python car physics. |
 | What-if | Asking what a network would output if some of its inputs were different, without changing the simulation. Compared with the sensitivity's prediction, it shows how far the straight-line guess holds. |
 | Central difference | Measuring a slope by nudging an input up by a small step h and down by h, then dividing the change in the output by 2h. Its error shrinks like h squared. |

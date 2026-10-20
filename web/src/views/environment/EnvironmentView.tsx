@@ -1,6 +1,7 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useLive } from "../../state/live";
+import { activeMoment, useMoment, usePlayback } from "../../state/playback";
 import { raysFor, useSelection } from "../../state/selection";
 import { activeGhost, ghostGap, raySensitivity } from "../network/inspect";
 import {
@@ -15,6 +16,8 @@ import { drawScene, readTheme } from "./draw";
 import { Hud } from "./Hud";
 import { Controls } from "./Controls";
 import { useDrivingKeys } from "./useDrivingKeys";
+import { TrailPanel } from "./Trail";
+import { nearestTrailStep, trailValues } from "./trailLayout";
 
 type CameraMode = "follow" | "fit";
 
@@ -39,6 +42,8 @@ export function EnvironmentView({
   const boxRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const cameraRef = useRef<Camera>({ cx: 0, cy: 0, scale: 1 });
+  // Where each trail point was drawn (CSS pixels), for clicking a point (task 2.11).
+  const trailRef = useRef<{ steps: number[]; screen: [number, number][] }>({ steps: [], screen: [] });
   const [size, setSize] = useState<Size>({ w: 0, h: 0 });
   const [mode, setMode] = useState<CameraMode>("follow");
   const [zoom, setZoom] = useState(compact ? COMPACT_ZOOM : DEFAULT_ZOOM);
@@ -49,7 +54,10 @@ export function EnvironmentView({
   const highlightAttribute = useSelectedRays().join(",");
   // The selected output's sensitivity to each ray, when an output is selected (task 2.10).
   const output = useSelection((s) => s.output);
-  const explain = useLive((s) => s.frame?.selected?.explain ?? null); // a stable object per frame
+  // Looking at an earlier step (task 2.11): its explanation replaces the present one.
+  const moment = useMoment();
+  const liveExplain = useLive((s) => s.frame?.selected?.explain ?? null); // a stable object per frame
+  const explain = moment === null ? liveExplain : moment.explain;
   const sensitivityRow = raySensitivity(explain, outputIndex(output));
   const sensitivityAttribute = sensitivityRow === null ? "" : sensitivityRow.join(",");
   // The what-if ghost, while a what-if question about this car at this step is open (ADR-026).
@@ -84,16 +92,23 @@ export function EnvironmentView({
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (canvas === null || !ctx || size.w === 0 || size.h === 0) return;
-    const { frame, scenario, geometry: track } = useLive.getState();
+    const live = useLive.getState();
+    const { frame, scenario, geometry: track } = live;
     const selected = frame?.selected?.index ?? 0;
+    const output = outputIndex(useSelection.getState().output);
+    const moment = activeMoment(live, usePlayback.getState().viewStep);
     // Emphasise the rays behind whatever is selected in the Network view (§8.2).
     const highlight = raysFor(useSelection.getState(), frame?.selected);
-    const sensitivityRays = raySensitivity(frame?.selected?.explain, outputIndex(useSelection.getState().output));
+    const sensitivityRays = raySensitivity(moment === null ? frame?.selected?.explain : moment.explain, output);
     const car = frame === null ? null : frame.cars;
+    const trail = live.trail !== null && live.trail.car === selected ? live.trail : null;
+    // Follow the selected car, or the place it was at while an earlier step is looked at.
     const camera =
-      mode === "follow" && car !== null && car.x.length > selected
-        ? followCamera(car.x[selected], car.y[selected], zoom)
-        : fitCamera(fitPoints, size);
+      mode === "follow" && moment !== null
+        ? followCamera(moment.x, moment.y, zoom)
+        : mode === "follow" && car !== null && car.x.length > selected
+          ? followCamera(car.x[selected], car.y[selected], zoom)
+          : fitCamera(fitPoints, size);
     cameraRef.current = camera;
     const ratio = window.devicePixelRatio || 1;
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
@@ -107,8 +122,31 @@ export function EnvironmentView({
       compact,
       highlight,
       raySensitivity: sensitivityRays,
-      ghost: activeGhost(useLive.getState(), useSelection.getState().whatIf),
+      ghost: activeGhost(live, useSelection.getState().whatIf),
+      trail:
+        trail === null
+          ? null
+          : {
+              steps: trail.steps,
+              points: trail.x.map((x, k) => [x, trail.y[k]]),
+              values: trailValues(trail, output),
+            },
+      moment:
+        moment === null
+          ? null
+          : { step: moment.step, x: moment.x, y: moment.y, psi: moment.psi, rays: moment.rays },
     });
+    const trailScreen =
+      trail === null
+        ? []
+        : trail.x.map(
+            (x, k) => worldToScreen(camera, size, x, trail.y[k]).map((v) => Math.round(v)) as [number, number],
+          );
+    trailRef.current = { steps: trail?.steps ?? [], screen: trailScreen };
+    // For browser tests: each trail point as step:x:y on screen, and the step being looked at.
+    canvas.dataset.trail = trailScreen.map(([sx, sy], k) => `${trail?.steps[k]}:${sx}:${sy}`).join(",");
+    canvas.dataset.moment = moment === null ? "" : String(moment.step);
+    canvas.dataset.trailValues = (trailValues(trail, output) ?? []).join(","); // what colours it
     // Where each car is on screen (CSS pixels), so browser tests can click a particular car.
     canvas.dataset.cars =
       car === null
@@ -131,29 +169,40 @@ export function EnvironmentView({
     };
     const unsubscribeLive = useLive.subscribe(schedule);
     const unsubscribeSelection = useSelection.subscribe(schedule);
+    const unsubscribePlayback = usePlayback.subscribe(schedule);
     schedule();
     return () => {
       unsubscribeLive();
       unsubscribeSelection();
+      unsubscribePlayback();
       cancelAnimationFrame(pending);
     };
   }, [draw]);
 
   // Clicking a car selects it: its rays are drawn and the other views can follow (§8.2).
+  // Clicking a point of the trail (while paused) looks at that step (task 2.11).
   const onPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const frame = useLive.getState().frame;
     if (frame === null) return;
     const rect = event.currentTarget.getBoundingClientRect();
-    const index = nearestCar(
-      cameraRef.current,
-      size,
-      frame.cars.x,
-      frame.cars.y,
-      event.clientX - rect.left,
-      event.clientY - rect.top,
-      24,
-    );
-    if (index !== null) useSelection.getState().selectCar(index);
+    const px = event.clientX - rect.left;
+    const py = event.clientY - rect.top;
+    const index = nearestCar(cameraRef.current, size, frame.cars.x, frame.cars.y, px, py, 24);
+    if (index !== null && index !== frame.selected?.index) {
+      useSelection.getState().selectCar(index);
+      return;
+    }
+    const { steps, screen } = trailRef.current;
+    const step = frame.playing ? null : nearestTrailStep(screen, steps, px, py, 12);
+    // The newest trail points lie under the car: a click nearer the car's centre means the car.
+    const distanceTo = ([sx, sy]: number[]) => Math.hypot(sx - px, sy - py);
+    const onCar =
+      index !== null &&
+      (step === null ||
+        distanceTo(worldToScreen(cameraRef.current, size, frame.cars.x[index], frame.cars.y[index])) <
+          distanceTo(screen[steps.indexOf(step)]));
+    if (onCar) usePlayback.getState().backToLive(); // clicking the selected car: back to now
+    else if (step !== null) usePlayback.getState().view(step);
   };
 
   const zoomBy = (factor: number) => setZoom((z) => Math.min(40, Math.max(1, z * factor)));
@@ -212,11 +261,13 @@ export function EnvironmentView({
           </div>
         )}
       </div>
+      {!compact && <TrailPanel />}
       {!compact && (
         <p className="env-hint">
           Drive with the arrow keys or W A S D (up accelerates, down brakes). Press Play first: the
           car only moves while the simulation runs. Click a car to select it: the Network page
-          and the drawer then show that car. With the Neuron driver, set its weights on the
+          and the drawer then show that car. While paused, click a point on its trail (or drag Look
+          back) to see the network at that earlier step. With the Neuron driver, set its weights on the
           Network page.
         </p>
       )}

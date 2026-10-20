@@ -37,6 +37,7 @@ function frame(selectedIndex: number, step = 1): FrameMessage {
       neuron: null,
       trace: null,
       explain: null,
+      trail: null,
     },
   };
 }
@@ -55,6 +56,7 @@ const scenario: ScenarioMessage = {
   car_half_width: 1,
   ray_angles: [1.05, 0.52, 0, -0.52, -1.05],
   ray_range: 50,
+  trail_seconds: 60,
 };
 
 let sent: { type: string; index?: number }[];

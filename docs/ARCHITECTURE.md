@@ -322,7 +322,7 @@ Exam spec version, list of tracks, per-episode metrics (track, start index, prog
 crashed, lap times, mean speed, smoothness, time to crash), and aggregates per track and overall
 (median, IQR, completion rate). See `EXPERIMENT_PROTOCOL.md`.
 
-## 7. Server API (api v1.7, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026)
+## 7. Server API (api v1.8, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027)
 
 REST (`/api/...`):
 - `GET health` → `{status: "ok", version}` (`version` is the NeuroDrive package version)
@@ -344,7 +344,7 @@ REST (`/api/...`):
 
 WebSocket `/ws/live` (one independent session per connection):
 - `hello` is sent first, on connect: `{type: "hello", version, api}` (`api` is the message-contract
-  version, currently `"v1.7"`).
+  version, currently `"v1.8"`).
 - client → server (each has a `type` field):
   - `load_scenario {track, policy, n_cars, seed}`: `policy` is `"keyboard"`, `"constant"`,
     `"neuron"` or `"random_networks"` (every car is driven by its own random [7,16,16,2] network;
@@ -360,6 +360,10 @@ WebSocket `/ws/live` (one independent session per connection):
     selected car's exact current values (`{}` asks about the car exactly as it is). Answered with
     `explanation`; the simulation does not change. Refused with an `error` while playing, or for
     an index outside 0 to 6 or a non-finite value.
+  - `inspect_step {step}` (paused only; ADR-027): look at the selected car at an earlier step.
+    `step` must be one the session still remembers (the last `trail_seconds` of the drive, and
+    before the current step). Answered with `moment`; the simulation does not move. Refused with
+    an `error` while playing or for a step not remembered.
   - `set_param {name, value}` (neuron driver only): `name` is `w_left`, `w_right`, `bias`,
     `throttle` (numbers; weights and bias within ±30, throttle within ±1) or `activation` (`tanh`,
     `sigmoid`, `relu` or `linear`). Answered with a frame. The neuron is
@@ -370,14 +374,15 @@ WebSocket `/ws/live` (one independent session per connection):
     starts from zeros again, and the browser sends back its last-seen settings after a reconnect.
 - server → client:
   - `scenario {track, policy, n_cars, seed, dt, time_limit, target_laps, v_max, wheelbase,
-    car_half_width, ray_angles, ray_range}`: no geometry (use `GET tracks/{name}`).
+    car_half_width, ray_angles, ray_range, trail_seconds}`: no geometry (use
+    `GET tracks/{name}`). `trail_seconds` (60) is how much of the drive the session remembers.
   - `frame {step, time, playing, speed, cars, selected}`: `cars` holds one array per quantity, one
     entry per car: `x`, `y`, `psi`, `v`, `alive`, `progress`, `status` (0 running, 1 crashed,
     2 finished, 3 stalled, 4 timeout), `action` (a [steer, throttle] pair per car; the last action
     applied, [0, 0] before the first step). `selected` is `{index, rays, observation}` for the
     selected car (rays in metres, five numbers; observation is the 7-number vector; `neuron` is the
     neuron driver's readout, see below, or null; `trace` is the network trace, see below, or
-    null) or null.
+    null; `trail` is the decision trail, see below) or null.
     Numbers are rounded: positions, speed and progress to 3 decimals, angles and the observation
     to 4.
   - `selected.neuron {inputs, input_rays, weights, bias, contributions, z, output, activation,
@@ -399,6 +404,16 @@ WebSocket `/ws/live` (one independent session per connection):
     value}` (output m's contributions from the last hidden layer, which add up with the bias to z)
     and `sensitivity[m][k]` = the central-difference slope of output m with respect to input k.
     Computed by `explain/` (task 2.9); rounded to 4 decimals.
+  - `selected.trail {replace, steps, x, y, action}` (every driver, ADR-027): the selected car's
+    decision trail. Entry i: at step `steps[i]` the car was at (`x[i]`, `y[i]`) and chose
+    `action[i]` from there; only steps at which it was still running are listed. `replace` true
+    (after a load, a reset or `select_car`) carries every remembered point; otherwise only the
+    steps since the previous frame, to be added. The session remembers 60 s of every car's pose,
+    observation (full precision) and action in fixed-size arrays, oldest overwritten.
+  - `moment {car, step, time, x, y, psi, v, rays, observation, action, trace, explain}`: the
+    answer to `inspect_step`: the selected car at that step, with its network's trace and
+    explanation recomputed from the stored observation by the same functions a frame uses, so
+    they equal what the frame at that step showed (null for drivers without a network).
   - `explanation {car, step, observation, trace, explain, base_outputs, predicted_outputs,
     ghost}`: the answer to `what_if`: the car's network on the tried observation (trace and
     explanation), its real outputs now, and the straight-line prediction base + Σ_k
@@ -442,6 +457,11 @@ them (`npm run gen:types`), so the two sides cannot drift apart.
 `mode` (live | replay), `runId`, `unit` (checkpoint), `carId`, `neuron` {layer, index},
 `connection` {layer, from, to}, `step` (time index), `output` (steer | throttle), `whatIf` (input overrides).
 
+*As built (task 2.11, `web/src/state/playback.ts`):* the time index lives in the playback
+store as `viewStep` (null = now). `view(step)` (paused only) sends `inspect_step` and clears the
+what-if overrides; any frame at another step, another car, Play or a new scenario sets it back to
+null. The live store keeps the trail from the frames (`updateTrail`) and the latest `moment`.
+
 *As built (task 2.8, `web/src/state/selection.ts`):* `selectCar(i)` is the only way to change the
 car: it stores `carId` and sends `select_car` (the track click, the car picker and the Network
 view's ‹ › stepper all call it). The store follows the server: each frame's `selected.index` is
@@ -459,7 +479,7 @@ ray k; the neuron driver's selected neuron gives its two rays.
 | Click an input neuron or a weight leaving it (2.8) | Emphasise that ray (the others fade) | Outline it; readout shows its live values | — |
 | Click an output neuron | Colour rays by sensitivity; colour trail by that output | Contribution bars; highlight strongest paths to inputs | Show the output's response curve across checkpoints |
 | Pause and drag a what-if slider | Ghost car shows the alternative action (built: 2 s of held action, ADR-026) | Recompute activations (server `what_if`, ADR-025) | — |
-| Click a point on the trail | Jump to that step | Show the trace at that step | — |
+| Click a point on the trail | Jump to that step (built: show the car's pose and rays then, the simulation stays put, ADR-027) | Show the trace at that step (server `inspect_step`) | — |
 | Select a run and scrub the timeline | Replay that checkpoint's exam drive | Weights at that checkpoint, changes highlighted | Cursor on all charts |
 
 ### 8.3 Output-neuron inspector (built up over phases)

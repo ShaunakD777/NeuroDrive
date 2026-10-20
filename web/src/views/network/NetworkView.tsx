@@ -1,6 +1,9 @@
 import type { ReactNode } from "react";
 
+import type { Explanation } from "../../api/generated";
+
 import { useLive } from "../../state/live";
+import { useMoment, usePlayback } from "../../state/playback";
 import { useSelection } from "../../state/selection";
 import { NetworkCompact } from "./NetworkCompact";
 import { NetworkDiagram } from "./NetworkDiagram";
@@ -78,8 +81,11 @@ function MultilayerView({ compact, headerExtra }: { compact: boolean; headerExtr
   const network = useLive((s) => s.network);
   const connected = useLive((s) => s.status === "connected");
 
+  // Looking at an earlier step (task 2.11): the network as it was then.
+  const moment = useMoment();
+  const backToLive = usePlayback((s) => s.backToLive);
   const selected = frame?.selected ?? null;
-  const trace = selected?.trace ?? null;
+  const trace = moment?.trace ?? selected?.trace ?? null;
   const count = frame?.cars.x.length ?? 0;
   // The weights arrive once, right after a car is selected; wait until they are the right car's.
   const ready = selected !== null && trace !== null && network !== null && network.car === selected.index;
@@ -94,8 +100,8 @@ function MultilayerView({ compact, headerExtra }: { compact: boolean; headerExtr
   } else {
     body = (
       <>
-        <NetworkDiagram network={network} trace={trace} car={selected.index} />
-        <Inspection />
+        <NetworkDiagram network={network} trace={trace} car={selected.index} atStep={moment?.step ?? null} />
+        <Inspection explain={moment === null ? (selected.explain ?? null) : moment.explain} />
       </>
     );
   }
@@ -110,15 +116,28 @@ function MultilayerView({ compact, headerExtra }: { compact: boolean; headerExtr
         {selected !== null && <CarStepper index={selected.index} count={count} compact={compact} />}
         {headerExtra}
       </div>
+      {moment !== null && frame !== null && (
+        <div className="past-banner" data-testid="past-banner">
+          <span>
+            Showing step <strong>{moment.step}</strong> of car {moment.car + 1}, earlier in the drive
+            (now: step {frame.step}).
+          </span>
+          <button type="button" data-testid="past-live" onClick={() => backToLive()}>
+            Back to now
+          </button>
+        </div>
+      )}
       {body}
     </section>
   );
 }
 
-/** The output inspector and the what-if panel, once an output neuron is selected (task 2.10). */
-function Inspection() {
+/**
+ * The output inspector and the what-if panel, once an output neuron is selected (task 2.10).
+ * `explain` is the present one, or an earlier step's while one is looked at (task 2.11).
+ */
+function Inspection({ explain }: { explain: Explanation | null }) {
   const output = useSelection((s) => s.output);
-  const explain = useLive((s) => s.frame?.selected?.explain ?? null);
   const network = useLive((s) => s.network);
   if (output === null) {
     return (
