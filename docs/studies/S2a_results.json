@@ -1,0 +1,1462 @@
+{
+ "track": "train_loop_01",
+ "seeds": [
+  0,
+  99
+ ],
+ "cars_per_seed": 20,
+ "summary": {
+  "brains": 2000,
+  "status": {
+   "stalled": 1433,
+   "crashed": 553,
+   "finished": 1,
+   "timeout": 13
+  },
+  "stall_kinds": {
+   "too_slow_at_2s": 339,
+   "never_moved": 962,
+   "stopped_itself": 118,
+   "crawling": 14
+  },
+  "never_moved_braking_at_step_0": 956,
+  "stopped_itself_braking": 118,
+  "stopped_itself_top_speed_quartiles": [
+   3.46,
+   2.75,
+   4.71
+  ],
+  "first_throttle_positive": 1044,
+  "crash_steering_towards_wall": 341,
+  "crash_wall_side": {
+   "right": 318,
+   "left": 235
+  },
+  "crash_right_signs_histogram": [
+   45,
+   128,
+   214,
+   138,
+   28
+  ],
+  "crash_inner_pair_right": 128,
+  "long_drivers_inner_pair_right": 13,
+  "long_drivers_right_signs": [
+   4,
+   4,
+   3,
+   3,
+   4,
+   4,
+   3,
+   4,
+   4,
+   3,
+   4,
+   4,
+   2,
+   3
+  ],
+  "coin_flip_histogram": [
+   34.6,
+   138.2,
+   207.4,
+   138.2,
+   34.6
+  ],
+  "crash_speed_quartiles": [
+   7.49,
+   5.55,
+   10.01
+  ],
+  "crash_seconds_quartiles": [
+   4.57,
+   3.43,
+   6.57
+  ],
+  "mover_distance_quartiles": [
+   11.63,
+   1.49,
+   21.48
+  ],
+  "mover_top_speed_quartiles": [
+   4.96,
+   1.41,
+   8.05
+  ],
+  "movers_full_lock_share_max": 0.0,
+  "movers_full_lock_share_mean": 0.0,
+  "spin_deg_max": 76.2,
+  "circling": 0,
+  "finished": [
+   {
+    "seed": 10,
+    "car": 11,
+    "status": "finished",
+    "steps": 2491,
+    "seconds": 83.03,
+    "distance": 1446.06,
+    "progress": 1462.02,
+    "top_speed": 20.95,
+    "final_speed": 17.622,
+    "moved": true,
+    "first_throttle": 0.3569,
+    "full_lock_share": 0.0,
+    "spin_deg": 13.0,
+    "steer_sensitivity": [
+     -0.1266,
+     -0.1409,
+     -0.0224,
+     0.6212,
+     0.4273,
+     -0.2968,
+     0.2409
+    ],
+    "right_signs": 4,
+    "inner_pair_right": true
+   }
+  ],
+  "timeout": [
+   {
+    "seed": 18,
+    "car": 5,
+    "status": "timeout",
+    "steps": 2760,
+    "seconds": 92.0,
+    "distance": 863.52,
+    "progress": 859.8,
+    "top_speed": 11.18,
+    "final_speed": 10.673,
+    "moved": true,
+    "first_throttle": 0.2089,
+    "full_lock_share": 0.0,
+    "spin_deg": 12.3,
+    "steer_sensitivity": [
+     -0.036,
+     -0.5376,
+     -0.1595,
+     0.5292,
+     0.8479,
+     0.0782,
+     0.3197
+    ],
+    "right_signs": 4,
+    "inner_pair_right": true
+   },
+   {
+    "seed": 22,
+    "car": 17,
+    "status": "timeout",
+    "steps": 2760,
+    "seconds": 92.0,
+    "distance": 1282.45,
+    "progress": 1270.12,
+    "top_speed": 16.43,
+    "final_speed": 15.163,
+    "moved": true,
+    "first_throttle": 0.3531,
+    "full_lock_share": 0.0,
+    "spin_deg": 15.2,
+    "steer_sensitivity": [
+     -0.2679,
+     -0.3085,
+     -0.0266,
+     0.287,
+     -0.2675,
+     0.2444,
+     0.4116
+    ],
+    "right_signs": 3,
+    "inner_pair_right": true
+   },
+   {
+    "seed": 27,
+    "car": 13,
+    "status": "timeout",
+    "steps": 2760,
+    "seconds": 92.0,
+    "distance": 749.53,
+    "progress": 739.86,
+    "top_speed": 13.29,
+    "final_speed": 6.272,
+    "moved": true,
+    "first_throttle": 0.2127,
+    "full_lock_share": 0.0,
+    "spin_deg": 20.6,
+    "steer_sensitivity": [
+     0.3845,
+     -0.5151,
+     0.0734,
+     0.5213,
+     0.5313,
+     -0.2745,
+     -0.3197
+    ],
+    "right_signs": 3,
+    "inner_pair_right": true
+   },
+   {
+    "seed": 40,
+    "car": 11,
+    "status": "timeout",
+    "steps": 2760,
+    "seconds": 92.0,
+    "distance": 1259.36,
+    "progress": 1239.97,
+    "top_speed": 17.84,
+    "final_speed": 13.238,
+    "moved": true,
+    "first_throttle": 0.3467,
+    "full_lock_share": 0.0,
+    "spin_deg": 32.7,
+    "steer_sensitivity": [
+     -0.1999,
+     -0.4184,
+     -0.2683,
+     0.3437,
+     0.1332,
+     0.5274,
+     -0.2698
+    ],
+    "right_signs": 4,
+    "inner_pair_right": true
+   },
+   {
+    "seed": 49,
+    "car": 18,
+    "status": "timeout",
+    "steps": 2760,
+    "seconds": 92.0,
+    "distance": 1032.99,
+    "progress": 1023.14,
+    "top_speed": 15.17,
+    "final_speed": 9.719,
+    "moved": true,
+    "first_throttle": 0.1711,
+    "full_lock_share": 0.0,
+    "spin_deg": 22.7,
+    "steer_sensitivity": [
+     -0.1742,
+     -0.2774,
+     0.2053,
+     0.2543,
+     0.283,
+     -0.3643,
+     0.2029
+    ],
+    "right_signs": 4,
+    "inner_pair_right": true
+   },
+   {
+    "seed": 51,
+    "car": 8,
+    "status": "timeout",
+    "steps": 2760,
+    "seconds": 92.0,
+    "distance": 1172.79,
+    "progress": 1165.72,
+    "top_speed": 15.29,
+    "final_speed": 13.327,
+    "moved": true,
+    "first_throttle": 0.45,
+    "full_lock_share": 0.0,
+    "spin_deg": 21.2,
+    "steer_sensitivity": [
+     0.8229,
+     -1.1545,
+     0.4097,
+     0.3106,
+     0.2731,
+     -0.2304,
+     0.5505
+    ],
+    "right_signs": 3,
+    "inner_pair_right": true
+   },
+   {
+    "seed": 59,
+    "car": 8,
+    "status": "timeout",
+    "steps": 2760,
+    "seconds": 92.0,
+    "distance": 1369.14,
+    "progress": 1387.15,
+    "top_speed": 17.28,
+    "final_speed": 15.949,
+    "moved": true,
+    "first_throttle": 0.2307,
+    "full_lock_share": 0.0,
+    "spin_deg": 27.6,
+    "steer_sensitivity": [
+     -0.1396,
+     -0.1274,
+     -0.2445,
+     0.5758,
+     0.6611,
+     -0.1955,
+     0.5405
+    ],
+    "right_signs": 4,
+    "inner_pair_right": true
+   },
+   {
+    "seed": 75,
+    "car": 8,
+    "status": "timeout",
+    "steps": 2760,
+    "seconds": 92.0,
+    "distance": 1166.71,
+    "progress": 1197.57,
+    "top_speed": 14.65,
+    "final_speed": 9.914,
+    "moved": true,
+    "first_throttle": 0.3516,
+    "full_lock_share": 0.0,
+    "spin_deg": 14.9,
+    "steer_sensitivity": [
+     -0.8088,
+     -0.29,
+     0.157,
+     0.4136,
+     0.0769,
+     -0.5761,
+     0.36
+    ],
+    "right_signs": 4,
+    "inner_pair_right": true
+   },
+   {
+    "seed": 79,
+    "car": 2,
+    "status": "timeout",
+    "steps": 2760,
+    "seconds": 92.0,
+    "distance": 631.19,
+    "progress": 631.46,
+    "top_speed": 9.22,
+    "final_speed": 7.377,
+    "moved": true,
+    "first_throttle": 0.1757,
+    "full_lock_share": 0.0,
+    "spin_deg": 19.6,
+    "steer_sensitivity": [
+     -0.3838,
+     -0.9504,
+     0.5332,
+     0.4455,
+     -0.1645,
+     -0.4269,
+     0.7375
+    ],
+    "right_signs": 3,
+    "inner_pair_right": true
+   },
+   {
+    "seed": 79,
+    "car": 16,
+    "status": "timeout",
+    "steps": 2760,
+    "seconds": 92.0,
+    "distance": 638.69,
+    "progress": 627.16,
+    "top_speed": 7.69,
+    "final_speed": 7.481,
+    "moved": true,
+    "first_throttle": 0.2263,
+    "full_lock_share": 0.0,
+    "spin_deg": 16.2,
+    "steer_sensitivity": [
+     -0.3321,
+     -0.4361,
+     -0.0044,
+     0.7077,
+     0.3539,
+     0.4259,
+     -0.3481
+    ],
+    "right_signs": 4,
+    "inner_pair_right": true
+   },
+   {
+    "seed": 87,
+    "car": 8,
+    "status": "timeout",
+    "steps": 2760,
+    "seconds": 92.0,
+    "distance": 1048.48,
+    "progress": 1029.48,
+    "top_speed": 15.23,
+    "final_speed": 11.592,
+    "moved": true,
+    "first_throttle": 0.2256,
+    "full_lock_share": 0.0,
+    "spin_deg": 18.1,
+    "steer_sensitivity": [
+     -0.2651,
+     -0.4922,
+     -0.0259,
+     0.0798,
+     0.571,
+     0.4621,
+     -0.08
+    ],
+    "right_signs": 4,
+    "inner_pair_right": true
+   },
+   {
+    "seed": 90,
+    "car": 5,
+    "status": "timeout",
+    "steps": 2760,
+    "seconds": 92.0,
+    "distance": 518.44,
+    "progress": 514.82,
+    "top_speed": 6.96,
+    "final_speed": 6.165,
+    "moved": true,
+    "first_throttle": 0.1447,
+    "full_lock_share": 0.0,
+    "spin_deg": 9.3,
+    "steer_sensitivity": [
+     0.1342,
+     -0.239,
+     0.0897,
+     -0.0359,
+     0.2962,
+     -0.3627,
+     -0.3588
+    ],
+    "right_signs": 2,
+    "inner_pair_right": false
+   },
+   {
+    "seed": 92,
+    "car": 15,
+    "status": "timeout",
+    "steps": 2760,
+    "seconds": 92.0,
+    "distance": 798.66,
+    "progress": 784.87,
+    "top_speed": 14.46,
+    "final_speed": 9.606,
+    "moved": true,
+    "first_throttle": 0.1558,
+    "full_lock_share": 0.0,
+    "spin_deg": 15.2,
+    "steer_sensitivity": [
+     -1.1833,
+     -0.0821,
+     -0.0535,
+     0.4354,
+     -0.1486,
+     0.5503,
+     0.2165
+    ],
+    "right_signs": 3,
+    "inner_pair_right": true
+   }
+  ]
+ },
+ "full_lock_circle": {
+  "speed": 3.0,
+  "diameter_measured": 9.153,
+  "diameter_formula": 9.152,
+  "road_width": 12.0
+ },
+ "cases": {
+  "brakes_at_standstill": {
+   "seed": 1,
+   "car": 1,
+   "status": "stalled",
+   "steps": 60,
+   "seconds": 2.0,
+   "distance": 0.0,
+   "progress": 0.0,
+   "top_speed": 0.0,
+   "final_speed": 0.0,
+   "moved": false,
+   "first_throttle": -0.292,
+   "full_lock_share": 0.0,
+   "spin_deg": 0.0,
+   "stall_kind": "never_moved",
+   "steer_range": [
+    -0.0831,
+    -0.0831
+   ],
+   "throttle_range": [
+    -0.292,
+    -0.292
+   ],
+   "speed_after_10s": null,
+   "moments": [
+    {
+     "step": 0,
+     "time": 0.0,
+     "speed": 0.0,
+     "observation": {
+      "ray_far_left": 0.1249,
+      "ray_left": 0.2042,
+      "ray_centre": 0.5543,
+      "ray_right": 0.2976,
+      "ray_far_right": 0.1531,
+      "speed": 0.0,
+      "heading_error": 0.009
+     },
+     "rays_m": [
+      6.24,
+      10.21,
+      27.72,
+      14.88,
+      7.65
+     ],
+     "action": [
+      -0.0831,
+      -0.292
+     ],
+     "steer": {
+      "value": -0.0831,
+      "z": -0.0833,
+      "bias": 0.0,
+      "largest": [
+       {
+        "hidden_neuron": 10,
+        "contribution": 0.1904
+       },
+       {
+        "hidden_neuron": 2,
+        "contribution": -0.1514
+       },
+       {
+        "hidden_neuron": 6,
+        "contribution": -0.1194
+       }
+      ],
+      "rest": -0.0029
+     },
+     "throttle": {
+      "value": -0.292,
+      "z": -0.3008,
+      "bias": 0.0,
+      "largest": [
+       {
+        "hidden_neuron": 2,
+        "contribution": -0.1464
+       },
+       {
+        "hidden_neuron": 6,
+        "contribution": 0.1356
+       },
+       {
+        "hidden_neuron": 9,
+        "contribution": -0.1063
+       }
+      ],
+      "rest": -0.1837
+     },
+     "sensitivity": [
+      [
+       -0.502,
+       0.1811,
+       0.2001,
+       -0.5602,
+       -0.0479,
+       -0.1312,
+       -0.2284
+      ],
+      [
+       -0.1012,
+       0.024,
+       -0.1078,
+       -0.2031,
+       -0.5555,
+       0.2378,
+       0.2061
+      ]
+     ]
+    }
+   ]
+  },
+  "stops_itself": {
+   "seed": 5,
+   "car": 18,
+   "status": "stalled",
+   "steps": 138,
+   "seconds": 4.6,
+   "distance": 4.77,
+   "progress": 4.69,
+   "top_speed": 2.65,
+   "final_speed": 0.0,
+   "moved": true,
+   "first_throttle": 0.3408,
+   "full_lock_share": 0.0,
+   "spin_deg": 18.4,
+   "stall_kind": "stopped_itself",
+   "throttle_when_stopping": -0.1795,
+   "steer_range": [
+    -0.5151,
+    -0.2287
+   ],
+   "throttle_range": [
+    -0.1888,
+    0.3408
+   ],
+   "speed_after_10s": null,
+   "moments": [
+    {
+     "step": 0,
+     "time": 0.0,
+     "speed": 0.0,
+     "observation": {
+      "ray_far_left": 0.1555,
+      "ray_left": 0.3357,
+      "ray_centre": 1.0,
+      "ray_right": 0.1912,
+      "ray_far_right": 0.1251,
+      "speed": 0.0,
+      "heading_error": -0.0165
+     },
+     "rays_m": [
+      7.78,
+      16.79,
+      50.0,
+      9.56,
+      6.25
+     ],
+     "action": [
+      -0.5096,
+      0.3408
+     ],
+     "steer": {
+      "value": -0.5096,
+      "z": -0.5621,
+      "bias": 0.0,
+      "largest": [
+       {
+        "hidden_neuron": 4,
+        "contribution": -0.2643
+       },
+       {
+        "hidden_neuron": 2,
+        "contribution": -0.1263
+       },
+       {
+        "hidden_neuron": 9,
+        "contribution": -0.1139
+       }
+      ],
+      "rest": -0.0576
+     },
+     "throttle": {
+      "value": 0.3408,
+      "z": 0.355,
+      "bias": 0.0,
+      "largest": [
+       {
+        "hidden_neuron": 1,
+        "contribution": 0.2248
+       },
+       {
+        "hidden_neuron": 4,
+        "contribution": 0.1661
+       },
+       {
+        "hidden_neuron": 9,
+        "contribution": -0.1023
+       }
+      ],
+      "rest": 0.0664
+     },
+     "sensitivity": [
+      [
+       0.1058,
+       -0.0007,
+       -0.3523,
+       0.0882,
+       -0.0105,
+       -0.1004,
+       -0.0401
+      ],
+      [
+       -0.6123,
+       0.1582,
+       0.4298,
+       -0.75,
+       -0.0788,
+       -0.8898,
+       0.3261
+      ]
+     ]
+    },
+    {
+     "step": 85,
+     "time": 2.83,
+     "speed": 0.022,
+     "observation": {
+      "ray_far_left": 0.1187,
+      "ray_left": 0.1649,
+      "ray_centre": 0.4584,
+      "ray_right": 0.4815,
+      "ray_far_right": 0.1744,
+      "speed": 0.0007,
+      "heading_error": 0.086
+     },
+     "rays_m": [
+      5.94,
+      8.25,
+      22.92,
+      24.08,
+      8.72
+     ],
+     "action": [
+      -0.2289,
+      -0.1803
+     ],
+     "steer": {
+      "value": -0.2289,
+      "z": -0.233,
+      "bias": 0.0,
+      "largest": [
+       {
+        "hidden_neuron": 5,
+        "contribution": 0.1964
+       },
+       {
+        "hidden_neuron": 4,
+        "contribution": -0.0791
+       },
+       {
+        "hidden_neuron": 9,
+        "contribution": -0.0664
+       }
+      ],
+      "rest": -0.284
+     },
+     "throttle": {
+      "value": -0.1803,
+      "z": -0.1822,
+      "bias": 0.0,
+      "largest": [
+       {
+        "hidden_neuron": 5,
+        "contribution": -0.1994
+       },
+       {
+        "hidden_neuron": 1,
+        "contribution": 0.1087
+       },
+       {
+        "hidden_neuron": 13,
+        "contribution": -0.0622
+       }
+      ],
+      "rest": -0.0293
+     },
+     "sensitivity": [
+      [
+       0.1518,
+       -0.0227,
+       -0.5766,
+       0.097,
+       -0.0578,
+       -0.2343,
+       0.0316
+      ],
+      [
+       -0.699,
+       0.2733,
+       0.5822,
+       -0.832,
+       -0.0137,
+       -0.9746,
+       0.2675
+      ]
+     ]
+    }
+   ],
+   "what_changed": {
+    "from_step": 0,
+    "to_step": 85,
+    "actual_change": [
+     0.2807,
+     -0.5211
+    ],
+    "predicted_change": [
+     0.339,
+     -0.5518
+    ],
+    "throttle_shares": {
+     "ray_far_left": 0.0257,
+     "ray_left": -0.0467,
+     "ray_centre": -0.3153,
+     "ray_right": -0.2415,
+     "ray_far_right": -0.0007,
+     "speed": -0.0007,
+     "heading_error": 0.0274
+    },
+    "steer_shares": {
+     "ray_far_left": -0.0056,
+     "ray_left": 0.0039,
+     "ray_centre": 0.3123,
+     "ray_right": 0.0281,
+     "ray_far_right": -0.0028,
+     "speed": -0.0002,
+     "heading_error": 0.0032
+    }
+   }
+  },
+  "crash": {
+   "seed": 1,
+   "car": 12,
+   "status": "crashed",
+   "steps": 311,
+   "seconds": 10.37,
+   "distance": 78.24,
+   "progress": 77.79,
+   "top_speed": 12.83,
+   "final_speed": 12.825,
+   "moved": true,
+   "first_throttle": 0.2665,
+   "full_lock_share": 0.0,
+   "spin_deg": 14.4,
+   "wall": "left",
+   "last_steer": -0.0214,
+   "steering_towards_wall": true,
+   "crash_speed": 12.81,
+   "steer_sensitivity": [
+    -0.0043,
+    0.0939,
+    -0.5324,
+    1.2483,
+    0.2373,
+    -0.4239,
+    -0.1128
+   ],
+   "right_signs": 3,
+   "inner_pair_right": false,
+   "steer_range": [
+    -0.1636,
+    0.3836
+   ],
+   "throttle_range": [
+    0.2145,
+    0.2814
+   ],
+   "speed_after_10s": [
+    12.64,
+    12.83
+   ],
+   "moments": [
+    {
+     "step": 0,
+     "time": 0.0,
+     "speed": 0.0,
+     "observation": {
+      "ray_far_left": 0.148,
+      "ray_left": 0.21,
+      "ray_centre": 0.4681,
+      "ray_right": 0.5009,
+      "ray_far_right": 0.132,
+      "speed": 0.0,
+      "heading_error": 0.0183
+     },
+     "rays_m": [
+      7.4,
+      10.5,
+      23.4,
+      25.04,
+      6.6
+     ],
+     "action": [
+      0.3836,
+      0.2665
+     ],
+     "steer": {
+      "value": 0.3836,
+      "z": 0.4042,
+      "bias": 0.0,
+      "largest": [
+       {
+        "hidden_neuron": 10,
+        "contribution": 0.1567
+       },
+       {
+        "hidden_neuron": 13,
+        "contribution": 0.1551
+       },
+       {
+        "hidden_neuron": 2,
+        "contribution": -0.1051
+       }
+      ],
+      "rest": 0.1975
+     },
+     "throttle": {
+      "value": 0.2665,
+      "z": 0.2731,
+      "bias": 0.0,
+      "largest": [
+       {
+        "hidden_neuron": 10,
+        "contribution": 0.3075
+       },
+       {
+        "hidden_neuron": 2,
+        "contribution": 0.1686
+       },
+       {
+        "hidden_neuron": 13,
+        "contribution": -0.1308
+       }
+      ],
+      "rest": -0.0722
+     },
+     "sensitivity": [
+      [
+       -0.0557,
+       0.0884,
+       -0.5245,
+       1.0069,
+       0.1417,
+       -0.3843,
+       -0.1182
+      ],
+      [
+       -0.0143,
+       0.4924,
+       -0.0885,
+       0.1675,
+       0.1735,
+       0.1211,
+       -0.0487
+      ]
+     ]
+    },
+    {
+     "step": 280,
+     "time": 9.33,
+     "speed": 12.238,
+     "observation": {
+      "ray_far_left": 0.0694,
+      "ray_left": 0.1003,
+      "ray_centre": 0.4153,
+      "ray_right": 0.4804,
+      "ray_far_right": 0.2309,
+      "speed": 0.4079,
+      "heading_error": 0.0563
+     },
+     "rays_m": [
+      3.47,
+      5.02,
+      20.77,
+      24.02,
+      11.55
+     ],
+     "action": [
+      0.2275,
+      0.279
+     ],
+     "steer": {
+      "value": 0.2275,
+      "z": 0.2316,
+      "bias": 0.0,
+      "largest": [
+       {
+        "hidden_neuron": 9,
+        "contribution": -0.1433
+       },
+       {
+        "hidden_neuron": 10,
+        "contribution": 0.1311
+       },
+       {
+        "hidden_neuron": 13,
+        "contribution": 0.1293
+       }
+      ],
+      "rest": 0.1144
+     },
+     "throttle": {
+      "value": 0.279,
+      "z": 0.2866,
+      "bias": 0.0,
+      "largest": [
+       {
+        "hidden_neuron": 10,
+        "contribution": 0.2573
+       },
+       {
+        "hidden_neuron": 2,
+        "contribution": 0.1743
+       },
+       {
+        "hidden_neuron": 9,
+        "contribution": -0.1391
+       }
+      ],
+      "rest": -0.0058
+     },
+     "sensitivity": [
+      [
+       -0.0369,
+       0.0868,
+       -0.5609,
+       1.1714,
+       0.191,
+       -0.4331,
+       -0.1265
+      ],
+      [
+       -0.018,
+       0.5065,
+       -0.0943,
+       0.1857,
+       0.2032,
+       0.112,
+       -0.0283
+      ]
+     ]
+    },
+    {
+     "step": 310,
+     "time": 10.33,
+     "speed": 12.811,
+     "observation": {
+      "ray_far_left": 0.0224,
+      "ray_left": 0.0335,
+      "ray_centre": 0.7411,
+      "ray_right": 0.4279,
+      "ray_far_right": 0.2713,
+      "speed": 0.427,
+      "heading_error": 0.0492
+     },
+     "rays_m": [
+      1.12,
+      1.68,
+      37.06,
+      21.4,
+      13.56
+     ],
+     "action": [
+      -0.0214,
+      0.2145
+     ],
+     "steer": {
+      "value": -0.0214,
+      "z": -0.0214,
+      "bias": 0.0,
+      "largest": [
+       {
+        "hidden_neuron": 9,
+        "contribution": -0.1773
+       },
+       {
+        "hidden_neuron": 2,
+        "contribution": -0.1326
+       },
+       {
+        "hidden_neuron": 5,
+        "contribution": 0.1167
+       }
+      ],
+      "rest": 0.1719
+     },
+     "throttle": {
+      "value": 0.2145,
+      "z": 0.2179,
+      "bias": 0.0,
+      "largest": [
+       {
+        "hidden_neuron": 10,
+        "contribution": 0.2252
+       },
+       {
+        "hidden_neuron": 2,
+        "contribution": 0.2129
+       },
+       {
+        "hidden_neuron": 9,
+        "contribution": -0.1722
+       }
+      ],
+      "rest": -0.048
+     },
+     "sensitivity": [
+      [
+       -0.0043,
+       0.0939,
+       -0.5324,
+       1.2483,
+       0.2373,
+       -0.4239,
+       -0.1128
+      ],
+      [
+       -0.0372,
+       0.5225,
+       -0.101,
+       0.1996,
+       0.2257,
+       0.0998,
+       -0.0112
+      ]
+     ]
+    }
+   ],
+   "what_changed": {
+    "from_step": 280,
+    "to_step": 310,
+    "actual_change": [
+     -0.2489,
+     -0.0646
+    ],
+    "predicted_change": [
+     -0.2427,
+     -0.0655
+    ],
+    "throttle_shares": {
+     "ray_far_left": 0.0017,
+     "ray_left": -0.0349,
+     "ray_centre": -0.0329,
+     "ray_right": -0.0105,
+     "ray_far_right": 0.0091,
+     "speed": 0.0019,
+     "heading_error": 0.0001
+    },
+    "steer_shares": {
+     "ray_far_left": 0.0002,
+     "ray_left": -0.0063,
+     "ray_centre": -0.1735,
+     "ray_right": -0.0655,
+     "ray_far_right": 0.0096,
+     "speed": -0.0081,
+     "heading_error": 0.0008
+    }
+   }
+  },
+  "finisher": {
+   "seed": 10,
+   "car": 11,
+   "status": "finished",
+   "steps": 2491,
+   "seconds": 83.03,
+   "distance": 1446.06,
+   "progress": 1462.02,
+   "top_speed": 20.95,
+   "final_speed": 17.622,
+   "moved": true,
+   "first_throttle": 0.3569,
+   "full_lock_share": 0.0,
+   "spin_deg": 13.0,
+   "steer_sensitivity": [
+    -0.1266,
+    -0.1409,
+    -0.0224,
+    0.6212,
+    0.4273,
+    -0.2968,
+    0.2409
+   ],
+   "right_signs": 4,
+   "inner_pair_right": true,
+   "steer_range": [
+    -0.1738,
+    0.3538
+   ],
+   "throttle_range": [
+    0.0377,
+    0.4184
+   ],
+   "speed_after_10s": [
+    16.27,
+    20.95
+   ],
+   "moments": [
+    {
+     "step": 0,
+     "time": 0.0,
+     "speed": 0.0,
+     "observation": {
+      "ray_far_left": 0.1633,
+      "ray_left": 1.0,
+      "ray_centre": 0.4435,
+      "ray_right": 0.1806,
+      "ray_far_right": 0.1181,
+      "speed": 0.0,
+      "heading_error": -0.017
+     },
+     "rays_m": [
+      8.17,
+      50.0,
+      22.17,
+      9.03,
+      5.9
+     ],
+     "action": [
+      -0.0893,
+      0.3569
+     ],
+     "steer": {
+      "value": -0.0893,
+      "z": -0.0895,
+      "bias": 0.0,
+      "largest": [
+       {
+        "hidden_neuron": 6,
+        "contribution": 0.2295
+       },
+       {
+        "hidden_neuron": 5,
+        "contribution": -0.1752
+       },
+       {
+        "hidden_neuron": 2,
+        "contribution": -0.1166
+       }
+      ],
+      "rest": -0.0272
+     },
+     "throttle": {
+      "value": 0.3569,
+      "z": 0.3733,
+      "bias": 0.0,
+      "largest": [
+       {
+        "hidden_neuron": 16,
+        "contribution": 0.2999
+       },
+       {
+        "hidden_neuron": 6,
+        "contribution": 0.2761
+       },
+       {
+        "hidden_neuron": 3,
+        "contribution": -0.1719
+       }
+      ],
+      "rest": -0.0308
+     },
+     "sensitivity": [
+      [
+       -0.154,
+       -0.1746,
+       -0.0972,
+       0.5412,
+       0.4084,
+       -0.2576,
+       0.2242
+      ],
+      [
+       0.3808,
+       -0.0752,
+       0.2293,
+       -0.1986,
+       -0.0949,
+       -0.2384,
+       -0.2032
+      ]
+     ]
+    },
+    {
+     "step": 1245,
+     "time": 41.5,
+     "speed": 17.256,
+     "observation": {
+      "ray_far_left": 0.1179,
+      "ray_left": 0.3089,
+      "ray_centre": 0.5227,
+      "ray_right": 0.2304,
+      "ray_far_right": 0.1585,
+      "speed": 0.5752,
+      "heading_error": -0.0176
+     },
+     "rays_m": [
+      5.9,
+      15.45,
+      26.13,
+      11.52,
+      7.93
+     ],
+     "action": [
+      -0.0894,
+      0.2014
+     ],
+     "steer": {
+      "value": -0.0894,
+      "z": -0.0896,
+      "bias": 0.0,
+      "largest": [
+       {
+        "hidden_neuron": 5,
+        "contribution": -0.264
+       },
+       {
+        "hidden_neuron": 6,
+        "contribution": 0.172
+       },
+       {
+        "hidden_neuron": 14,
+        "contribution": 0.1587
+       }
+      ],
+      "rest": -0.1564
+     },
+     "throttle": {
+      "value": 0.2014,
+      "z": 0.2042,
+      "bias": 0.0,
+      "largest": [
+       {
+        "hidden_neuron": 6,
+        "contribution": 0.207
+       },
+       {
+        "hidden_neuron": 16,
+        "contribution": 0.1816
+       },
+       {
+        "hidden_neuron": 2,
+        "contribution": -0.1324
+       }
+      ],
+      "rest": -0.052
+     },
+     "sensitivity": [
+      [
+       -0.1226,
+       -0.1364,
+       -0.0249,
+       0.6138,
+       0.4215,
+       -0.2867,
+       0.2438
+      ],
+      [
+       0.4273,
+       0.0644,
+       0.3694,
+       -0.1603,
+       -0.0562,
+       -0.2992,
+       -0.1727
+      ]
+     ]
+    },
+    {
+     "step": 2490,
+     "time": 83.0,
+     "speed": 17.629,
+     "observation": {
+      "ray_far_left": 0.1087,
+      "ray_left": 0.2089,
+      "ray_centre": 0.5735,
+      "ray_right": 0.2625,
+      "ray_far_right": 0.1674,
+      "speed": 0.5876,
+      "heading_error": 0.005
+     },
+     "rays_m": [
+      5.44,
+      10.44,
+      28.67,
+      13.13,
+      8.37
+     ],
+     "action": [
+      -0.05,
+      0.1964
+     ],
+     "steer": {
+      "value": -0.05,
+      "z": -0.0501,
+      "bias": 0.0,
+      "largest": [
+       {
+        "hidden_neuron": 5,
+        "contribution": -0.2633
+       },
+       {
+        "hidden_neuron": 6,
+        "contribution": 0.1682
+       },
+       {
+        "hidden_neuron": 14,
+        "contribution": 0.1643
+       }
+      ],
+      "rest": -0.1193
+     },
+     "throttle": {
+      "value": 0.1964,
+      "z": 0.1989,
+      "bias": 0.0,
+      "largest": [
+       {
+        "hidden_neuron": 6,
+        "contribution": 0.2023
+       },
+       {
+        "hidden_neuron": 16,
+        "contribution": 0.1695
+       },
+       {
+        "hidden_neuron": 2,
+        "contribution": -0.1259
+       }
+      ],
+      "rest": -0.0469
+     },
+     "sensitivity": [
+      [
+       -0.1266,
+       -0.1409,
+       -0.0224,
+       0.6212,
+       0.4273,
+       -0.2968,
+       0.2409
+      ],
+      [
+       0.427,
+       0.0734,
+       0.3771,
+       -0.1576,
+       -0.0527,
+       -0.3022,
+       -0.1711
+      ]
+     ]
+    }
+   ],
+   "what_changed": {
+    "from_step": 1245,
+    "to_step": 2490,
+    "actual_change": [
+     0.0393,
+     -0.0051
+    ],
+    "predicted_change": [
+     0.0397,
+     -0.0053
+    ],
+    "throttle_shares": {
+     "ray_far_left": -0.0039,
+     "ray_left": -0.0073,
+     "ray_centre": 0.0192,
+     "ray_right": -0.0051,
+     "ray_far_right": -0.0005,
+     "speed": -0.0038,
+     "heading_error": -0.0039
+    },
+    "steer_shares": {
+     "ray_far_left": 0.0012,
+     "ray_left": 0.0141,
+     "ray_centre": -0.0011,
+     "ray_right": 0.02,
+     "ray_far_right": 0.0038,
+     "speed": -0.0037,
+     "heading_error": 0.0054
+    }
+   }
+  }
+ }
+}

@@ -155,6 +155,9 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Neuron policy | A driver whose steering is one neuron: it reads the far-left and far-right rays, weights them, adds a bias, and passes the sum through an activation. |
 | Contribution | One input's share of the weighted sum: its weight times its value. |
 | Sensitivity | How much an output moves per unit change of one input, with the other inputs held still (the slope, or partial derivative). +0.4 means: if the input rose by 0.1, the output would rise by about 0.04. |
+| Random brain | An untrained network whose weights were drawn at random (Xavier, biases 0). Its "driving rules" are accidents of the draw; Study S2a shows most of them stall or crash. |
+| Wiring signs | Whether the signs of steer's sensitivity to the side rays point the wall-avoiding way: negative for the left rays, positive for the right rays (0 to 4 of the four right). Random brains get them right like coin flips. |
+| Grazing ray (chatter) | A ray nearly touching the tip of a wall: a tiny turn switches its reading between the far wall and the near one (e.g. 47 m and 16 m), so a network that listens to that ray makes its output jump from step to step. |
 | Decision trail | The line drawn behind the selected car showing where it has been in the last 60 s; coloured by the selected output (blue = steer right or accelerate, orange = steer left or brake, thicker = stronger), so you can see the sequence of decisions, not just one. |
 | Ghost car | A see-through copy of the selected car drawn where it would be in 2 s if it held the what-if action, next to a dashed path for holding its real action. Computed by the Python car physics. |
 | What-if | Asking what a network would output if some of its inputs were different, without changing the simulation. Compared with the sensitivity's prediction, it shows how far the straight-line guess holds. |

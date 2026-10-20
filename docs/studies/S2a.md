@@ -1,0 +1,234 @@
+# Study S2a — What do random networks do, and can the views explain why?
+
+Task 2.12. Follows [Study S1](S1.md) and [S1b](S1b.md), which used one hand-wired neuron.
+
+## Question and hypotheses
+
+**Question.** Give every car its own untrained network: a [7, 16, 16, 2] tanh network whose 434
+weights are drawn at random (Xavier initialisation, biases zero). What do these "random brains" do
+on `train_loop_01`, and can the Environment view, the Network view, the output inspector and the
+decision trail explain *why* a particular car does what it does?
+
+**Hypotheses** (written after task 2.6 had shown that seed 0's twenty brains mostly stall or crash,
+and before the runs below):
+
+- **H1 (nothing drives).** Almost no random brain finishes 2 laps; most stall or crash within
+  seconds.
+- **H2 (circling).** Some brains steer hard one way all the time and drive in circles.
+- **H3 (stalling is a coin flip).** A car that never moves is one whose throttle happens to be
+  negative at the start: at a standstill braking keeps the speed at 0, so the inputs never change
+  and the network keeps deciding the same thing.
+- **H4 (crashes come from wrong wiring).** A crashing car is blind to, or steers towards, the wall
+  it hits. Among crashers, the signs of steer's sensitivity to the side rays look like coin flips.
+- **H5 (the views are enough).** For each chosen car, the receipt and the sensitivity table name
+  the inputs and hidden neurons behind the decision, and the straight-line prediction from the
+  sensitivity accounts for most of how the output changes over time.
+
+## What changed versus what was held fixed
+
+- **Changed:** the networks (100 seeds × 20 brains = 2,000 random networks) and the start of each
+  car (seeded random starts).
+- **Held fixed:** physics v1, observation v1, the network shape [7, 16, 16, 2] with tanh, Xavier
+  initialisation, the track, the exam rules (2 laps, the stall rule, the 92 s limit of ADR-022).
+- No learning happens anywhere in this study.
+
+## Setup
+
+- Track `train_loop_01` (731 m loop, 12 m wide). Each seed s gives 20 cars, built exactly as the app
+  builds "Random networks, Random start, seed s": the networks from the seed's `init` stream, the
+  starts (position, up to 1 m sideways, up to 0.1 rad of heading) from the seed itself. **Car c of
+  seed s here is car c of seed s in the app**, checked step for step by
+  `tests/server/test_study_s2a.py`.
+- Seeds 0 to 99. Every episode runs until all 20 cars have stopped.
+- The stall rule: a car whose progress over the last 3 s is under 2 m is stopped, checked from 2 s
+  on.
+- Regenerate everything with `uv run --with matplotlib python scripts/study_s2a.py --figures`
+  (about 1.5 minutes; deterministic). Raw numbers: `docs/studies/S2a_results.json`. The view
+  screenshots were taken from the app (light theme) at the steps named below.
+- **Wiring signs.** For a car's network at one observation, s_k is the sensitivity of steer to
+  input k (central differences, task 2.9): how much steer moves per unit change of that input. A
+  wall-avoiding driver has s < 0 for the two left rays (+60°, +30°: when the left wall comes closer,
+  the ray gets shorter and steer should rise, meaning turn right) and s > 0 for the two right rays
+  (−30°, −60°). "Right signs" counts how many of these four are right (0 to 4).
+
+## Results
+
+### What 2,000 random brains do
+
+| Outcome | Brains | Share |
+|---|---:|---:|
+| Stalled | 1,433 | 72 % |
+| Crashed | 553 | 28 % |
+| Still driving at 92 s (timeout) | 13 | 0.65 % |
+| Finished 2 laps | 1 | 0.05 % |
+
+![How far each brain got](figures/s2a_distance.png)
+
+- Of the brains that moved at all, the median distance was 11.6 m (IQR 1.5 to 21.5 m) and the
+  median top speed 5.0 m/s (IQR 1.4 to 8.1).
+- Crashes come early: median 4.6 s after the start (IQR 3.4 to 6.6 s), at a median 7.5 m/s (IQR
+  5.6 to 10.0). The wall was on the right in 318 crashes and on the left in 235.
+- **The 13 timeouts** survived all 92 s but were too slow: they covered 515 to 1,387 m, short of the
+  1,462 m of 2 laps.
+- **The one finisher** (seed 10, car 11) completed 2 laps in 83.0 s, cruising at 16.3 to 21.0 m/s.
+
+![Seed 10's twenty drives](figures/s2a_seed10_paths.png)
+
+### Why so many stall: a coin flip at the start (H3 supported)
+
+The stall rule ended 1,433 cars, for four different reasons:
+
+| Why it stalled | Cars |
+|---|---:|
+| Never moved | 962 |
+| Too slow off the line: still speeding up at 2 s, but under 2 m covered | 339 |
+| Moved, then braked itself to a standstill | 118 |
+| Crawled: moving, but under 2 m in some 3 s | 14 |
+
+- 956 of the 962 cars that never moved had a **negative throttle at step 0** (the other 6 had a
+  throttle so small the car crept under 5 cm/s). Over all 2,000 brains the first throttle was
+  positive for 1,044 (52 %): a coin flip, as expected from weights drawn symmetrically around 0
+  and biases of 0.
+- A car at rest that brakes stays at rest (speed is clamped at 0), so its observation never changes
+  and its network gives the same answer at every step until the stall rule ends it at 2 s.
+- All 118 self-stoppers were braking (throttle < 0) when they stopped, after reaching a median
+  3.5 m/s (IQR 2.8 to 4.7).
+
+### Why no car circles (H2 rejected)
+
+- No brain ever turned more than 76° relative to the road, and no moving brain held
+  |steer| > 0.9 for even one step.
+- Untrained tanh outputs stay moderate. Steer is tanh of a sum of 16 contributions that are about
+  as often negative as positive, so they mostly cancel. In the cases below |steer| never exceeds
+  0.52.
+- Even at full lock a circle does not fit. The car physics alone, at full lock and 3 m/s, drives a
+  circle **9.15 m across**, matching the formula 2 × wheelbase / tan(δ_max) = 2 × 2.5 / tan 0.5 =
+  9.15 m. A car in the middle of the 12 m road has 6 m to each edge, less its own 1 m half-width.
+  So a car that kept turning one way would hit the wall before closing a circle.
+
+So the roadmap's "circling car" does not occur on this track. The cases below explain the four
+behaviours that do.
+
+### Crashes: wired like coin flips, often steering into the wall (H4 supported)
+
+| Side-ray signs right | 0 | 1 | 2 | 3 | 4 |
+|---|---:|---:|---:|---:|---:|
+| Crashed cars (553) | 45 | 128 | 214 | 138 | 28 |
+| Four fair coin flips would give | 34.6 | 138.2 | 207.4 | 138.2 | 34.6 |
+| Long drivers (13 timeouts + 1 finisher) | 0 | 0 | 1 | 5 | 8 |
+
+- At the moment of the crash, 341 of the 553 crashers (62 %) were steering *towards* the wall they
+  hit.
+- The ±30° pair (s < 0 for +30°, s > 0 for −30°) was right in 128 crashers (23 %, chance 25 %) but
+  in 13 of the 14 long drivers (93 %).
+- So the brains that survive are the lucky ones whose random wiring happens to point the right way.
+
+### Four cars, explained with the views (H5 supported)
+
+**1. Brakes at a standstill: seed 1, car 1** (never moves; stalled at 2.0 s)
+
+![Throttle receipt of seed 1, car 1](figures/s2a_view_standstill_network.png)
+
+- At step 0 the Network view shows throttle = −0.29 (braking). The inspector's receipt gives
+  z = −0.301 with bias 0. The largest pushes are hidden-2 neuron 2 (−0.146), neuron 6 (+0.136) and
+  neuron 9 (−0.106); the other 13 together add −0.184.
+- **No single culprit.** It is the sum of 16 small random pushes that happens to land below 0.
+- Throttle's sensitivity to speed is +0.24, so this network would want *more* throttle if it were
+  moving. But it never moves, so that input never changes.
+
+**2. Stops itself: seed 5, car 18** (moves, brakes to a stop; stalled at 4.6 s)
+
+![Throttle at step 85, seed 5, car 18](figures/s2a_view_stopper_network.png)
+
+- **Start:** at step 0 the centre ray sees open road (50 m), steer is −0.51 (left) and throttle is
+  +0.34.
+- **Turning changes the inputs:** the car turns left, so by step 85 its centre ray has shortened to
+  22.9 m and its −30° ray has lengthened from 9.6 to 24.1 m. Throttle is now −0.18.
+- **Look back to step 85:** this network's throttle has sensitivity +0.58 to the centre ray (it
+  brakes when the road ahead shortens, which looks sensible) and −0.83 to the −30° ray.
+- **The straight-line breakdown of the change,** sensitivity × change of each input, as the
+  what-if panel computes it:
+  - the centre ray accounts for −0.32 of it;
+  - the −30° ray accounts for −0.24.
+  - Predicted −0.55; actual −0.52.
+- So the car's own turn changes its view, and its accidental wiring answers by braking to a halt.
+
+**3. Crash: seed 1, car 12** (drives 78 m, leaves the road at 10.37 s, 12.8 m/s)
+
+![Environment at step 310](figures/s2a_view_crash_env.png)
+![Network at step 310](figures/s2a_view_crash_network.png)
+
+- **Look back to step 310, its last decision.**
+  - The +60° ray reads 1.1 m and the +30° ray 1.7 m: the left wall is right there.
+  - Steer is −0.02, slightly *towards* it.
+- **The sensitivity row explains it.**
+  - Steer's slope to the +60° ray is −0.004: the right sign but nearly zero, so the car is
+    practically blind on that side.
+  - Its slope to the +30° ray is +0.094, the wrong sign.
+  - What it listens to is the −30° ray (+1.25) and the centre ray (−0.53).
+- **Over the last second** (step 280 to 310), steer fell from +0.23 to −0.02. The straight-line
+  breakdown predicts −0.24 against an actual −0.25:
+  - −0.17 from the centre ray;
+  - −0.07 from the −30° ray;
+  - 0.0002 from the +60° ray, even though that ray fell from 3.5 m to 1.1 m.
+- **Chattering:** from 8.4 s on, steer jumps between about −0.15 and +0.3 at almost every step
+  (the middle panel of the figure below). The centre ray is grazing the tip of the inner wall: a
+  heading change of 0.005 rad (0.3°) moves its reading between 47 m and 16.5 m. Times the
+  sensitivity of −0.53, that is a steer jump of about 0.32 (observed 0.33), which swings the heading
+  back. The full wall search gives the same readings, so this is the geometry of a grazing ray, not
+  a sensor fault.
+
+**4. The finisher: seed 10, car 11** (2 laps in 83.0 s)
+
+![Seed 10, car 11 at the finish](figures/s2a_view_finisher_env.png)
+
+- **All four side-ray signs are right.** Steer's slopes to the +60°, +30°, −30° and −60° rays are
+  −0.13, −0.14, +0.62 and +0.43 at the finish, and they barely change over the drive.
+- **Its throttle limits its own speed.** Throttle's slope to the speed input is −0.30, so it eases
+  off as it speeds up. It settles at 16 to 21 m/s with throttle 0.04 to 0.42.
+- It is a lucky draw (the 1-in-16 wiring plus a self-limiting throttle), not a skill. It also
+  chatters at one bend on each lap, at about 31 s and 70 s, when its −30° ray grazes a wall tip.
+
+![Steer, throttle and speed over time](figures/s2a_cases.png)
+
+## Failure analysis
+
+- **Run:** seed 1, Random start, Random networks, 20 cars, `train_loop_01`.
+- **Car and step:** car 12 at step 310 (10.33 s), its last decision before leaving the road.
+- **What the Network view showed:** inputs +60° = 0.02 and +30° = 0.03 (wall 1.1 m and 1.7 m to
+  the left), steer −0.02 ("straight").
+- **What the inspector showed:** the receipt is led by hidden-2 neurons 9 (−0.177), 2 (−0.133) and
+  5 (+0.117); the sensitivity row gives +60° −0.004 and +30° +0.094.
+- **Reading:** the network has almost no connection from the left rays to steer, so a wall on the
+  left cannot make it turn right.
+
+## Conclusion
+
+- **H1 supported:** 1 brain in 2,000 finished; 72 % stalled and 28 % crashed, most within seconds.
+- **H2 rejected:** no brain circles. Untrained tanh outputs stay moderate, and even a full-lock
+  circle (9.15 m) does not fit beside a car on this 12 m road.
+- **H3 supported:** never moving is a coin flip on the first throttle. 956 of 962 non-movers braked
+  at step 0, and the first throttle was positive for 52 % of all brains.
+- **H4 supported:**
+  - crashers' wiring signs match four fair coin flips closely (28 with all four right, against 34.6
+    expected);
+  - 62 % of crashers were steering towards the wall when they crashed;
+  - long drivers are the lucky exceptions (8 of 14 with all four right, 13 of 14 with the ±30° pair
+    right).
+- **H5 supported, for these four cars:** the receipts and sensitivity rows named the inputs behind
+  each decision. The straight-line breakdown predicted the change in an output over a stretch of
+  driving within 0.06 of the actual change.
+- **Uncertain:**
+  - The breakdown is linear and was only checked on these cases.
+  - The wiring measure looks at one observation (the last decision), not the whole drive.
+  - Everything here is one track and one network shape.
+
+## What this teaches about AI
+
+A network's behaviour is entirely in its weights. With random weights you get random rules: brake
+or go, ignore a wall or not, decided by the luck of the draw. Most of those rules fail at once, and
+the rare success (the finisher) is luck, not competence. The explanation tools already work on
+these untrained networks: they turn "it crashed" into "its steer has almost no connection to the
+left rays". That is exactly what learning will have to change, and what later studies can check it
+changed. A smooth network fed a jumpy input (a ray grazing a corner) gives a jumpy decision, a
+limitation of the sensors that learning will have to cope with.

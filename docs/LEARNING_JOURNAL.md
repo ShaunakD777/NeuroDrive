@@ -613,3 +613,21 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   is the value the live HUD showed one step later.
 - Surprise or difficulty: the first browser run failed on progress only, because Playwright reused
   an `nd serve` still running the previous API version (v1.8), which did not send progress yet.
+
+### 2026-10-20 — Task 2.12: Study S2a, random brains
+- Concept: an untrained network's behaviour is set entirely by its random weights; the explain
+  tools (receipts, sensitivity, the decision trail) can read those accidental rules off it.
+- Key equation(s) in words: the change in an output between two moments is about the sum, over
+  the inputs, of sensitivity times the input's change (the what-if prediction, read backwards);
+  the tightest circle at full lock is 2 x wheelbase / tan(max wheel angle) = 9.15 m across.
+- What we observed: of 2,000 random brains, 72 % stall (956 of the 962 that never move brake at
+  step 0: the first throttle is a coin flip, positive 52 % of the time), 28 % crash, 13 drive the
+  full 92 s too slowly and one finishes (seed 10, car 11). Crashers' wiring signs match four coin
+  flips; long drivers are the lucky well-wired ones. No brain circles: untrained tanh outputs stay
+  moderate and a full-lock circle would not fit on the road anyway.
+- Surprise or difficulty: the expected "circling car" never appeared in 4,000 tries, so the study
+  explains a self-stopper instead. Many "stalled" cars were still speeding up when the 2 m in 2 s
+  check ended them. And steering chatter turned out to come from rays grazing the tips of walls: a
+  0.3 degree turn flips a reading between 47 m and 16 m.
+- Open question: will learned networks learn to ignore grazing rays, or will the sensors need
+  smoothing before learning works well?
