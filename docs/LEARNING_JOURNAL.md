@@ -631,3 +631,21 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   0.3 degree turn flips a reading between 47 m and 16 m.
 - Open question: will learned networks learn to ignore grazing rays, or will the sensors need
   smoothing before learning works well?
+
+### 2026-10-20 — Task 2.12 follow-up: random brains on Monza and in other shapes
+- Concept: does a harder track or a different network shape change what random brains do?
+- Key equation(s) in words: Xavier draws a weight with variance 2 / (n_in + n_out), so a first
+  layer with many neurons gets small weights; its neurons' sums of the 7 inputs are then small, and
+  the whole network's outputs are gentler (for 64 first-layer neurons the typical sum is about a
+  third of a no-hidden-layer network's).
+- What we observed: on Monza the shares of stalls and crashes are the same as on the loop, since
+  random brains fail in their first few metres. Three of 6,000 app-shaped brains finished Monza,
+  something no fixed-throttle neuron managed in S1b, by easing off the throttle when the centre ray
+  shortened. The brains that last are largely the same on every track. Wider networks steer more
+  gently, stall more and crash less; depth alone changes little; no shape circles.
+- Surprise or difficulty: two quick claims in the first draft of the report ("every turn under 90
+  degrees", "no brain ever near full lock") were wrong once all 36,000 brains were in; checking
+  every claim against the results file caught them. The one brain that held full lock was too slow
+  to get anywhere before the stall rule ended it.
+- Open question: will a learning method find the "ease off when the road ahead shortens" rule on
+  purpose, and will it transfer across tracks the way the lucky brains' rules did?

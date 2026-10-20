@@ -54,25 +54,37 @@ FULL_LOCK = 0.9  # |steer| above this counts as (nearly) full lock
 SPIN = 1.5 * np.pi  # turning this far relative to the road would count as circling
 LEFT_RAYS, RIGHT_RAYS = (0, 1), (3, 4)  # +60 and +30 degrees; -30 and -60 degrees
 
-# The cars explained in the report: (seed, car index, the steps to look at, why it was chosen).
+# The thoroughness grid (added at the user's request): every shape on every track. All tanh,
+# Xavier-initialised, biases 0. Only BASE_SHAPE can be loaded in the app.
+TRACKS = ("train_loop_01", "monza_cw", "monza_ccw")
+BASE_SHAPE = (7, 16, 16, 2)
+SHAPES = ((7, 2), (7, 4, 2), (7, 16, 2), BASE_SHAPE, (7, 64, 64, 2), (7, 16, 16, 16, 16, 2))
+
+# The cars explained in the report (all BASE_SHAPE, so each can be replayed in the app):
+# (track, seed, car index, the steps to look at, why it was chosen).
 CASES = {
-    "brakes_at_standstill": (1, 0, (0,), "the most common behaviour: never moves"),
-    "stops_itself": (5, 17, (0, 85), "moves, then its own throttle brings it to a stop"),
-    "crash": (1, 11, (0, 280, 310), "drives 78 m and leaves the road (the task 2.11 example)"),
-    "finisher": (10, 10, None, "the only one of 2,000 that finishes"),
+    "brakes_at_standstill": (TRACK, 1, 0, (0,), "the most common behaviour: never moves"),
+    "stops_itself": (TRACK, 5, 17, (0, 85), "moves, then its own throttle brings it to a stop"),
+    "crash": (TRACK, 1, 11, (0, 280, 310), "drives 78 m and leaves the road (task 2.11)"),
+    "finisher": (TRACK, 10, 10, None, "the only base-shape brain that finishes the loop"),
+    "monza_finisher": ("monza_cw", 51, 7, None, "finishes 2 laps of Monza clockwise"),
 }
 
 
 # ── building and running the scenario ─────────────────────────────────────────────────────
 
 
-def load_track() -> Track:
-    return Track.from_json(ROOT / "tracks" / f"{TRACK}.json")
+def load_track(name: str = TRACK) -> Track:
+    return Track.from_json(ROOT / "tracks" / f"{name}.json")
 
 
-def scenario(track: Track, seed: int) -> tuple[World, Population]:
-    """The live session's "Random networks, Random start, seed ``seed``" scenario, at step 0."""
-    population = init_population(NetworkSpec(), N_CARS, child_rng(make_rng(seed), "init"))
+def scenario(
+    track: Track, seed: int, shape: tuple[int, ...] = BASE_SHAPE
+) -> tuple[World, Population]:
+    """The live session's "Random networks, Random start, seed ``seed``" scenario, at step 0
+    (with networks of another ``shape`` when asked; the app itself only has BASE_SHAPE)."""
+    spec = NetworkSpec(layer_sizes=shape)
+    population = init_population(spec, N_CARS, child_rng(make_rng(seed), "init"))
     world = World(track, WorldConfig.for_track(track))
     world.reset(
         n=N_CARS,
@@ -84,8 +96,10 @@ def scenario(track: Track, seed: int) -> tuple[World, Population]:
     return world, population
 
 
-def drive(track: Track, seed: int) -> tuple[EpisodeRecording, Population, float]:
-    world, population = scenario(track, seed)
+def drive(
+    track: Track, seed: int, shape: tuple[int, ...] = BASE_SHAPE
+) -> tuple[EpisodeRecording, Population, float]:
+    world, population = scenario(track, seed, shape)
     return run_episode(world, PopulationPolicy(population), seed=seed), population, world.dt
 
 
@@ -126,6 +140,7 @@ def describe_car(rec: EpisodeRecording, population: Population, dt: float, seed:
         "final_speed": round(float(speed[-1]), 3),
         "moved": bool(speed.max() > MOVED),
         "first_throttle": round(float(action[0, 1]), 4),
+        "first_abs_steer": round(float(abs(action[0, 0])), 4),
         "full_lock_share": round(float(np.mean(np.abs(action[:, 0]) > FULL_LOCK)), 4),
         "spin_deg": round(float(np.degrees(heading_error.max() - heading_error.min())), 1),
     }
@@ -154,16 +169,18 @@ def describe_car(rec: EpisodeRecording, population: Population, dt: float, seed:
     return car
 
 
-def census(track: Track) -> list[dict]:
+def census(track: Track, shape: tuple[int, ...] = BASE_SHAPE) -> list[dict]:
     cars = []
     for seed in SEEDS:
-        rec, population, dt = drive(track, seed)
+        rec, population, dt = drive(track, seed, shape)
         cars += [describe_car(rec, population, dt, seed, i) for i in range(N_CARS)]
     return cars
 
 
-def quartiles(values) -> list[float]:
-    """[median, 25th percentile, 75th percentile]."""
+def quartiles(values) -> list[float] | None:
+    """[median, 25th percentile, 75th percentile] (None for no values)."""
+    if len(values) == 0:
+        return None
     q1, med, q3 = np.percentile(np.asarray(values, dtype=float), [25, 50, 75])
     return [round(float(med), 2), round(float(q1), 2), round(float(q3), 2)]
 
@@ -199,13 +216,17 @@ def summarise(cars: list[dict]) -> dict:
         "coin_flip_histogram": [round(len(crashed) * comb / 16, 1) for comb in (1, 4, 6, 4, 1)],
         "crash_speed_quartiles": quartiles([c["crash_speed"] for c in crashed]),
         "crash_seconds_quartiles": quartiles([c["seconds"] for c in crashed]),
+        "first_abs_steer_quartiles": quartiles([c["first_abs_steer"] for c in cars]),
+        "first_abs_steer_over_full_lock": sum(c["first_abs_steer"] > FULL_LOCK for c in cars),
         "mover_distance_quartiles": quartiles([c["distance"] for c in movers]),
         "mover_top_speed_quartiles": quartiles([c["top_speed"] for c in movers]),
-        "movers_full_lock_share_max": max(c["full_lock_share"] for c in movers),
-        "movers_full_lock_share_mean": round(
-            float(np.mean([c["full_lock_share"] for c in movers])), 4
-        ),
+        "movers_full_lock_share_max": max((c["full_lock_share"] for c in movers), default=0.0),
+        "movers_full_lock_share_mean": 0.0
+        if not movers
+        else round(float(np.mean([c["full_lock_share"] for c in movers])), 4),
         "spin_deg_max": max(c["spin_deg"] for c in cars),
+        # the brain that spent the largest share of its steps at (nearly) full lock
+        "most_full_lock": max(cars, key=lambda c: (c["full_lock_share"], -c["seed"], -c["car"])),
         "circling": sum(c["spin_deg"] > np.degrees(SPIN) for c in cars),
         "finished": [c for c in cars if c["status"] == "finished"],
         "timeout": [c for c in cars if c["status"] == "timeout"],
@@ -301,6 +322,10 @@ def case(track: Track, seed: int, i: int, steps) -> dict:
     throttle = rec.action[:n, i, 1]
     steer = rec.action[:n, i, 0]
     cruising = rec.v[min(300, n) : n + 1, i]  # after the first 10 s
+    settled = slice(min(900, n), n)  # after the first 30 s
+    centre = rec.observation[settled, i, 2]
+    ahead_short = throttle[settled][centre < 0.5]
+    ahead_clear = throttle[settled][centre > 0.99]
     result = {
         **car,
         "steer_range": [round(float(steer.min()), 4), round(float(steer.max()), 4)],
@@ -308,6 +333,16 @@ def case(track: Track, seed: int, i: int, steps) -> dict:
         "speed_after_10s": [round(float(cruising.min()), 2), round(float(cruising.max()), 2)]
         if len(cruising) > 1
         else None,
+        "speed_after_30s_percentiles_5_50_95": np.round(
+            np.percentile(rec.v[settled, i], [5, 50, 95]), 2
+        ).tolist()
+        if n > 900
+        else None,
+        # mean throttle after 30 s when the centre ray is under half its range, and when it is clear
+        "throttle_road_ahead_short_vs_clear": [
+            round(float(ahead_short.mean()), 3) if len(ahead_short) else None,
+            round(float(ahead_clear.mean()), 3) if len(ahead_clear) else None,
+        ],
         "moments": [moment(rec, population, i, t) for t in steps],
     }
     if len(steps) > 1:
@@ -318,7 +353,7 @@ def case(track: Track, seed: int, i: int, steps) -> dict:
 # ── figures (optional) ─────────────────────────────────────────────────────────────────────
 
 
-def figures(track: Track, cars: list[dict], cases: dict) -> None:
+def figures(track: Track, cars: list[dict], cases: dict, grid: dict) -> None:
     import matplotlib
 
     matplotlib.use("Agg")
@@ -369,10 +404,11 @@ def figures(track: Track, cars: list[dict], cases: dict) -> None:
     plt.close(fig)
 
     # 3. Steer and throttle over time for the moving cases.
-    fig, axes = plt.subplots(3, 1, figsize=(8, 7), sharex=False)
-    for ax, name in zip(axes, ("stops_itself", "crash", "finisher"), strict=True):
-        seed, i, _, _ = CASES[name]
-        rec, _, dt = drive(track, seed)
+    moving = ("stops_itself", "crash", "finisher", "monza_finisher")
+    fig, axes = plt.subplots(len(moving), 1, figsize=(8, 9), sharex=False)
+    for ax, name in zip(axes, moving, strict=True):
+        where, seed, i, _, _ = CASES[name]
+        rec, _, dt = drive(load_track(where), seed)
         n = int(rec.alive[:-1, i].sum())
         t = np.arange(n) * dt
         ax.plot(t, rec.action[:n, i, 0], label="steer", color="#2563eb")
@@ -380,12 +416,82 @@ def figures(track: Track, cars: list[dict], cases: dict) -> None:
         ax.plot(t, rec.v[:n, i] / 30, label="speed / v_max", color="#15803d", ls="--")
         ax.axhline(0, color="#999", lw=0.8)
         ax.set_ylim(-1, 1)
-        ax.set_title(f"{name.replace('_', ' ')}: seed {seed}, car {i + 1}", fontsize=10)
+        ax.set_title(f"{name.replace('_', ' ')}: {where}, seed {seed}, car {i + 1}", fontsize=10)
         ax.legend(loc="upper right", fontsize=8)
     axes[-1].set_xlabel("time (s)")
     fig.tight_layout()
     fig.savefig(FIGURES_DIR / "s2a_cases.png", dpi=110)
     plt.close(fig)
+
+    # 4. The grid: outcomes and the size of the first steering command, per shape and track.
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4.8))
+    labels = ["[" + ",".join(map(str, s)) + "]" for s in SHAPES]
+    width = 0.27
+    for k, name in enumerate(TRACKS):
+        xs = np.arange(len(SHAPES)) + (k - 1) * width
+        rows = [grid[config_name(name, s)] for s in SHAPES]
+        total = np.array([r["brains"] for r in rows], dtype=float)
+        stalled = np.array([r["status"].get("stalled", 0) for r in rows]) / total * 100
+        crashed = np.array([r["status"].get("crashed", 0) for r in rows]) / total * 100
+        ax1.bar(xs, stalled, width, color=colours["stalled"], edgecolor="white")
+        ax1.bar(xs, crashed, width, bottom=stalled, color=colours["crashed"], edgecolor="white")
+        steer = [r["first_abs_steer_quartiles"] for r in rows]
+        ax2.errorbar(
+            xs,
+            [q[0] for q in steer],
+            yerr=[[q[0] - q[1] for q in steer], [q[2] - q[0] for q in steer]],
+            fmt="o",
+            capsize=3,
+            label=name,
+        )
+    for ax in (ax1, ax2):
+        ax.set_xticks(np.arange(len(SHAPES)), labels, rotation=20, fontsize=8)
+    ax1.set_ylabel("% of 2,000 brains (grey stalled, orange crashed)")
+    ax1.set_title("Outcomes; bars left to right: loop, Monza cw, Monza ccw", fontsize=10)
+    ax1.set_ylim(0, 100)
+    ax2.set_ylabel("|steer| at step 0 (median and IQR)")
+    ax2.set_title("How hard random brains steer at the start", fontsize=10)
+    ax2.legend(fontsize=8)
+    fig.tight_layout()
+    fig.savefig(FIGURES_DIR / "s2a_grid.png", dpi=110)
+    plt.close(fig)
+
+
+def survivors_across_tracks(grid: dict) -> dict:
+    """Is surviving a property of the brain or of the track? Car c of seed s has the same network
+    on every track (only its start differs), so compare the long drivers (timeout or finished)."""
+    result = {}
+    for shape in SHAPES:
+        sets = {}
+        for name in TRACKS:
+            s = grid[config_name(name, shape)]
+            sets[name] = sorted({(c["seed"], c["car"]) for c in s["finished"] + s["timeout"]})
+        loop = set(sets[TRACK])
+        monza = set(sets["monza_cw"]) | set(sets["monza_ccw"])
+        result[str(list(shape))] = {
+            "long_drivers": {name: [list(p) for p in v] for name, v in sets.items()},
+            "on_all_tracks": sorted(set.intersection(*(set(v) for v in sets.values()))),
+            "on_any_track": len(set.union(*(set(v) for v in sets.values()))),
+            "loop_long_drivers_also_long_on_monza": len(loop & monza),
+        }
+    return result
+
+
+def config_name(track: str, shape: tuple[int, ...]) -> str:
+    return f"{track} [{', '.join(map(str, shape))}]"
+
+
+def grid_line(track: str, shape: tuple[int, ...], s: dict) -> str:
+    """One printed row of the grid table."""
+    st = s["status"]
+    return (
+        f"{track:14s} {str(list(shape)):22s} stalled {st.get('stalled', 0):4d} "
+        f"crashed {st.get('crashed', 0):4d} timeout {st.get('timeout', 0):3d} "
+        f"finished {st.get('finished', 0):2d} | first throttle > 0: {s['first_throttle_positive']} "
+        f"| |steer| at step 0 {s['first_abs_steer_quartiles']} | circling {s['circling']} "
+        f"| crash signs {s['crash_right_signs_histogram']} "
+        f"| distance {s['mover_distance_quartiles']}"
+    )
 
 
 # ── main ────────────────────────────────────────────────────────────────────────────────────
@@ -397,16 +503,31 @@ def main() -> None:
     args = parser.parse_args()
 
     track = load_track()
-    cars = census(track)
-    summary = summarise(cars)
+    # The grid: every shape on every track (the base shape on train_loop_01 is the main census).
+    grid, cars = {}, []
+    for name in TRACKS:
+        grid_track = load_track(name)
+        for shape in SHAPES:
+            these = census(grid_track, shape)
+            grid[config_name(name, shape)] = summarise(these)
+            print(grid_line(name, shape, grid[config_name(name, shape)]), flush=True)
+            if name == TRACK and shape == BASE_SHAPE:
+                cars = these
+    summary = grid[config_name(TRACK, BASE_SHAPE)]
     circle = full_lock_circle()
     circle["road_width"] = track.width
-    cases = {name: case(track, seed, i, steps) for name, (seed, i, steps, _) in CASES.items()}
+    cases = {
+        name: case(load_track(where), seed, i, steps)
+        for name, (where, seed, i, steps, _) in CASES.items()
+    }
+    consistency = survivors_across_tracks(grid)
     results = {
         "track": TRACK,
         "seeds": [SEEDS[0], SEEDS[-1]],
         "cars_per_seed": N_CARS,
         "summary": summary,
+        "grid": grid,
+        "survivors_across_tracks": consistency,
         "full_lock_circle": circle,
         "cases": cases,
     }
@@ -422,7 +543,7 @@ def main() -> None:
         for m in c["moments"]:
             print(json.dumps(m, default=lambda v: v.item()))
     if args.figures:
-        figures(track, cars, cases)
+        figures(track, cars, cases, grid)
         print(f"figures written to {FIGURES_DIR}")
 
 

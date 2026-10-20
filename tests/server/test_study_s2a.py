@@ -78,3 +78,18 @@ def test_a_full_lock_circle_is_wider_than_the_space_beside_a_centred_car(study, 
     assert circle["diameter_measured"] == pytest.approx(circle["diameter_formula"], abs=0.01)
     # a car in the middle of the road has half the width to the edge, minus its own half-width
     assert circle["diameter_measured"] > track.width / 2
+
+
+def test_the_monza_finisher_still_finishes(study):
+    track = study.load_track("monza_cw")
+    rec, population, dt = study.drive(track, 51)
+    car = study.describe_car(rec, population, dt, 51, 7)
+    assert car["status"] == "finished" and car["seconds"] == pytest.approx(355.87)
+
+
+def test_other_shapes_build_networks_of_that_shape_from_the_same_stream(study, track):
+    for shape in study.SHAPES:
+        _, population = study.scenario(track, 3, shape)
+        assert population.spec.layer_sizes == shape
+    _, base = study.scenario(track, 3)
+    assert base.spec.layer_sizes == (7, 16, 16, 2) == study.BASE_SHAPE
