@@ -351,7 +351,7 @@ def test_rest_track_endpoints():
 def test_websocket_session_end_to_end():
     client = TestClient(create_app())
     with client.websocket_connect("/ws/live") as ws:
-        assert json.loads(ws.receive_text())["api"] == API_VERSION == "v1.8"
+        assert json.loads(ws.receive_text())["api"] == API_VERSION == "v1.9"
         ws.send_text(json.dumps({"type": "load_scenario", "track": TRACK, "policy": "constant"}))
         assert json.loads(ws.receive_text())["type"] == "scenario"
         assert json.loads(ws.receive_text())["step"] == 0
@@ -985,6 +985,7 @@ def test_inspect_step_gives_exactly_what_the_live_frame_showed_at_that_step():
         assert (moment.x, moment.y, moment.psi, moment.v) == (
             live.cars.x[4], live.cars.y[4], live.cars.psi[4], live.cars.v[4]
         )  # fmt: skip
+        assert moment.progress == live.cars.progress[4] and moment.status == live.cars.status[4]
         assert moment.rays == live.selected.rays
         assert moment.observation == live.selected.observation
         assert moment.trace == live.selected.trace  # bit-identical, then rounded the same way
@@ -1032,6 +1033,9 @@ def test_a_crashed_cars_trail_stops_where_it_crashed():
     (_net, frame) = send(session, type="select_car", index=car)
     steps = frame.selected.trail.steps
     assert steps == list(range(len(steps))) and len(steps) < 200
+    (running,) = send(session, type="inspect_step", step=steps[-1])  # its last step on the road
+    (after,) = send(session, type="inspect_step", step=steps[-1] + 1)  # the crash is recorded
+    assert running.status == 0 and after.status == 1
 
 
 def test_moments_work_for_drivers_without_a_network():

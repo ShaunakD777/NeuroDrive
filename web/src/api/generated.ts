@@ -352,8 +352,10 @@ export interface LoadScenario {
 /**
  * Answer to ``inspect_step``: the selected car at an earlier step, recomputed by Python.
  *
- * ``x``, ``y``, ``psi`` and ``v`` are its pose and speed then, ``rays`` the five ray lengths in
- * metres, ``observation`` what its network read, ``action`` what it chose. ``trace`` and
+ * ``x``, ``y``, ``psi`` and ``v`` are its pose and speed then, ``progress`` its cumulative
+ * progress in metres and ``status`` its status code (as in ``CarColumns``), ``rays`` the five
+ * ray lengths in metres, ``observation`` what its network read, ``action`` what it chose there
+ * (api v1.9, ADR-028: progress and status let the HUD show that moment too). ``trace`` and
  * ``explain`` are its network's forward pass and explanation for that observation, exactly as a
  * frame at that step showed them (null for drivers without a network). Rounded like a frame.
  */
@@ -362,8 +364,10 @@ export interface MomentMessage {
   car: number;
   explain: Explanation | null;
   observation: number[];
+  progress: number;
   psi: number;
   rays: number[];
+  status: number;
   step: number;
   time: number;
   trace: NetworkTrace | null;

@@ -322,7 +322,7 @@ Exam spec version, list of tracks, per-episode metrics (track, start index, prog
 crashed, lap times, mean speed, smoothness, time to crash), and aggregates per track and overall
 (median, IQR, completion rate). See `EXPERIMENT_PROTOCOL.md`.
 
-## 7. Server API (api v1.8, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027)
+## 7. Server API (api v1.9, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028)
 
 REST (`/api/...`):
 - `GET health` → `{status: "ok", version}` (`version` is the NeuroDrive package version)
@@ -344,7 +344,7 @@ REST (`/api/...`):
 
 WebSocket `/ws/live` (one independent session per connection):
 - `hello` is sent first, on connect: `{type: "hello", version, api}` (`api` is the message-contract
-  version, currently `"v1.8"`).
+  version, currently `"v1.9"`).
 - client → server (each has a `type` field):
   - `load_scenario {track, policy, n_cars, seed}`: `policy` is `"keyboard"`, `"constant"`,
     `"neuron"` or `"random_networks"` (every car is driven by its own random [7,16,16,2] network;
@@ -410,8 +410,10 @@ WebSocket `/ws/live` (one independent session per connection):
     (after a load, a reset or `select_car`) carries every remembered point; otherwise only the
     steps since the previous frame, to be added. The session remembers 60 s of every car's pose,
     observation (full precision) and action in fixed-size arrays, oldest overwritten.
-  - `moment {car, step, time, x, y, psi, v, rays, observation, action, trace, explain}`: the
-    answer to `inspect_step`: the selected car at that step, with its network's trace and
+  - `moment {car, step, time, x, y, psi, v, progress, status, rays, observation, action, trace,
+    explain}`: the answer to `inspect_step`: the selected car at that step (`progress` and
+    `status` as in `frame.cars`, ADR-028; the HUD shows them while looking back), with its
+    network's trace and
     explanation recomputed from the stored observation by the same functions a frame uses, so
     they equal what the frame at that step showed (null for drivers without a network).
   - `explanation {car, step, observation, trace, explain, base_outputs, predicted_outputs,

@@ -86,10 +86,11 @@ class DriveMemory:
     """The last ``capacity`` steps of a live drive, for every car (ADR-027).
 
     Before each physics step t the session calls :meth:`record` with every car's state at step t:
-    pose (x, y, psi), speed v, observation o_t (7 numbers), the action a_t chosen from it, whether
-    the car was still running, and the time. Step t lives in row ``t % capacity`` of fixed-size
-    arrays, so the oldest step is overwritten once ``capacity`` steps are stored and memory never
-    grows (60 s of 100 cars is about 19 MB). The observation is stored at full precision, so a
+    pose (x, y, psi), speed v, cumulative progress, status code (0 = still running),
+    observation o_t (7 numbers), the action a_t chosen from it, and the time. Step t lives in
+    row ``t % capacity`` of fixed-size arrays, so the oldest step is overwritten once
+    ``capacity`` steps are stored and memory never grows (60 s of 100 cars is about 20 MB, ADR-028
+    added progress and status). The observation is stored at full precision, so a
     past forward pass recomputed from it is bit-identical to the one made live.
     """
 
@@ -99,9 +100,10 @@ class DriveMemory:
         self.y = np.zeros((capacity, n_cars))
         self.psi = np.zeros((capacity, n_cars))
         self.v = np.zeros((capacity, n_cars))
+        self.progress = np.zeros((capacity, n_cars))
+        self.status = np.zeros((capacity, n_cars), dtype=np.int8)
         self.observation = np.zeros((capacity, n_cars, 7))
         self.action = np.zeros((capacity, n_cars, 2))
-        self.alive = np.zeros((capacity, n_cars), dtype=bool)
         self.time = np.zeros(capacity)
         self.end = 0  # one past the last recorded step
 
@@ -121,7 +123,8 @@ class DriveMemory:
         self.x[row], self.y[row], self.psi[row], self.v[row] = cars.x, cars.y, cars.psi, cars.v
         self.observation[row] = observation
         self.action[row] = action
-        self.alive[row] = world.status == Status.RUNNING
+        self.progress[row] = world.progress
+        self.status[row] = world.status
         self.time[row] = world.time
         self.end = t + 1
 
@@ -129,7 +132,7 @@ class DriveMemory:
         """Car ``car``'s remembered steps from ``start`` on (only those where it was running)."""
         steps = np.arange(max(start, self.first), self.end)
         rows = steps % self.capacity
-        keep = self.alive[rows, car]
+        keep = self.status[rows, car] == Status.RUNNING
         steps, rows = steps[keep], rows[keep]
         return TrailPoints(
             replace=replace,
@@ -454,6 +457,8 @@ class LiveSession:
                 y=round(float(memory.y[row, car]), 3),
                 psi=round(float(memory.psi[row, car]), 4),
                 v=round(float(memory.v[row, car]), 3),
+                progress=round(float(memory.progress[row, car]), 3),
+                status=int(memory.status[row, car]),
                 rays=np.round(obs[:5] * RAY_RANGE, 3).tolist(),
                 observation=np.round(obs, 4).tolist(),
                 action=np.round(memory.action[row, car], 3).tolist(),

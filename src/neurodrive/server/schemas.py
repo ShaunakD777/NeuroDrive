@@ -8,7 +8,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
-API_VERSION = "v1.8"
+API_VERSION = "v1.9"
 
 
 class WireModel(BaseModel):
@@ -383,8 +383,10 @@ class TrailPoints(WireModel):
 class MomentMessage(WireModel):
     """Answer to ``inspect_step``: the selected car at an earlier step, recomputed by Python.
 
-    ``x``, ``y``, ``psi`` and ``v`` are its pose and speed then, ``rays`` the five ray lengths in
-    metres, ``observation`` what its network read, ``action`` what it chose. ``trace`` and
+    ``x``, ``y``, ``psi`` and ``v`` are its pose and speed then, ``progress`` its cumulative
+    progress in metres and ``status`` its status code (as in ``CarColumns``), ``rays`` the five
+    ray lengths in metres, ``observation`` what its network read, ``action`` what it chose there
+    (api v1.9, ADR-028: progress and status let the HUD show that moment too). ``trace`` and
     ``explain`` are its network's forward pass and explanation for that observation, exactly as a
     frame at that step showed them (null for drivers without a network). Rounded like a frame.
     """
@@ -397,6 +399,8 @@ class MomentMessage(WireModel):
     y: float
     psi: float
     v: float
+    progress: float
+    status: int
     rays: list[float]
     observation: list[float]
     action: list[float]

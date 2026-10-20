@@ -603,3 +603,13 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   `trailLayout.ts`.
 - Open question: when trained networks drive whole laps, will 60 s of trail be enough to find the
   moment a run went wrong, or will Phase 5's replays take over that job?
+
+### 2026-10-20 — Task 2.11 follow-up: an honest HUD while looking back
+- Concept: every number on screen should describe the same moment. While looking back, the HUD
+  now shows the earlier step's speed, status, progress, rays and the action chosen there.
+- What we observed: a test that read the HUD at step 2 live and again while looking back at step 2
+  got identical numbers, except steer and throttle: live, the HUD shows the last action *applied*
+  (chosen one step earlier), while looking back it shows the action *chosen* at that step, which
+  is the value the live HUD showed one step later.
+- Surprise or difficulty: the first browser run failed on progress only, because Playwright reused
+  an `nd serve` still running the previous API version (v1.8), which did not send progress yet.

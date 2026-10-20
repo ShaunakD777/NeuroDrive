@@ -93,7 +93,8 @@ test("looking back at a step shows exactly the trace the network had then; Back 
   await expect(canvas).toHaveAttribute("data-moment", "3");
   await expect(page.getByTestId("trail-readout")).toContainText("Step 3 (0.2 s ago)");
   await expect.poll(() => snapshot(page, true)).toEqual(seen[3]);
-  await expect(page.getByTestId("hud-step")).toHaveText("8"); // the simulation did not move
+  await expect(page.getByTestId("hud-step")).toHaveText("3"); // the HUD shows step 3 too
+  await expect(page.getByTestId("hud-past")).toHaveText("Looking back: now is step 8"); // not moved
 
   await page.getByTestId("trail-slider").fill("0");
   await expect.poll(() => snapshot(page, true)).toEqual(seen[0]);
@@ -157,4 +158,34 @@ test("looking back needs a pause and ends with the next step; what-if waits for 
   await page.getByTestId("btn-play").click(); // Pause
   await expect(page.getByTestId("btn-play")).toHaveText("Play");
   await expect(page.getByTestId("trail-slider")).toBeEnabled();
+});
+
+test("while looking back the HUD shows that step: speed, status, action, progress and rays", async ({ page }) => {
+  await randomNetworksCar5(page);
+  const hud = async () => ({
+    step: await page.getByTestId("hud-step").textContent(),
+    speed: await page.getByTestId("hud-speed").getAttribute("data-value"),
+    status: await page.getByTestId("hud-status").textContent(),
+    progress: await page.getByTestId("hud-progress").textContent(),
+    rays: await Promise.all([0, 1, 2, 3, 4].map((k) => page.getByTestId(`ray-${k}`).getAttribute("data-value"))),
+    steer: await page.getByTestId("hud-steer").textContent(),
+    throttle: await page.getByTestId("hud-throttle").textContent(),
+  });
+  const seen = [await hud()];
+  for (let t = 1; t <= 6; t++) {
+    await page.getByTestId("btn-step").click();
+    await expect(page.getByTestId("hud-step")).toHaveText(String(t));
+    seen.push(await hud());
+  }
+  await page.getByTestId("trail-slider").fill("2");
+  await expect(page.getByTestId("hud-past")).toHaveText("Looking back: now is step 6");
+  const past = await hud();
+  // everything describes step 2; the action is the one chosen there, which the live HUD showed
+  // one step later (live, the HUD shows the last action applied)
+  expect({ ...past, steer: null, throttle: null }).toEqual({ ...seen[2], steer: null, throttle: null });
+  expect([past.steer, past.throttle]).toEqual([seen[3].steer, seen[3].throttle]);
+
+  await page.getByTestId("trail-live").click();
+  await expect(page.getByTestId("hud-past")).toHaveCount(0);
+  expect(await hud()).toEqual(seen[6]);
 });

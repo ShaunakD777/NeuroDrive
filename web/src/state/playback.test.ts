@@ -50,6 +50,8 @@ function moment(step: number, car = 0): MomentMessage {
     y: 0,
     psi: 0,
     v: 1,
+    progress: 0,
+    status: 0,
     rays: [1, 2, 3, 4, 5],
     observation: [0, 0, 0, 0, 0, 0, 0],
     action: [0.1, 0.5],
