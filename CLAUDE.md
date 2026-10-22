@@ -39,6 +39,7 @@ Explanation style (mandatory):
 | `docs/DECISIONS.md` | Architecture Decision Records (ADRs). Add one before any new architectural choice |
 | `docs/ARCHITECTURE.md` §11 | What may and may not be committed; branches, commits and versions |
 | `docs/LEARNING_JOURNAL.md` | One entry per completed task: what was learned, what was observed |
+| `task-notes/` | Every task's Brief and Report, saved as files (local only, git-ignored; ADR-029) |
 | `docs/GLOSSARY.md` | Plain-language definitions |
 
 ## 3. Working rules (non-negotiable)
@@ -46,7 +47,8 @@ Explanation style (mandatory):
 1. **One task at a time.** Tasks have IDs like `2.7` in `docs/ROADMAP.md`. Work only on the task
    the user names. **Never start the next task automatically.**
 2. **Follow the task loop** in `docs/WORKFLOW.md`: Brief → Implement → Explain → Verify → Report →
-   Stop. If the user asks for "brief only", stop after the Brief.
+   Stop. If the user asks for "brief only", stop after the Brief. Every Brief and Report is also
+   saved to `task-notes/` (`docs/WORKFLOW.md` §2a); that folder is never committed.
 3. **Stay in scope.** Touch only the files the task lists. If another file must change, say so in
    the Brief with the reason. No unrelated refactors, no silent rewrites of working code.
 4. **Never claim something works without running its verification.** Show the command you ran and

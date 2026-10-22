@@ -57,6 +57,9 @@ web/blob-report/
 # ── Claude Code (keep commands and shared settings) ─────────
 .claude/settings.local.json
 
+# ── Task Briefs and Reports: kept locally, never pushed (ADR-029) ──
+task-notes/
+
 # ── Editors and OS ──────────────────────────────────────────
 .vscode/*
 !.vscode/extensions.json

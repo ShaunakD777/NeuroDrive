@@ -523,7 +523,8 @@ See `EXPERIMENT_PROTOCOL.md` §1 for the component verification table.
 and `.env.local.example`; keys and certificates
 (`*.pem`, `*.key`, `*.p12`, `id_rsa*`); tokens or passwords in any form; `runs/` (run folders,
 checkpoints, recordings, SQLite database); `data/` (recorded demonstrations); `node_modules/`,
-build output and caches; `.claude/settings.local.json`; editor and OS files.
+build output and caches; `.claude/settings.local.json`; `task-notes/` (the saved task Briefs and
+Reports, kept locally only, ADR-029); editor and OS files.
 
 **Configuration and secrets:** NeuroDrive needs no secrets. If one is ever needed (for example a
 token for an optional external service), it is read only from an environment variable prefixed

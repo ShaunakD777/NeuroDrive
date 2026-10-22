@@ -1,8 +1,8 @@
 ---
-description: Produce the Brief for one roadmap task, without changing any files
+description: Produce the Brief for one roadmap task and save it to task-notes/, without changing project files
 argument-hint: <task-id, e.g. 1.4>
 ---
-Prepare the Brief for NeuroDrive task **$ARGUMENTS**.
+Prepare the Brief for NeuroDrive task **$ARGUMENTS**, and save it locally.
 
 1. Read the task in `docs/ROADMAP.md`, its row in `docs/CHECKLIST.md`, the contracts it touches in
    `docs/ARCHITECTURE.md` §6, and any related ADRs in `docs/DECISIONS.md`.
@@ -13,4 +13,7 @@ Prepare the Brief for NeuroDrive task **$ARGUMENTS**.
 4. If the task is marked ⚑ or needs a decision that is not documented, present the options with
    trade-offs and a recommendation.
 
-Do **not** create or edit any files. Stop after the Brief.
+5. Save the Brief to `task-notes/phase-<N>/task-$ARGUMENTS-brief.md` and add or update its row in
+   `task-notes/README.md` (format: `docs/WORKFLOW.md` §2a). The folder is ignored by git.
+
+Do **not** create or edit any other files. Stop after the Brief.
