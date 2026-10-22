@@ -42,6 +42,8 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Derivative / gradient | How much an output changes when an input or parameter changes a tiny bit. |
 | Activation derivative (f′(z)) | How much a neuron's output moves per unit change of its weighted sum z. Backprop multiplies by it at every neuron; tanh's is at most 1, sigmoid's at most 0.25, ReLU's is 0 or 1. |
 | Chain rule | To find how A affects C through B, multiply (how A affects B) × (how B affects C). |
+| Upstream gradient (g = ∂L/∂a) | The push arriving at a neuron's output from further along the chain: how the loss changes per unit of that output. For the last layer it comes from the loss's derivative. |
+| Error signal (δ, delta) | ∂L/∂z, how the loss changes per unit of a neuron's weighted sum: the upstream gradient times the activation's slope, δ = g · f′(z). Every weight, bias and input gradient of that neuron is δ times one more factor. |
 | Backpropagation | Applying the chain rule backwards through the network to get every parameter's gradient. |
 | Gradient check | Comparing backprop's gradients with ones estimated by nudging each parameter; catches bugs. |
 | Gradient descent | Repeatedly moving parameters a small step opposite to the gradient to reduce the loss. |

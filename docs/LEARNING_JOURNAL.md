@@ -714,3 +714,20 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   planted "relu′(0) = 1" bug was therefore caught only by the hand-value test.
 - Open question: how often do ReLU neurons in the driving networks sit at z < 0 for every
   observation ("dead" neurons that can never learn)?
+
+### 2026-10-22 — Task 3.3 Backprop for one neuron
+- Concept: backpropagation is the chain rule walked backwards. The loss's push on the output (the
+  upstream gradient g) times the activation's slope gives the error signal δ = ∂L/∂z; every other
+  gradient of the neuron is δ times one more factor.
+- Key equation(s) in words: δ = g · f′(z); weight gradient = δ times that weight's input; bias
+  gradient = δ; input gradient = δ times that input's weight. For a batch, weight and bias
+  gradients are summed over examples (the 1/M is already inside g).
+- What we observed: for the tanh neuron w = [0.5, −1], b = 0.5 on x = [2, 1] with target 1, the
+  output 0.462 is too low, δ = −0.846, and every weight and bias gradient is negative ("raise me").
+  One step at learning rate 0.1 drops the loss from 0.289 to 0.055. A saturated neuron (z = 10)
+  passes back almost nothing (gradients below 1e-7).
+- Surprise or difficulty: the input gradient uses the weights and the weight gradient uses the
+  inputs; swapping them is an easy mistake and broke 55 of 72 tests. Leaving out f′ still passed
+  every linear-activation test, because there f′ = 1.
+- Open question: the input gradient δ · w is the neuron's sensitivity to its inputs; will it
+  match the finite-difference sensitivity of task 2.9 for whole networks (task 3.6)?
