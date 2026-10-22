@@ -7,11 +7,14 @@ simulator with three linked views: **Environment**, **Neural Network** and **Exp
 > decisions, and what can their successes and failures teach us about AI?
 
 ## Status
-Phase 1 ("One neuron can drive") complete, tagged `phase-1`: tracks (a training loop and
-half-size Monza in both directions), batched car physics, raycast sensors, episodes that record and
-replay exactly, a live WebSocket session, the Environment view and the Neuron view, and studies S1
-and S1b (`docs/studies/`). Phase 0 (foundations) is tagged `phase-0`. Next: Phase 2, "Multilayer
-network and Network view" (see `docs/CHECKLIST.md`).
+Phase 2 ("Multilayer network and Network view") complete, tagged `phase-2`: multilayer networks
+written from scratch in NumPy (spec, forward pass with a full trace, a whole population at once,
+Xavier initialisation), 20 cars each driven by its own random network, the live Network view and a
+compact drawer version, one shared selection across the views, explanations (contributions and
+sensitivity), the output inspector with what-if and a ghost car, the decision trail with looking
+back at any of the last 60 s, and study S2a on random networks (`docs/studies/`). Phase 1 ("One
+neuron can drive") is tagged `phase-1` and Phase 0 (foundations) `phase-0`. Next: Phase 3,
+"Backpropagation (toy lab)" (see `docs/CHECKLIST.md`).
 
 ## Prerequisites
 - [uv](https://docs.astral.sh/uv/) for Python. It downloads Python 3.12 by itself; your system

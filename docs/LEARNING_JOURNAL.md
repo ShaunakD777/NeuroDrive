@@ -649,3 +649,33 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   to get anywhere before the stall rule ended it.
 - Open question: will a learning method find the "ease off when the road ahead shortens" rule on
   purpose, and will it transfer across tracks the way the lucky brains' rules did?
+
+### 2026-10-22 — Phase 2 complete (tag `phase-2`)
+- What was built: in `core/nn`, the network spec and flat genome ([7,16,16,2] = 434 numbers,
+  `.npz` files), the forward pass with a full trace, the population forward pass (N networks in
+  one batched step) and initialisation (zeros, uniform, Xavier); the observation/action contract
+  v1 frozen (ADR-005); MLP and population policies and the "20 random networks" scenario; in
+  `explain/`, contributions and finite-difference sensitivity; the live Network view (diagram,
+  legend, hover readouts) and its compact drawer version; one shared selection across the views;
+  the output inspector with what-if and a what-if ghost car; the decision trail with looking back
+  at any step of the last 60 s, the HUD included; study S2a (36,000 random brains over 3 tracks and
+  6 shapes) with view screenshots. Live API v1.4 to v1.9. 424 Python tests, 114 web unit tests,
+  54 browser tests.
+- What was learned: a network is matrices, and its forward pass is a few matrix products whose
+  every intermediate value can be kept and shown; zero initialisation makes every hidden neuron
+  identical, while Xavier keeps signals a sensible size and sets how gentle a random network is;
+  a decision can be explained exactly (contributions add up to z) and locally (sensitivity, the
+  straight-line what-if, read forwards or backwards); untrained networks are coin flips (72 %
+  stall, 28 % crash, wiring signs like coin flips) and the rare survivors are lucky, well-wired
+  brains whose luck can even carry them round Monza; a smooth network fed a jumpy input (a ray
+  grazing a wall tip) makes jumpy decisions; Python stays the only source of numbers, so every
+  value in the browser can be traced back and re-checked.
+- Decisions: ADR-023 (random-networks driver, api v1.4), ADR-024 (network message and trace,
+  v1.5), ADR-025 (selected.explain and what-if, v1.6; REST explain/forward deferred to Phase 5),
+  ADR-026 (ghost car, overrides-only what-if, v1.7), ADR-027 (decision trail and looking back,
+  v1.8), ADR-028 (the HUD shows the step looked at, v1.9).
+- Fixed at the end: quick clicks on the Network page's ‹ › lost a click when the server had not
+  answered yet; the selection store now remembers the pending request.
+- Open questions: will learned networks learn to ignore grazing rays, or do the sensors need
+  smoothing? Will a learning method find "ease off when the road ahead shortens" on purpose? Leaky
+  ReLU and other activations (deferred by the user); Playwright in CI; the phone layout.
