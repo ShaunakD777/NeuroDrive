@@ -22,20 +22,42 @@ from typing import Any
 import numpy as np
 from pydantic import ValidationError
 
-from neurodrive.core.rng import make_rng
-from neurodrive.env.policies import ConstantPolicy, KeyboardPolicy, NeuronPolicy, Policy
-from neurodrive.env.sensors import RAY_ANGLES, RAY_RANGE, build_observation, edge_grid
+from neurodrive.core.nn.forward import ForwardTrace, forward
+from neurodrive.core.nn.init import init_population
+from neurodrive.core.nn.network import Network
+from neurodrive.core.nn.spec import NetworkSpec
+from neurodrive.core.rng import child_rng, make_rng
+from neurodrive.env.car import CarState, step_cars
+from neurodrive.env.policies import (
+    ConstantPolicy,
+    KeyboardPolicy,
+    MLPPolicy,
+    NeuronPolicy,
+    Policy,
+    PopulationPolicy,
+)
+from neurodrive.env.sensors import RAY_ANGLES, RAY_RANGE, edge_grid, observe
 from neurodrive.env.track import Track
 from neurodrive.env.world import Status, World, WorldConfig
+from neurodrive.explain.contributions import neuron_contributions
+from neurodrive.explain.sensitivity import sensitivity
 from neurodrive.server.schemas import (
     COMMAND_ADAPTER,
     CarColumns,
     EpisodeEndMessage,
     ErrorMessage,
+    Explanation,
+    ExplanationMessage,
     FrameMessage,
+    GhostPaths,
+    InspectStep,
     KeyState,
     LoadScenario,
+    MomentMessage,
+    NetworkMessage,
+    NetworkTrace,
     NeuronReadout,
+    OutputReceipt,
     Pause,
     Play,
     Reset,
@@ -47,6 +69,8 @@ from neurodrive.server.schemas import (
     Step,
     TrackGeometry,
     TrackInfo,
+    TrailPoints,
+    WhatIf,
     WireModel,
 )
 
@@ -54,6 +78,69 @@ MAX_CATCH_UP = 0.25  # real seconds of simulation owed after a stall; the rest i
 CONSTANT_THROTTLE = 0.3  # throttle of the "constant" policy
 RANDOM_START_LATERAL = 1.0  # metres: random-start sideways range for seeded scenarios
 RANDOM_START_HEADING = 0.1  # radians: random-start heading range for seeded scenarios
+GHOST_SECONDS = 2.0  # how far ahead the what-if ghost car is drawn (slow cars need time to part)
+TRAIL_SECONDS = 60.0  # how much of the drive the session remembers for the decision trail (ADR-027)
+
+
+class DriveMemory:
+    """The last ``capacity`` steps of a live drive, for every car (ADR-027).
+
+    Before each physics step t the session calls :meth:`record` with every car's state at step t:
+    pose (x, y, psi), speed v, cumulative progress, status code (0 = still running),
+    observation o_t (7 numbers), the action a_t chosen from it, and the time. Step t lives in
+    row ``t % capacity`` of fixed-size arrays, so the oldest step is overwritten once
+    ``capacity`` steps are stored and memory never grows (60 s of 100 cars is about 20 MB, ADR-028
+    added progress and status). The observation is stored at full precision, so a
+    past forward pass recomputed from it is bit-identical to the one made live.
+    """
+
+    def __init__(self, capacity: int, n_cars: int) -> None:
+        self.capacity = capacity
+        self.x = np.zeros((capacity, n_cars))
+        self.y = np.zeros((capacity, n_cars))
+        self.psi = np.zeros((capacity, n_cars))
+        self.v = np.zeros((capacity, n_cars))
+        self.progress = np.zeros((capacity, n_cars))
+        self.status = np.zeros((capacity, n_cars), dtype=np.int8)
+        self.observation = np.zeros((capacity, n_cars, 7))
+        self.action = np.zeros((capacity, n_cars, 2))
+        self.time = np.zeros(capacity)
+        self.end = 0  # one past the last recorded step
+
+    @property
+    def first(self) -> int:
+        """The oldest step still remembered."""
+        return max(0, self.end - self.capacity)
+
+    def has(self, step: int) -> bool:
+        return self.first <= step < self.end
+
+    def record(self, world: World, observation: np.ndarray, action: np.ndarray) -> None:
+        """Store step ``world.step_count``: the state before the action, and the action."""
+        t = world.step_count
+        assert t == self.end, "steps must be recorded in order"
+        row, cars = t % self.capacity, world.cars
+        self.x[row], self.y[row], self.psi[row], self.v[row] = cars.x, cars.y, cars.psi, cars.v
+        self.observation[row] = observation
+        self.action[row] = action
+        self.progress[row] = world.progress
+        self.status[row] = world.status
+        self.time[row] = world.time
+        self.end = t + 1
+
+    def trail(self, car: int, start: int, *, replace: bool) -> TrailPoints:
+        """Car ``car``'s remembered steps from ``start`` on (only those where it was running)."""
+        steps = np.arange(max(start, self.first), self.end)
+        rows = steps % self.capacity
+        keep = self.status[rows, car] == Status.RUNNING
+        steps, rows = steps[keep], rows[keep]
+        return TrailPoints(
+            replace=replace,
+            steps=steps.tolist(),
+            x=np.round(self.x[rows, car], 3).tolist(),
+            y=np.round(self.y[rows, car], 3).tolist(),
+            action=np.round(self.action[rows, car], 3).tolist(),
+        )
 
 
 class TrackLibrary:
@@ -126,6 +213,9 @@ class LiveSession:
         self._obs_step = -1
         self._due = 0.0
         self._last_tick: float | None = None
+        self._memory = DriveMemory(1, 0)
+        self._trail_sent = 0  # the next step whose trail point the browser has not been sent
+        self._trail_full = True  # send the whole trail with the next frame (new car or new drive)
 
     # ── incoming messages ───────────────────────────────────────────────────────────────────
 
@@ -165,7 +255,8 @@ class LiveSession:
             if command.index >= self._world.n:
                 return [ErrorMessage(message=f"no car {command.index}: there are {self._world.n}")]
             self.selected = command.index
-            return [self._frame()]
+            self._trail_full = True  # the new car's whole trail goes with the next frame
+            return [*self._network_messages(), self._frame()]
         if isinstance(command, SetParam):
             if self._neuron is None:
                 return [ErrorMessage(message="set_param needs the neuron driver (policy 'neuron')")]
@@ -174,6 +265,10 @@ class LiveSession:
             except ValueError as exc:
                 return [ErrorMessage(message=str(exc))]
             return [self._frame()]
+        if isinstance(command, WhatIf):
+            return self._what_if(command)
+        if isinstance(command, InspectStep):
+            return self._inspect(command)
         if isinstance(command, Reset):
             self._reset_world()
             self._restart_clock()
@@ -229,7 +324,13 @@ class LiveSession:
             self._neuron = self._saved_neuron
         else:
             self._neuron = None
-        self._policy = self._keys or self._neuron or ConstantPolicy(0.0, CONSTANT_THROTTLE)
+        if command.policy == "random_networks":
+            # One Xavier-initialised network per car, drawn from the seed's "init" stream (seed 0
+            # when none is given). Built once per load, so Reset replays the same brains.
+            rng = child_rng(make_rng(command.seed or 0), "init")
+            self._policy = PopulationPolicy(init_population(NetworkSpec(), command.n_cars, rng))
+        else:
+            self._policy = self._keys or self._neuron or ConstantPolicy(0.0, CONSTANT_THROTTLE)
         self.playing = False
         self.selected = 0
         self._reset_world()
@@ -248,8 +349,9 @@ class LiveSession:
             car_half_width=world.params.half_width,
             ray_angles=[round(float(a), 6) for a in RAY_ANGLES],
             ray_range=RAY_RANGE,
+            trail_seconds=TRAIL_SECONDS,
         )
-        return [scenario, self._frame()]
+        return [scenario, *self._network_messages(), self._frame()]
 
     def _reset_world(self) -> None:
         assert self._world is not None and self._scenario is not None
@@ -266,17 +368,17 @@ class LiveSession:
             )
         self._action = np.zeros((scenario.n_cars, 2))
         self._obs_step = -1
+        capacity = round(TRAIL_SECONDS / self._world.dt)
+        self._memory = DriveMemory(capacity, scenario.n_cars)  # a new drive: forget the old one
+        self._trail_sent = 0
+        self._trail_full = True
 
     def _observe(self) -> np.ndarray:
         """The (N, 7) observation of every car now (computed once per step)."""
         world = self._world
         assert world is not None
         if self._obs_step != world.step_count:
-            cars = world.cars
-            self._obs = build_observation(
-                self._segments, cars.x, cars.y, cars.psi, cars.v, world.road_heading,
-                world.params.v_max,
-            )  # fmt: skip
+            self._obs = observe(world, self._segments)
             self._obs_step = world.step_count
         return self._obs
 
@@ -287,7 +389,9 @@ class LiveSession:
         for _ in range(steps):
             if world.done:
                 break
-            action = np.clip(np.asarray(policy.act(self._observe()), dtype=np.float64), -1.0, 1.0)
+            obs = self._observe()
+            action = np.clip(np.asarray(policy.act(obs), dtype=np.float64), -1.0, 1.0)
+            self._memory.record(world, obs, action)  # step t: the state, then what was decided
             world.step(action[:, 0], action[:, 1])
             self._action = action
 
@@ -317,7 +421,151 @@ class LiveSession:
                 rays=np.round(obs[i, :5] * RAY_RANGE, 3).tolist(),
                 observation=np.round(obs[i], 4).tolist(),
                 neuron=self._neuron_readout(obs[i]),
+                trace=self._network_trace(obs, i),
+                explain=self._explain(obs, i),
+                trail=self._trail_update(),
             ),
+        )
+
+    def _trail_update(self) -> TrailPoints:
+        """The selected car's trail points the browser does not have yet (all of them after a
+        load, a reset or a car change; otherwise the steps taken since the last frame)."""
+        replace = self._trail_full
+        start = self._memory.first if replace else self._trail_sent
+        points = self._memory.trail(self.selected, start, replace=replace)
+        self._trail_sent = self._memory.end
+        self._trail_full = False
+        return points
+
+    def _inspect(self, command: InspectStep) -> list[WireModel]:
+        """The selected car at a remembered step, recomputed from the stored observation."""
+        if self.playing:
+            return [ErrorMessage(message="inspect_step works while paused: send pause first")]
+        memory, t = self._memory, command.step
+        if not memory.has(t):
+            span = "nothing yet" if memory.end == 0 else f"steps {memory.first} to {memory.end - 1}"
+            return [ErrorMessage(message=f"step {t} is not remembered ({span})")]
+        row, car = t % memory.capacity, self.selected
+        observations = memory.observation[row]  # every car's observation at step t, full precision
+        obs = observations[car]
+        return [
+            MomentMessage(
+                car=car,
+                step=t,
+                time=round(float(memory.time[row]), 4),
+                x=round(float(memory.x[row, car]), 3),
+                y=round(float(memory.y[row, car]), 3),
+                psi=round(float(memory.psi[row, car]), 4),
+                v=round(float(memory.v[row, car]), 3),
+                progress=round(float(memory.progress[row, car]), 3),
+                status=int(memory.status[row, car]),
+                rays=np.round(obs[:5] * RAY_RANGE, 3).tolist(),
+                observation=np.round(obs, 4).tolist(),
+                action=np.round(memory.action[row, car], 3).tolist(),
+                # the same functions a live frame uses, on the same numbers: the same trace
+                trace=self._network_trace(observations, car),
+                explain=self._explain(observations, car),
+            )
+        ]
+
+    def _network_messages(self) -> list[WireModel]:
+        """The selected car's network as a ``network`` message (none for non-network drivers)."""
+        policy = self._policy
+        if not isinstance(policy, MLPPolicy | PopulationPolicy):
+            return []
+        net = policy.network_of(self.selected)
+        spec = net.spec
+        return [
+            NetworkMessage(
+                car=self.selected,
+                layer_sizes=list(spec.layer_sizes),
+                activations=[spec.activation_name(i) for i in range(spec.n_layers)],  # type: ignore[misc]
+                weights=[np.round(w, 4).tolist() for w in net.weights],
+                biases=[np.round(b, 4).tolist() for b in net.biases],
+            )
+        ]
+
+    def _network_trace(self, observations: np.ndarray, car: int) -> NetworkTrace | None:
+        """Every value of the selected car's forward pass on its current observation."""
+        policy = self._policy
+        if not isinstance(policy, MLPPolicy | PopulationPolicy):
+            return None
+        return _wire_trace(policy.trace_of(observations, car))
+
+    def _explain(self, observations: np.ndarray, car: int) -> Explanation | None:
+        """Contributions and sensitivity of the selected car's two outputs, right now."""
+        policy = self._policy
+        if not isinstance(policy, MLPPolicy | PopulationPolicy):
+            return None
+        network = policy.network_of(car)
+        return _explanation(network, policy.trace_of(observations, car), observations[car])
+
+    def _what_if(self, command: WhatIf) -> list[WireModel]:
+        """The selected car's network on a changed observation; the simulation is untouched."""
+        policy, world = self._policy, self._world
+        assert world is not None
+        if not isinstance(policy, MLPPolicy | PopulationPolicy):
+            return [
+                ErrorMessage(message="what_if needs a network driver (policy 'random_networks')")
+            ]
+        if self.playing:
+            return [ErrorMessage(message="what_if works while paused: send pause first")]
+        car = self.selected
+        real = self._observe()[car]
+        tried = real.copy()
+        for k, value in command.overrides.items():
+            if not 0 <= k < len(real):
+                return [
+                    ErrorMessage(message=f"what_if input {k} does not exist (0 to {len(real) - 1})")
+                ]
+            if not np.isfinite(value):
+                return [ErrorMessage(message="what_if values must be finite numbers")]
+            tried[k] = value  # the other inputs keep their exact values
+        network = policy.network_of(car)
+        base = forward(
+            network, real
+        )  # same function as the what-if, so equal inputs give equal bits
+        slopes = sensitivity(network, real)
+        predicted = base.output + slopes @ (tried - real)  # the straight-line guess
+        trace = forward(network, tried)  # the car's own network on the tried observation
+        return [
+            ExplanationMessage(
+                car=car,
+                step=world.step_count,
+                observation=np.round(tried, 4).tolist(),
+                trace=_wire_trace(trace),
+                explain=_explanation(network, trace, tried),
+                base_outputs=np.round(base.output, 4).tolist(),
+                predicted_outputs=np.round(predicted, 4).tolist(),
+                ghost=self._ghost(car, base.output, trace.output),
+            )
+        ]
+
+    def _ghost(self, car: int, real_action: np.ndarray, what_if_action: np.ndarray) -> GhostPaths:
+        """Roll the selected car forward twice with the car physics, once per held action.
+
+        Two copies of the car start at its pose now; copy 0 holds the real action and copy 1 the
+        what-if action (each clipped to [-1, 1], as the world does) for GHOST_SECONDS. Only the car
+        moves: no track, crash or progress rules apply, so a path can cross the road edge.
+        """
+        world = self._world
+        assert world is not None
+        cars = world.cars
+        actions = np.clip(np.stack([real_action, what_if_action]), -1.0, 1.0)
+        state = CarState.from_pose(cars.x[car], cars.y[car], cars.psi[car], [cars.v[car]] * 2)
+        points = [np.column_stack([state.x, state.y])]
+        for _ in range(round(GHOST_SECONDS / world.dt)):
+            state = step_cars(state, actions[:, 0], actions[:, 1], world.params, world.dt)
+            points.append(np.column_stack([state.x, state.y]))
+        path = np.round(np.stack(points), 3)  # (steps + 1, 2 copies, 2)
+        return GhostPaths(
+            seconds=GHOST_SECONDS,
+            real_action=np.round(actions[0], 4).tolist(),
+            what_if_action=np.round(actions[1], 4).tolist(),
+            real=path[:, 0].tolist(),
+            what_if=path[:, 1].tolist(),
+            real_end=[*path[-1, 0].tolist(), round(float(state.psi[0]), 4)],
+            what_if_end=[*path[-1, 1].tolist(), round(float(state.psi[1]), 4)],
         )
 
     def _neuron_readout(self, observation: np.ndarray) -> NeuronReadout | None:
@@ -355,3 +603,33 @@ class LiveSession:
                 )
             )
         return messages
+
+
+def _wire_trace(trace: ForwardTrace) -> NetworkTrace:
+    """A single-observation trace, rounded for the wire."""
+    return NetworkTrace(
+        activations=[np.round(a, 4).tolist() for a in trace.activations],
+        weighted_sums=[np.round(z, 4).tolist() for z in trace.weighted_sums],
+    )
+
+
+def _explanation(network: Network, trace: ForwardTrace, observation: np.ndarray) -> Explanation:
+    """Receipts of both outputs and the output-by-input sensitivity table (explain/, task 2.9)."""
+    last = network.spec.n_layers - 1
+    receipts = []
+    for m in range(network.spec.n_outputs):
+        r = neuron_contributions(network, trace, last, m)
+        receipts.append(
+            OutputReceipt(
+                output=m,
+                inputs=np.round(r.inputs, 4).tolist(),
+                contributions=np.round(r.contributions, 4).tolist(),
+                bias=round(r.bias, 4),
+                z=round(r.z, 4),
+                value=round(r.output, 4),
+            )
+        )
+    return Explanation(
+        receipts=receipts,
+        sensitivity=np.round(sensitivity(network, observation), 4).tolist(),
+    )

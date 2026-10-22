@@ -1,7 +1,9 @@
 // Canvas 2D drawing of the world: road, cars and rays. It only turns what the server sent into
 // pixels; the colours come from the page's CSS variables, so light and dark themes both work.
 
-import type { FrameMessage, ScenarioMessage, TrackGeometry } from "../../api/generated";
+import type { FrameMessage, GhostPaths, ScenarioMessage, TrackGeometry } from "../../api/generated";
+import { maxAbs, rayWidth } from "../network/inspect";
+import { trailStyle } from "./trailLayout";
 import {
   type Camera,
   carCorners,
@@ -51,6 +53,28 @@ export interface Scene {
   compact: boolean;
   /** Indices of rays to emphasise (the ones the selected neuron reads); empty for none. */
   highlight: number[];
+  /**
+   * The selected output's sensitivity to each of the five rays (task 2.10), or null. When set,
+   * each ray is coloured by its sign (accent = the output rises as the ray gets longer, warn = it
+   * falls) and drawn thicker the stronger it is, instead of the usual distance colours.
+   */
+  raySensitivity: number[] | null;
+  /**
+   * The what-if ghost (ADR-026), or null: the selected car's next second if it held its real
+   * action (dashed path) or the what-if action (solid path, ending in a see-through ghost car).
+   */
+  ghost: GhostPaths | null;
+  /**
+   * The selected car's decision trail (task 2.11), or null: where it was at each remembered step
+   * (`steps[i]` at `points[i]`), and, when an output is selected, that output's value there
+   * (`values`), which colours the trail; null values draw it plain.
+   */
+  trail: { steps: number[]; points: number[][]; values: number[] | null } | null;
+  /**
+   * The earlier moment being looked at (task 2.11), or null: the car's pose and rays then. Its rays
+   * replace the live ones and an outlined car marks where it was.
+   */
+  moment: { step: number; x: number; y: number; psi: number; rays: number[] } | null;
 }
 
 const CAR_LENGTH_EXTRA = 2.0; // car length = wheelbase + this, metres (display only)
@@ -112,19 +136,29 @@ function drawRays(ctx: CanvasRenderingContext2D, theme: Theme, scene: Scene): vo
   const { frame, scenario } = scene;
   if (frame === null || scenario === null || frame.selected === null) return;
   const i = frame.selected.index;
-  const { x, y, psi } = frame.cars;
+  // Looking at an earlier step: the rays the car had then, from where it was then.
+  const m = scene.moment;
+  const x = m === null ? frame.cars.x[i] : m.x;
+  const y = m === null ? frame.cars.y[i] : m.y;
+  const psi = m === null ? frame.cars.psi[i] : m.psi;
   ctx.font = "11px system-ui, sans-serif";
   ctx.textBaseline = "middle";
-  frame.selected.rays.forEach((distance, k) => {
+  (m === null ? frame.selected.rays : m.rays).forEach((distance, k) => {
     const hit = distance < scenario.ray_range - 1e-6;
     const emphasised = scene.highlight.includes(k);
     ctx.globalAlpha = scene.highlight.length > 0 && !emphasised ? 0.3 : 1;
-    const [ex, ey] = rayEnd(x[i], y[i], psi[i], scenario.ray_angles[k], distance);
-    const [sx, sy] = worldToScreen(scene.camera, scene.size, x[i], y[i]);
+    const [ex, ey] = rayEnd(x, y, psi, scenario.ray_angles[k], distance);
+    const [sx, sy] = worldToScreen(scene.camera, scene.size, x, y);
     const [tx, ty] = worldToScreen(scene.camera, scene.size, ex, ey);
     const fraction = distance / scenario.ray_range;
-    ctx.lineWidth = emphasised ? 5 : hit ? 2 : 1;
-    ctx.strokeStyle = !hit ? theme.muted : fraction < 0.2 ? theme.bad : fraction < 0.5 ? theme.warn : theme.ok;
+    const s = scene.raySensitivity?.[k];
+    if (s !== undefined && scene.raySensitivity !== null) {
+      ctx.lineWidth = rayWidth(s, maxAbs(scene.raySensitivity));
+      ctx.strokeStyle = s < 0 ? theme.warn : theme.accent;
+    } else {
+      ctx.lineWidth = emphasised ? 5 : hit ? 2 : 1;
+      ctx.strokeStyle = !hit ? theme.muted : fraction < 0.2 ? theme.bad : fraction < 0.5 ? theme.warn : theme.ok;
+    }
     ctx.beginPath();
     ctx.moveTo(sx, sy);
     ctx.lineTo(tx, ty);
@@ -136,7 +170,9 @@ function drawRays(ctx: CanvasRenderingContext2D, theme: Theme, scene: Scene): vo
       ctx.fill();
       if (!scene.compact || emphasised) {
         ctx.fillStyle = theme.text;
-        ctx.fillText(`${distance.toFixed(1)} m`, tx + 6, ty);
+        // In sensitivity mode the slope replaces the distance (the HUD still lists the distances).
+        const label = s === undefined ? `${distance.toFixed(1)} m` : `s ${s >= 0 ? "+" : "−"}${Math.abs(s).toFixed(2)}`;
+        ctx.fillText(label, tx + 6, ty);
       }
     }
     ctx.globalAlpha = 1;
@@ -170,11 +206,132 @@ function drawCars(ctx: CanvasRenderingContext2D, theme: Theme, scene: Scene): vo
   }
 }
 
-/** Draw the whole scene: background, road, rays of the selected car, then the cars. */
+/** One car outline at a world pose, as a closed screen-space path. */
+function carPath(ctx: CanvasRenderingContext2D, scene: Scene, x: number, y: number, psi: number): void {
+  const { scenario } = scene;
+  if (scenario === null) return;
+  const length = scenario.wheelbase + CAR_LENGTH_EXTRA;
+  const width = 2 * scenario.car_half_width;
+  const corners = carCorners(x, y, psi, length, width).map(([wx, wy]) =>
+    worldToScreen(scene.camera, scene.size, wx, wy),
+  );
+  ctx.beginPath();
+  corners.forEach(([px, py], k) => (k === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py)));
+  ctx.closePath();
+}
+
+function polyline(ctx: CanvasRenderingContext2D, scene: Scene, points: number[][]): void {
+  ctx.beginPath();
+  points.forEach(([x, y], k) => {
+    const [px, py] = worldToScreen(scene.camera, scene.size, x, y);
+    if (k === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  });
+  ctx.stroke();
+}
+
+/** The two held-action paths (under the cars). */
+function drawGhostPaths(ctx: CanvasRenderingContext2D, theme: Theme, scene: Scene): void {
+  const ghost = scene.ghost;
+  if (ghost === null) return;
+  ctx.lineCap = "round";
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = theme.edge;
+  ctx.setLineDash([6, 5]);
+  polyline(ctx, scene, ghost.real);
+  ctx.setLineDash([]);
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = theme.accent;
+  polyline(ctx, scene, ghost.what_if);
+  // A small mark where holding the real action would end.
+  const [rx, ry] = worldToScreen(scene.camera, scene.size, ghost.real_end[0], ghost.real_end[1]);
+  ctx.fillStyle = theme.edge;
+  ctx.beginPath();
+  ctx.arc(rx, ry, 3, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/** The see-through ghost car at the end of the what-if path (over the cars). */
+function drawGhostCar(ctx: CanvasRenderingContext2D, theme: Theme, scene: Scene): void {
+  const ghost = scene.ghost;
+  if (ghost === null) return;
+  const [x, y, psi] = ghost.what_if_end;
+  ctx.globalAlpha = 0.45;
+  carPath(ctx, scene, x, y, psi);
+  ctx.fillStyle = theme.accent;
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.setLineDash([3, 3]);
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = theme.text;
+  ctx.stroke();
+  ctx.setLineDash([]);
+  if (!scene.compact) {
+    const [px, py] = worldToScreen(scene.camera, scene.size, x, y);
+    ctx.font = "600 11px system-ui, sans-serif";
+    ctx.textBaseline = "bottom";
+    ctx.fillStyle = theme.accent;
+    ctx.fillText("what-if", px + 8, py - 8);
+  }
+}
+
+/** The decision trail: one segment per pair of consecutive steps, coloured by the output. */
+function drawTrail(ctx: CanvasRenderingContext2D, theme: Theme, scene: Scene): void {
+  const trail = scene.trail;
+  if (trail === null || trail.points.length < 2) return;
+  ctx.lineCap = "round";
+  const screen = trail.points.map(([x, y]) => worldToScreen(scene.camera, scene.size, x, y));
+  for (let k = 0; k + 1 < screen.length; k++) {
+    if (trail.steps[k + 1] !== trail.steps[k] + 1) continue; // a gap: nothing remembered between
+    const v = trail.values?.[k];
+    if (v === undefined) {
+      ctx.globalAlpha = 0.6;
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = theme.edge;
+    } else {
+      const style = trailStyle(v);
+      ctx.globalAlpha = style.alpha;
+      ctx.lineWidth = style.width;
+      ctx.strokeStyle = style.positive ? theme.accent : theme.warn;
+    }
+    ctx.beginPath();
+    ctx.moveTo(screen[k][0], screen[k][1]);
+    ctx.lineTo(screen[k + 1][0], screen[k + 1][1]);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+/** The outlined car where the selected car was at the step being looked at. */
+function drawMoment(ctx: CanvasRenderingContext2D, theme: Theme, scene: Scene): void {
+  const m = scene.moment;
+  if (m === null) return;
+  carPath(ctx, scene, m.x, m.y, m.psi);
+  ctx.globalAlpha = 0.3;
+  ctx.fillStyle = theme.accent;
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = theme.accent;
+  ctx.stroke();
+  if (!scene.compact) {
+    const [px, py] = worldToScreen(scene.camera, scene.size, m.x, m.y);
+    ctx.font = "600 11px system-ui, sans-serif";
+    ctx.textBaseline = "bottom";
+    ctx.fillStyle = theme.accent;
+    ctx.fillText(`step ${m.step}`, px + 8, py - 8);
+  }
+}
+
+/** Draw the whole scene: background, road, rays of the selected car, the cars, the ghost. */
 export function drawScene(ctx: CanvasRenderingContext2D, theme: Theme, scene: Scene): void {
   ctx.fillStyle = theme.bg;
   ctx.fillRect(0, 0, scene.size.w, scene.size.h);
   drawRoad(ctx, theme, scene);
+  drawTrail(ctx, theme, scene);
   drawRays(ctx, theme, scene);
+  drawGhostPaths(ctx, theme, scene);
   drawCars(ctx, theme, scene);
+  drawMoment(ctx, theme, scene);
+  drawGhostCar(ctx, theme, scene);
 }

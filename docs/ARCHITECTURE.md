@@ -212,6 +212,10 @@ Each step, in this order (semi-implicit Euler):
 Note: `o7` uses track knowledge (like the reference video's θ). This is documented and identical
 for every method.
 
+**Frozen at task 2.5 (ADR-005):** `OBSERVATION_VERSION = "v1"` and the names of the seven inputs
+are in `env/sensors.py`; `tests/env/test_contract.py` pins them. Changing §6.4 or §6.5 needs an
+ADR and a new version.
+
 ### 6.5 Action (action v1, 2 numbers)
 - `steer` ∈ [−1, 1]: −1 = full left, +1 = full right
 - `throttle` ∈ [−1, 1]: +1 = full acceleration, −1 = full braking
@@ -263,6 +267,13 @@ ForwardTrace for a chosen car index. Kinds: Keyboard, Neuron (Phase 1), MLP (one
 by all cars), Population (a different network per car), Expert, Stochastic (RL: Gaussian noise
 around the network output, with a deterministic mode for exams).
 
+*As built (task 2.6, `env/policies.py`):* `MLPPolicy` and `PopulationPolicy` accept only networks
+with 7 inputs and 2 outputs. Both keep `last_trace`, the ForwardTrace of the latest `act` call
+for every car, and `trace_for(car)` cuts out one car's trace. A population needs exactly one
+observation row per network. `env/sensors.py: observe(world, segments)` is the one place that
+builds a world's observation; the action contract has `ACTION_VERSION`, `ACTION_NAMES` and
+`ACTION_SIZE` in `env/car.py`.
+
 ### 6.11 Episode Recording (recording v1)
 Metadata: track, seed, dt, policy reference (run, unit, car indices), physics/observation versions.
 Per step, per car: x, y, ψ, v, alive, P, rays(5), observation(7), action(2).
@@ -311,7 +322,7 @@ Exam spec version, list of tracks, per-episode metrics (track, start index, prog
 crashed, lap times, mean speed, smoothness, time to crash), and aggregates per track and overall
 (median, IQR, completion rate). See `EXPERIMENT_PROTOCOL.md`.
 
-## 7. Server API (api v1.3, ADR-016, ADR-018, ADR-019)
+## 7. Server API (api v1.9, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028)
 
 REST (`/api/...`):
 - `GET health` → `{status: "ok", version}` (`version` is the NeuroDrive package version)
@@ -325,21 +336,34 @@ REST (`/api/...`):
 - `GET runs/{id}/checkpoints/{unit}/diff?from={unit}`: per-weight change
 - `POST runs` (launch from a config), `POST runs/{id}/stop`
 - `POST replay` {run, unit, track, seed, focus_cars} → Episode Recording
-- `POST explain/forward` {network ref, observation} → ForwardTrace + contributions + sensitivity (what-if)
+- `POST explain/forward` {network ref, observation} → ForwardTrace + contributions + sensitivity
+  (deferred to Phase 5, when checkpoints give networks a reference; live what-if uses the
+  `what_if` WebSocket command instead, ADR-025)
 - `POST explain/response` {run, units, output, input, range} → response curves
 - `POST compare` {run_ids} → aligned exam and budget tables
 
 WebSocket `/ws/live` (one independent session per connection):
 - `hello` is sent first, on connect: `{type: "hello", version, api}` (`api` is the message-contract
-  version, currently `"v1.3"`).
+  version, currently `"v1.9"`).
 - client → server (each has a `type` field):
-  - `load_scenario {track, policy, n_cars, seed}`: `policy` is `"keyboard"`, `"constant"` or
-    `"neuron"` (more arrive with later tasks); `n_cars` 1 to 100 (default 1); `seed` is an integer for a seeded
-    random start or null for the track's fixed start. Loads paused at step 0.
+  - `load_scenario {track, policy, n_cars, seed}`: `policy` is `"keyboard"`, `"constant"`,
+    `"neuron"` or `"random_networks"` (every car is driven by its own random [7,16,16,2] network;
+    the seed also picks the networks, seed 0 when null; more arrive with later tasks); `n_cars`
+    1 to 100 (default 1); `seed` is an integer for a seeded random start or null for the track's
+    fixed start. Loads paused at step 0.
   - `play`, `pause`, `step` (exactly one physics step, even while paused), `reset` (back to
     step 0 with the same scenario and seed; stays paused or playing as before),
     `set_speed {speed}` (0.1 to 8, default 1), `select_car {index}` (default 0),
     `key_state {steer, throttle}` (each −1..1; used by the keyboard policy, ignored otherwise).
+  - `what_if {overrides}` (random-networks driver only, paused only; ADR-025, ADR-026):
+    `overrides` maps an input index (0 to 6) to the value to try; the other inputs keep the
+    selected car's exact current values (`{}` asks about the car exactly as it is). Answered with
+    `explanation`; the simulation does not change. Refused with an `error` while playing, or for
+    an index outside 0 to 6 or a non-finite value.
+  - `inspect_step {step}` (paused only; ADR-027): look at the selected car at an earlier step.
+    `step` must be one the session still remembers (the last `trail_seconds` of the drive, and
+    before the current step). Answered with `moment`; the simulation does not move. Refused with
+    an `error` while playing or for a step not remembered.
   - `set_param {name, value}` (neuron driver only): `name` is `w_left`, `w_right`, `bias`,
     `throttle` (numbers; weights and bias within ±30, throttle within ±1) or `activation` (`tanh`,
     `sigmoid`, `relu` or `linear`). Answered with a frame. The neuron is
@@ -350,13 +374,15 @@ WebSocket `/ws/live` (one independent session per connection):
     starts from zeros again, and the browser sends back its last-seen settings after a reconnect.
 - server → client:
   - `scenario {track, policy, n_cars, seed, dt, time_limit, target_laps, v_max, wheelbase,
-    car_half_width, ray_angles, ray_range}`: no geometry (use `GET tracks/{name}`).
+    car_half_width, ray_angles, ray_range, trail_seconds}`: no geometry (use
+    `GET tracks/{name}`). `trail_seconds` (60) is how much of the drive the session remembers.
   - `frame {step, time, playing, speed, cars, selected}`: `cars` holds one array per quantity, one
     entry per car: `x`, `y`, `psi`, `v`, `alive`, `progress`, `status` (0 running, 1 crashed,
     2 finished, 3 stalled, 4 timeout), `action` (a [steer, throttle] pair per car; the last action
     applied, [0, 0] before the first step). `selected` is `{index, rays, observation}` for the
     selected car (rays in metres, five numbers; observation is the 7-number vector; `neuron` is the
-    neuron driver's readout, see below, or null) or null.
+    neuron driver's readout, see below, or null; `trace` is the network trace, see below, or
+    null; `trail` is the decision trail, see below) or null.
     Numbers are rounded: positions, speed and progress to 3 decimals, angles and the observation
     to 4.
   - `selected.neuron {inputs, input_rays, weights, bias, contributions, z, output, activation,
@@ -364,6 +390,40 @@ WebSocket `/ws/live` (one independent session per connection):
     the five rays they are (0 and 4), `contributions` the weight times input for each, `z` the
     weighted sum (their total plus the bias) and `output` the activation of `z`, all computed by
     Python.
+  - `network {car, layer_sizes, activations, weights, biases}` (random-networks driver only,
+    ADR-024): the weights of one car's network. `weights[l]` is the matrix W_l as n_out rows of
+    n_in numbers, `biases[l]` the vector b_l, `activations[l]` the activation name of layer `l`;
+    rounded to 4 decimals. Sent right after `scenario` and again after every `select_car`, because
+    the weights do not change while driving; `frame` messages do not repeat them.
+  - `selected.trace {activations, weighted_sums}` (random-networks driver only): every value of
+    the selected car's forward pass on its *current* observation. `activations[0]` is the
+    observation, `activations[l]` is a_l (the last one is the action), `weighted_sums[l - 1]` is
+    z_l; rounded to 4 decimals. The Network view draws it on top of the weights from `network`.
+  - `selected.explain {receipts, sensitivity}` (random-networks driver only, ADR-025): for the
+    selected car's current observation, `receipts[m]` = `{output, inputs, contributions, bias, z,
+    value}` (output m's contributions from the last hidden layer, which add up with the bias to z)
+    and `sensitivity[m][k]` = the central-difference slope of output m with respect to input k.
+    Computed by `explain/` (task 2.9); rounded to 4 decimals.
+  - `selected.trail {replace, steps, x, y, action}` (every driver, ADR-027): the selected car's
+    decision trail. Entry i: at step `steps[i]` the car was at (`x[i]`, `y[i]`) and chose
+    `action[i]` from there; only steps at which it was still running are listed. `replace` true
+    (after a load, a reset or `select_car`) carries every remembered point; otherwise only the
+    steps since the previous frame, to be added. The session remembers 60 s of every car's pose,
+    observation (full precision) and action in fixed-size arrays, oldest overwritten.
+  - `moment {car, step, time, x, y, psi, v, progress, status, rays, observation, action, trace,
+    explain}`: the answer to `inspect_step`: the selected car at that step (`progress` and
+    `status` as in `frame.cars`, ADR-028; the HUD shows them while looking back), with its
+    network's trace and
+    explanation recomputed from the stored observation by the same functions a frame uses, so
+    they equal what the frame at that step showed (null for drivers without a network).
+  - `explanation {car, step, observation, trace, explain, base_outputs, predicted_outputs,
+    ghost}`: the answer to `what_if`: the car's network on the tried observation (trace and
+    explanation), its real outputs now, and the straight-line prediction base + Σ_k
+    sensitivity[m][k] · (tried_k − real_k) from the real observation's sensitivity. `ghost`
+    `{seconds, real_action, what_if_action, real, what_if, real_end, what_if_end}` (ADR-026): the
+    car physics run for 2 s from the car's pose, once holding the real action and once the
+    what-if action; `real` and `what_if` are [x, y] points (one per physics step), the `_end`
+    entries [x, y, heading]. The Environment view draws the paths and a see-through ghost car.
   - `episode_end {step, time, status, progress, laps}`: sent once when every car has stopped; the
     session then pauses. `status` holds a name per car (`crashed`, `finished`, `stalled`,
     `timeout`).
@@ -388,6 +448,8 @@ them (`npm run gen:types`), so the two sides cannot drift apart.
   own address (`#/environment`, `#/network`, `#/experiment`), switched with tabs in the top bar.
 - **Companion drawer:** every page has a collapsible side drawer showing a compact version of a
   linked view (for example a mini network beside the track), so cause and effect stay visible.
+  The compact network (task 2.8) is a summary built for a narrow column, not a shrunken diagram:
+  input bars, one strip of coloured cells per hidden layer, output bars with words, all clickable.
 - **Layout switch:** Page (default), Split (any two views side by side, resizable) and All (the
   three panels). The choice is remembered per browser.
 - The selection store (§8.1) and the live connection belong to the app, not to a page, so they
@@ -397,14 +459,29 @@ them (`npm run gen:types`), so the two sides cannot drift apart.
 `mode` (live | replay), `runId`, `unit` (checkpoint), `carId`, `neuron` {layer, index},
 `connection` {layer, from, to}, `step` (time index), `output` (steer | throttle), `whatIf` (input overrides).
 
+*As built (task 2.11, `web/src/state/playback.ts`):* the time index lives in the playback
+store as `viewStep` (null = now). `view(step)` (paused only) sends `inspect_step` and clears the
+what-if overrides; any frame at another step, another car, Play or a new scenario sets it back to
+null. The live store keeps the trail from the frames (`updateTrail`) and the latest `moment`.
+
+*As built (task 2.8, `web/src/state/selection.ts`):* `selectCar(i)` is the only way to change the
+car: it stores `carId` and sends `select_car` (the track click, the car picker and the Network
+view's ‹ › stepper all call it). The store follows the server: each frame's `selected.index` is
+copied into `carId` (the server resets it to 0 on every scenario load), and a new `scenario` clears
+`neuron`, `connection` and `output`. `toggleNeuron` and `toggleConnection` select or clear; a
+neuron and a connection replace each other, and an output neuron also sets `output`. Rays to
+emphasise come from `raysFor(selection, frame.selected)`: input k < 5 (or a weight leaving it) is
+ray k; the neuron driver's selected neuron gives its two rays.
+
 ### 8.2 Linking behaviour
 
 | User action | Environment view | Network view | Experiment view |
 |---|---|---|---|
 | Click a car | Highlight it, show its rays | Show its network with live activations | Mark its run/checkpoint |
+| Click an input neuron or a weight leaving it (2.8) | Emphasise that ray (the others fade) | Outline it; readout shows its live values | — |
 | Click an output neuron | Colour rays by sensitivity; colour trail by that output | Contribution bars; highlight strongest paths to inputs | Show the output's response curve across checkpoints |
-| Pause and drag a what-if slider | Ghost car shows the alternative action | Recompute activations (server `explain/forward`) | — |
-| Click a point on the trail | Jump to that step | Show the trace at that step | — |
+| Pause and drag a what-if slider | Ghost car shows the alternative action (built: 2 s of held action, ADR-026) | Recompute activations (server `what_if`, ADR-025) | — |
+| Click a point on the trail | Jump to that step (built: show the car's pose and rays then, the simulation stays put, ADR-027) | Show the trace at that step (server `inspect_step`) | — |
 | Select a run and scrub the timeline | Replay that checkpoint's exam drive | Weights at that checkpoint, changes highlighted | Cursor on all charts |
 
 ### 8.3 Output-neuron inspector (built up over phases)
@@ -412,6 +489,14 @@ them (`npm run gen:types`), so the two sides cannot drift apart.
 2. Contributions: c_i = W[j, i] · a_i for each incoming connection, sorted; total = Σ c_i + b_j.
 3. Sensitivity: ∂output / ∂input_k for each sensor (finite differences in Phase 2, backprop from Phase 3).
 4. History: response curve of the output against one input at several checkpoints.
+
+*As built (task 2.10):* clicking an output neuron (or the drawer's output row) selects it; the
+Network page then shows `OutputInspector` (value in words, the receipt's six largest rows plus
+"the rest" and the bias, the sensitivity of the output to all seven inputs with a sentence for the
+strongest) and, while paused, `WhatIfPanel` (a slider per input; each move sends `what_if`; a
+table shows now / what-if / predicted). The Environment view colours the selected car's rays by
+that output's sensitivity (blue positive, orange negative, thicker = stronger) with a legend.
+What-if overrides and answers belong to one car at one step and are dropped when either changes.
 
 ## 9. Performance plan
 - Targets: live view at 30 fps with 50 cars; one GA generation (50 cars × 60 s simulated) in ≤ 5 s

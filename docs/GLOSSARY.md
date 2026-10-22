@@ -13,9 +13,24 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | ReLU | Activation that outputs 0 for negative inputs and the input itself otherwise. |
 | Layer | A group of neurons that all read the same inputs. |
 | Forward propagation | Computing the output by passing values layer by layer from inputs to outputs. |
+| Weighted sum (z) / activation (a) | z is a neuron's weights times its inputs plus its bias, before squashing; a is the output after the activation function. |
+| Look back (scrubbing) | Moving through the remembered steps of a drive (the trail slider, or a click on a trail point) to see what the car saw and what its network computed at that moment. The simulation does not move; Python recomputes that step's trace from the stored observation. |
+| Forward trace | The record of every z and a in one forward pass, kept for display, explanation and backprop. |
+| Shared selection | The one place the web app remembers what the user picked (car, neuron, weight, output). Every view reads and changes it, so a click in one view updates all the others. |
+| Network diagram | A drawing of a network: a column of circles per layer, a line per weight. Line colour = weight sign, thickness = size of the weight, circle fill = the neuron's current activation. |
+| Random brain | A network with randomly initialised weights and no training. Drives poorly, and differently from every other random brain. |
+| Population (of networks) | N networks of the same shape whose weights are stacked into one array per layer, so all N run in one batched calculation, car i using network i. |
 | Parameters | All weights and biases of a network. |
+| Weight matrix | One layer's weights as a table: one row per neuron, one column per input. Layer sizes 16 → 16 give a 16 × 16 matrix. |
+| Bias vector | One layer's biases as a list, one number per neuron. |
+| Network spec | The shape of a network (layer sizes, activation names, version) with none of its numbers. |
+| Flatten / unflatten | Laying all of a network's parameters out as one list (weights row by row, then biases, layer by layer), and the exact reverse. |
 | Initialisation | How the parameters are set before learning starts. |
+| Symmetry (of neurons) | Neurons in a layer that start with identical weights compute identical things, and learning treats them alike, so they stay identical. Random initialisation breaks it. |
+| Xavier (Glorot) initialisation | Weights drawn evenly from [-a, a] with a = sqrt(6 / (n_in + n_out)), so the variance is 2 / (n_in + n_out) and the signal keeps a steady size from layer to layer. |
+| Saturation | A tanh or sigmoid neuron whose weighted sum is so large that the output sits at its limit (-1 or +1) and barely reacts to its input. |
 | Observation | The numbers the car's network receives each step (rays, speed, heading error). |
+| Contract (observation / action) | The fixed agreement on what the 7 input numbers and 2 output numbers mean, in what order and range. Every method uses it, so differences in driving come from the learning, not the inputs. Changing it needs a new version. |
 | Action | The numbers the network outputs (steer, throttle). |
 | Policy | Any rule that turns observations into actions. A network is one kind of policy. |
 | Episode | One drive from start until crash, time limit, stall or finish. |
@@ -139,6 +154,15 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Store (web) | One shared object in the web app that views read from and write to; the live store holds the latest frame from the server. |
 | Neuron policy | A driver whose steering is one neuron: it reads the far-left and far-right rays, weights them, adds a bias, and passes the sum through an activation. |
 | Contribution | One input's share of the weighted sum: its weight times its value. |
+| Sensitivity | How much an output moves per unit change of one input, with the other inputs held still (the slope, or partial derivative). +0.4 means: if the input rose by 0.1, the output would rise by about 0.04. |
+| Random brain | An untrained network whose weights were drawn at random (Xavier, biases 0). Its "driving rules" are accidents of the draw; Study S2a shows most of them stall or crash. |
+| Straight-line breakdown | Explaining how much each input caused an output's change between two moments: input k's share is its sensitivity times its change, s_k x (change in input k), and the shares add up to the predicted change. Treats the network as a flat slope around that moment, so it is trustworthy only when the prediction comes close to the real change. The what-if prediction, read backwards. |
+| Wiring signs | Whether the signs of steer's sensitivity to the side rays point the wall-avoiding way: negative for the left rays, positive for the right rays (0 to 4 of the four right). Random brains get them right like coin flips. |
+| Grazing ray (chatter) | A ray nearly touching the tip of a wall: a tiny turn switches its reading between the far wall and the near one (e.g. 47 m and 16 m), so a network that listens to that ray makes its output jump from step to step. |
+| Decision trail | The line drawn behind the selected car showing where it has been in the last 60 s; coloured by the selected output (blue = steer right or accelerate, orange = steer left or brake, thicker = stronger), so you can see the sequence of decisions, not just one. |
+| Ghost car | A see-through copy of the selected car drawn where it would be in 2 s if it held the what-if action, next to a dashed path for holding its real action. Computed by the Python car physics. |
+| What-if | Asking what a network would output if some of its inputs were different, without changing the simulation. Compared with the sensitivity's prediction, it shows how far the straight-line guess holds. |
+| Central difference | Measuring a slope by nudging an input up by a small step h and down by h, then dividing the change in the output by 2h. Its error shrinks like h squared. |
 | Activation curve | A graph of an activation function: the weighted sum z along the bottom and the neuron's output up the side; a dot marks where the neuron is right now. |
 | Selection linking | Clicking something in one view (a car, a neuron) highlights the related thing in another view. |
 | Baseline | A simple reference controller every later method is compared against; here the hand-wired neuron. |

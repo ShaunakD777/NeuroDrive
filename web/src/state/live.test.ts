@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import type { FrameMessage, ScenarioMessage } from "../api/generated";
+import type { FrameMessage, NetworkMessage, ScenarioMessage } from "../api/generated";
 import { attachSender, initialLive, useLive } from "./live";
 
 function frame(step: number, playing = false): FrameMessage {
@@ -25,6 +25,9 @@ function frame(step: number, playing = false): FrameMessage {
       rays: [1, 2, 3, 4, 5],
       observation: [0, 0, 0, 0, 0, 0, 0],
       neuron: null,
+      trace: null,
+      explain: null,
+      trail: null,
     },
   };
 }
@@ -43,6 +46,22 @@ const scenario: ScenarioMessage = {
   car_half_width: 1,
   ray_angles: [1.05, 0.52, 0, -0.52, -1.05],
   ray_range: 50,
+  trail_seconds: 60,
+};
+
+const network: NetworkMessage = {
+  type: "network",
+  car: 3,
+  layer_sizes: [2, 2, 1],
+  activations: ["tanh", "tanh"],
+  weights: [
+    [
+      [0.5, -1],
+      [1, 0],
+    ],
+    [[2, 1]],
+  ],
+  biases: [[0, 0.5], [0.1]],
 };
 
 let sent: unknown[];
@@ -66,6 +85,17 @@ describe("live store: incoming messages", () => {
     const state = useLive.getState();
     expect(state.scenario?.track).toBe("train_loop_01");
     expect(state.frame?.step).toBe(1);
+  });
+
+  it("keeps the network message, and forgets it when a new scenario is loaded", () => {
+    useLive.getState().receive(scenario);
+    useLive.getState().receive(network);
+    expect(useLive.getState().network?.car).toBe(3);
+    expect(useLive.getState().network?.weights[1]).toEqual([[2, 1]]);
+    useLive.getState().receive(frame(1));
+    expect(useLive.getState().network?.car).toBe(3); // frames do not touch the weights
+    useLive.getState().receive(scenario);
+    expect(useLive.getState().network).toBeNull();
   });
 
   it("ignores hello, unknown and malformed messages", () => {

@@ -4,9 +4,9 @@ A *policy* maps the observations of N cars, shape (N, 7), to their actions, shap
 column 0 is ``steer`` and column 1 is ``throttle``, both in [-1, 1] (positive steer turns right,
 positive throttle accelerates). The world clips anything outside that range.
 
-Here live the simple hand-made policies of Phase 1. Network-driven policies (a neuron, an MLP, a
-population) are added in later tasks next to them; this is the one place in ``env`` allowed to
-adapt ``core`` networks into policies.
+Here live the simple hand-made policies of Phase 1 and the network-driven ones (a neuron, an MLP
+shared by all cars, a population with one network per car); this is the one place in ``env`` allowed
+to adapt ``core`` networks into policies.
 """
 
 from dataclasses import dataclass
@@ -17,6 +17,11 @@ from numpy.typing import NDArray
 
 from neurodrive.core.activations import ACTIVATIONS
 from neurodrive.core.neuron import Neuron
+from neurodrive.core.nn.forward import ForwardTrace, forward
+from neurodrive.core.nn.network import Network
+from neurodrive.core.nn.population import Population
+from neurodrive.core.nn.spec import NetworkSpec
+from neurodrive.env.car import ACTION_SIZE
 from neurodrive.env.sensors import OBSERVATION_SIZE
 
 Array = NDArray[np.float64]
@@ -186,3 +191,108 @@ class NeuronPolicy:
             activation=self.neuron.activation,
             throttle=self.throttle,
         )
+
+
+def _check_spec(spec: NetworkSpec) -> None:
+    """A driving network reads the 7-number observation and writes the 2-number action."""
+    if spec.n_inputs != OBSERVATION_SIZE or spec.n_outputs != ACTION_SIZE:
+        raise ValueError(
+            f"a driving network needs {OBSERVATION_SIZE} inputs and {ACTION_SIZE} outputs, "
+            f"got layer sizes {spec.layer_sizes}"
+        )
+
+
+def _check_car(car: int, n_cars: int | None) -> None:
+    """Raise ``IndexError`` unless ``0 <= car < n_cars`` (``n_cars`` None: only ``car >= 0``)."""
+    if car < 0 or (n_cars is not None and car >= n_cars):
+        raise IndexError(f"car {car} out of range for {n_cars} cars")
+
+
+def _car_trace(trace: ForwardTrace, index: int) -> ForwardTrace:
+    """One car's slice (row ``index``) of a trace that holds every car."""
+    _check_car(index, trace.activations[0].shape[0])
+    return ForwardTrace(
+        [a[index].copy() for a in trace.activations],
+        [z[index].copy() for z in trace.weighted_sums],
+    )
+
+
+class MLPPolicy:
+    """One multilayer network that drives every car (all cars share the same brain).
+
+    For observations ``o`` of shape (N, 7), the actions are the network's output, shape (N, 2):
+    column 0 is steer and column 1 is throttle. The network is the one passed in (not copied), so
+    changing its weights changes the driving. ``last_trace`` is the full :class:`ForwardTrace` of
+    the latest :meth:`act` call (every car, shape (N, width) per entry), and :meth:`trace_for`
+    cuts out one car's trace for the Network view. Both are ``None`` until the first call.
+    """
+
+    def __init__(self, network: Network) -> None:
+        _check_spec(network.spec)
+        self.network = network
+        self.last_trace: ForwardTrace | None = None
+
+    def act(self, observations: Array) -> Array:
+        obs = _check_observations(observations)
+        self.last_trace = forward(self.network, obs)
+        return self.last_trace.output
+
+    def trace_for(self, car: int) -> ForwardTrace:
+        """The latest forward trace of car ``car`` (shape (width,) per entry)."""
+        if self.last_trace is None:
+            raise RuntimeError("no trace yet: call act() first")
+        return _car_trace(self.last_trace, car)
+
+    def network_of(self, car: int) -> Network:
+        """The network that drives car ``car`` (the one shared network)."""
+        _check_car(car, None)
+        return self.network
+
+    def trace_of(self, observations: Array, car: int) -> ForwardTrace:
+        """Forward trace of car ``car`` on its row of ``observations`` (shape (N, 7)), computed
+        now and without touching ``last_trace``: for displaying the *current* state, whereas
+        ``trace_for`` belongs to the last :meth:`act` call (the step before)."""
+        obs = _check_observations(observations)
+        _check_car(car, len(obs))
+        return forward(self.network, obs[car])
+
+
+class PopulationPolicy:
+    """A different network for every car: car i is driven by member i of the population.
+
+    ``observations`` must have exactly one row per member, so the number of cars equals the
+    population size. Row i goes through network i only. Traces work as in :class:`MLPPolicy`.
+    """
+
+    def __init__(self, population: Population) -> None:
+        _check_spec(population.spec)
+        self.population = population
+        self.last_trace: ForwardTrace | None = None
+
+    def act(self, observations: Array) -> Array:
+        obs = _check_observations(observations)
+        if len(obs) != self.population.size:
+            raise ValueError(
+                f"the population has {self.population.size} networks but got {len(obs)} cars"
+            )
+        self.last_trace = self.population.forward(obs)
+        return self.last_trace.output
+
+    def trace_for(self, car: int) -> ForwardTrace:
+        """The latest forward trace of car ``car`` (shape (width,) per entry)."""
+        if self.last_trace is None:
+            raise RuntimeError("no trace yet: call act() first")
+        return _car_trace(self.last_trace, car)
+
+    def network_of(self, car: int) -> Network:
+        """Member ``car`` of the population, as a stand-alone network (a copy)."""
+        return self.population.network(car)
+
+    def trace_of(self, observations: Array, car: int) -> ForwardTrace:
+        """Forward trace of car ``car``'s own network on its row of ``observations`` (N, 7).
+
+        Computed now and without touching ``last_trace`` (see :meth:`MLPPolicy.trace_of`).
+        """
+        obs = _check_observations(observations)
+        _check_car(car, len(obs))
+        return forward(self.population.network(car), obs[car])

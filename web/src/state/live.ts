@@ -4,9 +4,13 @@ import type {
   ActivationCurves,
   EpisodeEndMessage,
   ErrorMessage,
+  ExplanationMessage,
   FrameMessage,
+  InspectStep,
   KeyState,
   LoadScenario,
+  MomentMessage,
+  NetworkMessage,
   NeuronReadout,
   Pause,
   Play,
@@ -18,6 +22,8 @@ import type {
   Step,
   TrackGeometry,
   TrackInfo,
+  TrailPoints,
+  WhatIf,
 } from "../api/generated";
 import type { ConnectionStatus } from "../api/ws";
 
@@ -35,22 +41,70 @@ export type Command =
   | SetSpeed
   | SelectCar
   | KeyState
-  | SetParam;
+  | SetParam
+  | WhatIf
+  | InspectStep;
 
 /** The messages the server sends that the store keeps (hello only confirms the connection). */
-export type ServerMessage = ScenarioMessage | FrameMessage | EpisodeEndMessage | ErrorMessage;
+export type ServerMessage =
+  | ScenarioMessage
+  | NetworkMessage
+  | ExplanationMessage
+  | MomentMessage
+  | FrameMessage
+  | EpisodeEndMessage
+  | ErrorMessage;
 
 export interface DriveInput {
   steer: number;
   throttle: number;
 }
 
+/**
+ * The selected car's decision trail as the server sent it (ADR-027): at `steps[i]` the car was at
+ * (`x[i]`, `y[i]`) and chose `action[i]`. Only kept and drawn here, never computed.
+ */
+export interface Trail {
+  car: number;
+  steps: number[];
+  x: number[];
+  y: number[];
+  action: number[][];
+}
+
+/**
+ * Apply one frame's trail points: start again when the server says `replace`, otherwise add the
+ * new points; then drop the steps older than `keepFrom` (the server no longer remembers them).
+ */
+export function updateTrail(trail: Trail | null, car: number, points: TrailPoints, keepFrom: number): Trail {
+  const base: Trail =
+    points.replace || trail === null || trail.car !== car
+      ? { car, steps: [], x: [], y: [], action: [] }
+      : trail;
+  let steps = [...base.steps, ...points.steps];
+  let x = [...base.x, ...points.x];
+  let y = [...base.y, ...points.y];
+  let action = [...base.action, ...points.action];
+  const drop = steps.findIndex((s) => s >= keepFrom);
+  if (drop !== 0) {
+    const from = drop === -1 ? steps.length : drop;
+    steps = steps.slice(from);
+    x = x.slice(from);
+    y = y.slice(from);
+    action = action.slice(from);
+  }
+  return { car, steps, x, y, action };
+}
+
 /** What a `load_scenario` message asks for. */
 export interface ScenarioRequest {
   track: string;
-  policy: "keyboard" | "constant" | "neuron";
+  policy: "keyboard" | "constant" | "neuron" | "random_networks";
   n_cars: number;
-  /** null: every car starts at the track's start line; a number: a seeded random start. */
+  /**
+   * null: every car starts at the track's start line; a number: a seeded random start. With
+   * "random_networks" the seed also picks the networks (seed 0 when null).
+   */
   seed: number | null;
 }
 
@@ -82,6 +136,23 @@ export interface LiveState {
   /** The activation functions sampled by the server, for drawing curves (null until fetched). */
   activations: ActivationCurves | null;
   frame: FrameMessage | null;
+  /**
+   * The weights of the selected car's network (random-networks driver only). The server sends
+   * them once per load and per car selection, not in every frame; `network.car` says whose they are.
+   */
+  network: NetworkMessage | null;
+  /**
+   * The server's answer to the last `what_if`, while it still applies: it is dropped as soon as a
+   * frame shows another step or another car, or a new scenario loads.
+   */
+  whatIfResult: ExplanationMessage | null;
+  /** The selected car's decision trail (null until a frame brings one). */
+  trail: Trail | null;
+  /**
+   * The server's answer to the last `inspect_step`: the selected car at an earlier step. Dropped
+   * as soon as a frame shows another step or another car, or a new scenario loads.
+   */
+  moment: MomentMessage | null;
   episodeEnd: EpisodeEndMessage | null;
   /** The last error the server reported, or null. */
   error: string | null;
@@ -132,6 +203,10 @@ export const initialLive: LiveState = {
   geometry: null,
   activations: null,
   frame: null,
+  network: null,
+  whatIfResult: null,
+  trail: null,
+  moment: null,
   episodeEnd: null,
   error: null,
   keys: NO_KEYS,
@@ -153,7 +228,15 @@ export function settingsOf(readout: NeuronReadout): NeuronSettings {
 function isServerMessage(value: unknown): value is ServerMessage {
   if (typeof value !== "object" || value === null) return false;
   const type = (value as { type?: unknown }).type;
-  return type === "scenario" || type === "frame" || type === "episode_end" || type === "error";
+  return (
+    type === "scenario" ||
+    type === "network" ||
+    type === "explanation" ||
+    type === "moment" ||
+    type === "frame" ||
+    type === "episode_end" ||
+    type === "error"
+  );
 }
 
 export const useLive = create<LiveState & LiveActions>()((set, get) => ({
@@ -201,11 +284,45 @@ export const useLive = create<LiveState & LiveActions>()((set, get) => ({
       case "scenario":
         // A new scenario: forget the old frame and ending. The server starts a new keyboard
         // driver with no keys held, so the keys we last sent no longer apply either.
-        set({ scenario: message, frame: null, episodeEnd: null, error: null, keys: NO_KEYS });
+        set({
+          scenario: message,
+          frame: null,
+          network: null,
+          whatIfResult: null,
+          trail: null,
+          moment: null,
+          episodeEnd: null,
+          error: null,
+          keys: NO_KEYS,
+        });
+        break;
+      case "network":
+        set({ network: message });
+        break;
+      case "explanation":
+        set({ whatIfResult: message });
+        break;
+      case "moment":
+        set({ moment: message });
         break;
       case "frame": {
+        const previous = get().frame;
         // A frame at step 0 means a fresh start (after load or reset): any old ending is stale.
         set(message.step === 0 ? { frame: message, episodeEnd: null } : { frame: message });
+        // A what-if answer belongs to one car at one moment.
+        const result = get().whatIfResult;
+        if (result !== null && (result.step !== message.step || result.car !== message.selected?.index)) {
+          set({ whatIfResult: null });
+        }
+        // A look at the past ends when the simulation moves on or another car is chosen.
+        const moved =
+          previous === null || previous.step !== message.step || previous.selected?.index !== message.selected?.index;
+        if (moved && get().moment !== null) set({ moment: null });
+        const points = message.selected?.trail;
+        if (message.selected && points) {
+          const window = Math.round((get().scenario?.trail_seconds ?? 60) / (get().scenario?.dt ?? 1 / 30));
+          set({ trail: updateTrail(get().trail, message.selected.index, points, message.step - window) });
+        }
         const readout = message.selected?.neuron;
         if (readout) {
           const seen = settingsOf(readout);

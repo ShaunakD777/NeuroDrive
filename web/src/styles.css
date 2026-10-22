@@ -780,3 +780,563 @@ body {
   font: inherit;
   cursor: pointer;
 }
+
+/* ── Network diagram (multilayer networks) ───────────────────── */
+
+.network-view {
+  overflow: auto;
+}
+
+.net-intro {
+  margin-bottom: 8px !important;
+  font-size: 0.88rem;
+}
+
+.net-svg {
+  width: 100%;
+  max-width: 980px;
+  height: auto;
+  display: block;
+}
+
+.net-compact .net-svg {
+  max-width: 100%;
+}
+
+.net-edge {
+  fill: none;
+  stroke-linecap: round;
+}
+
+.net-edge-pos {
+  stroke: var(--accent);
+}
+
+.net-edge-neg {
+  stroke: var(--warn);
+}
+
+.net-edges .net-edge {
+  pointer-events: none;
+}
+
+.net-edge-hit {
+  stroke: transparent;
+  stroke-width: 7;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.net-edge-selected {
+  filter: drop-shadow(0 0 2px var(--text));
+}
+
+.net-dim {
+  opacity: 0.08;
+}
+
+.net-node-ring {
+  fill: var(--surface);
+  stroke: var(--text-muted);
+  stroke-width: 1.5;
+}
+
+.net-fill-pos {
+  fill: var(--accent);
+  stroke: none;
+}
+
+.net-fill-neg {
+  fill: var(--warn);
+  stroke: none;
+}
+
+.net-node {
+  cursor: pointer;
+}
+
+.net-node-selected .net-node-ring {
+  stroke: var(--text);
+  stroke-width: 3.5;
+}
+
+.net-node:hover .net-node-ring {
+  stroke: var(--text);
+  stroke-width: 2.5;
+}
+
+.net-caption {
+  fill: var(--text-muted);
+  font-size: 13px;
+}
+
+.net-label {
+  fill: var(--text);
+  font-size: 13px;
+}
+
+.net-value {
+  fill: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.net-readout {
+  min-height: 1.4em;
+  margin: 6px 0 4px !important;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.net-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.net-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── Car stepper (Network view header) ───────────────────────── */
+
+.car-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 0.85rem;
+}
+
+.car-stepper button {
+  width: 28px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.car-stepper button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.car-stepper-label {
+  min-width: 6.5em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.car-stepper-compact .car-stepper-label {
+  min-width: 5.5em;
+}
+
+/* ── Compact network (side drawer) ───────────────────────────── */
+
+.cnet {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.84rem;
+}
+
+.cnet-section-title {
+  margin: 10px 0 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.cnet-section-title:first-child {
+  margin-top: 0;
+}
+
+.cnet-muted {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.cnet-row {
+  display: grid;
+  grid-template-columns: 7.2em 1fr 3.4em;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 3px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cnet-row:hover {
+  background: var(--bg);
+}
+
+.cnet-output {
+  grid-template-columns: 7.2em 1fr 3.4em;
+  grid-template-rows: auto auto;
+  padding: 6px;
+}
+
+.cnet-output .cnet-label,
+.cnet-output .cnet-value {
+  font-weight: 600;
+}
+
+.cnet-words {
+  grid-column: 2 / 4;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.cnet-selected {
+  border-color: var(--text);
+  background: var(--bg);
+}
+
+.cnet-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cnet-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.cnet-bar {
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.cnet-bar-big {
+  height: 14px;
+  border-radius: 7px;
+}
+
+.cnet-bar-mid {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--text-muted);
+}
+
+.cnet-bar-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+
+.cnet-fill-pos {
+  background: var(--accent);
+}
+
+.cnet-fill-neg {
+  background: var(--warn);
+}
+
+.cnet-cells {
+  display: grid;
+  gap: 3px;
+  padding: 0 6px;
+}
+
+.cnet-cell {
+  position: relative;
+  aspect-ratio: 1;
+  min-width: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.cnet-cell.cnet-selected {
+  border: 2px solid var(--text);
+}
+
+.cnet-cell-fill {
+  position: absolute;
+  inset: 0;
+}
+
+.cnet-readout {
+  margin: 10px 0 4px !important;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.cnet-open {
+  color: var(--accent);
+  font-size: 0.85rem;
+}
+
+/* ── Output inspector and what-if (task 2.10) ────────────────── */
+
+.inspection-hint {
+  margin-top: 6px !important;
+}
+
+.inspection {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px 28px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.inspector h3,
+.whatif h4,
+.inspector h4 {
+  margin: 0 0 6px;
+}
+
+.inspector h4,
+.whatif h4 {
+  margin-top: 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.inspector-headline {
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.inspector-tabs {
+  display: inline-flex;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.inspector-tabs button,
+.whatif-head button {
+  padding: 3px 12px;
+  border: none;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.inspector-tabs button + button {
+  border-left: 1px solid var(--border);
+}
+
+.inspector-tabs button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--surface);
+}
+
+.inspector-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.84rem;
+}
+
+.inspector-row {
+  display: grid;
+  grid-template-columns: 10.5em 1fr 4em;
+  align-items: center;
+  gap: 8px;
+}
+
+.inspector-muted {
+  color: var(--text-muted);
+}
+
+.inspector-sum {
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.whatif-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.whatif-head button {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.whatif-head button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.whatif-row {
+  display: grid;
+  grid-template-columns: 7.5em 1fr 3.4em;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.84rem;
+}
+
+.whatif-row input {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.whatif-changed {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.whatif-table {
+  margin-top: 10px;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.whatif-table th,
+.whatif-table td {
+  padding: 3px 10px 3px 0;
+  text-align: left;
+}
+
+.whatif-table thead th {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.stage-legends {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  max-width: min(360px, calc(100% - 20px));
+}
+
+.stage-legend {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.8rem;
+}
+
+.ray-legend-pos {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.ray-legend-neg {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+
+/* ── Car picker in the Network view header ───────────────────── */
+
+.car-stepper select {
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.car-stepper select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ── Decision trail timeline (task 2.11) ─────────────────────── */
+
+.trail-panel {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  font-size: 0.85rem;
+}
+
+.trail-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.trail-slider {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 200px;
+}
+
+.trail-slider input {
+  flex: 1;
+  min-width: 0;
+}
+
+.trail-readout,
+.trail-legend {
+  margin: 6px 0 0 !important;
+}
+
+.past-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--surface);
+  font-size: 0.85rem;
+}
+
+.hud-past {
+  border-color: var(--accent);
+}
+
+.hud-past-note {
+  color: var(--accent);
+  font-weight: 600;
+}

@@ -34,11 +34,15 @@ search (a test compares the two).
 """
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
 from neurodrive.env.track import Track
+
+if TYPE_CHECKING:  # only for the type hint of observe(); world.py is not imported at run time
+    from neurodrive.env.world import World
 
 Array = NDArray[np.float64]
 
@@ -198,7 +202,19 @@ def ray_readings(
     return ray_distances(segments, x, y, psi, angles, max_range) / max_range
 
 
-OBSERVATION_SIZE = 7  # 5 ray readings + normalised speed + normalised heading error
+# The observation contract, frozen at task 2.5 (ADR-005, ARCHITECTURE §6.4). Changing the number,
+# order, meaning or scaling of these inputs needs a new ADR and a new version.
+OBSERVATION_VERSION = "v1"
+OBSERVATION_NAMES = (
+    "ray_far_left",  # o1: +60 degrees
+    "ray_left",  # o2: +30 degrees
+    "ray_centre",  # o3: straight ahead
+    "ray_right",  # o4: -30 degrees
+    "ray_far_right",  # o5: -60 degrees
+    "speed",  # o6: v / v_max
+    "heading_error",  # o7: wrap(psi - road heading) / pi
+)
+OBSERVATION_SIZE = len(OBSERVATION_NAMES)  # 5 ray readings + normalised speed and heading error
 
 
 def wrap_angle(angle: ArrayLike) -> Array:
@@ -231,3 +247,16 @@ def build_observation(
     speed = np.broadcast_to(np.asarray(v, dtype=np.float64), (n,)) / v_max
     heading_error = wrap_angle(np.asarray(psi) - np.asarray(road_heading)) / np.pi
     return np.column_stack([readings, speed, np.broadcast_to(heading_error, (n,))])
+
+
+def observe(world: "World", segments: ArrayLike | WallGrid) -> Array:
+    """The (N, 7) observation of every car of ``world`` right now.
+
+    The one place that reads a world's car state into :func:`build_observation`, so the episode
+    runner and the live session cannot drift apart. ``segments`` is the track's wall grid
+    (:func:`edge_grid`), built once and reused every step.
+    """
+    cars = world.cars
+    return build_observation(
+        segments, cars.x, cars.y, cars.psi, cars.v, world.road_heading, world.params.v_max
+    )

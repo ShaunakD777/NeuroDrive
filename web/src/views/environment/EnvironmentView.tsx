@@ -1,12 +1,23 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useLive } from "../../state/live";
-import { useSelection } from "../../state/selection";
-import { type Camera, fitCamera, followCamera, nearestCar, type Size } from "./geometry";
+import { activeMoment, useMoment, usePlayback } from "../../state/playback";
+import { raysFor, useSelection } from "../../state/selection";
+import { activeGhost, ghostGap, raySensitivity } from "../network/inspect";
+import {
+  type Camera,
+  fitCamera,
+  followCamera,
+  nearestCar,
+  type Size,
+  worldToScreen,
+} from "./geometry";
 import { drawScene, readTheme } from "./draw";
 import { Hud } from "./Hud";
 import { Controls } from "./Controls";
 import { useDrivingKeys } from "./useDrivingKeys";
+import { TrailPanel } from "./Trail";
+import { nearestTrailStep, trailValues } from "./trailLayout";
 
 type CameraMode = "follow" | "fit";
 
@@ -31,14 +42,27 @@ export function EnvironmentView({
   const boxRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const cameraRef = useRef<Camera>({ cx: 0, cy: 0, scale: 1 });
+  // Where each trail point was drawn (CSS pixels), for clicking a point (task 2.11).
+  const trailRef = useRef<{ steps: number[]; screen: [number, number][] }>({ steps: [], screen: [] });
   const [size, setSize] = useState<Size>({ w: 0, h: 0 });
   const [mode, setMode] = useState<CameraMode>("follow");
   const [zoom, setZoom] = useState(compact ? COMPACT_ZOOM : DEFAULT_ZOOM);
 
   const geometry = useLive((s) => s.geometry);
-  const neuronSelected = useSelection((s) => s.neuron !== null);
-  const neuronRays = useLive((s) => s.frame?.selected?.neuron?.input_rays ?? null);
-  const highlightAttribute = neuronSelected && neuronRays !== null ? neuronRays.join(",") : "";
+  const frame = useLive((s) => s.frame);
+  // The rays the shared selection points at (a selected neuron, input or weight), for tests.
+  const highlightAttribute = useSelectedRays().join(",");
+  // The selected output's sensitivity to each ray, when an output is selected (task 2.10).
+  const output = useSelection((s) => s.output);
+  // Looking at an earlier step (task 2.11): its explanation replaces the present one.
+  const moment = useMoment();
+  const liveExplain = useLive((s) => s.frame?.selected?.explain ?? null); // a stable object per frame
+  const explain = moment === null ? liveExplain : moment.explain;
+  const sensitivityRow = raySensitivity(explain, outputIndex(output));
+  const sensitivityAttribute = sensitivityRow === null ? "" : sensitivityRow.join(",");
+  // The what-if ghost, while a what-if question about this car at this step is open (ADR-026).
+  const ghost = useGhost();
+  const ghostAttribute = ghost === null ? "" : ghost.what_if_end.join(",");
   const fitPoints = useMemo(
     () => (geometry === null ? [] : [...geometry.left, ...geometry.right]),
     [geometry],
@@ -68,16 +92,23 @@ export function EnvironmentView({
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (canvas === null || !ctx || size.w === 0 || size.h === 0) return;
-    const { frame, scenario, geometry: track } = useLive.getState();
+    const live = useLive.getState();
+    const { frame, scenario, geometry: track } = live;
     const selected = frame?.selected?.index ?? 0;
-    // When the neuron is selected (Network view), emphasise the two rays it reads.
-    const neuronRays = frame?.selected?.neuron?.input_rays ?? [];
-    const highlight = useSelection.getState().neuron === null ? [] : neuronRays;
+    const output = outputIndex(useSelection.getState().output);
+    const moment = activeMoment(live, usePlayback.getState().viewStep);
+    // Emphasise the rays behind whatever is selected in the Network view (§8.2).
+    const highlight = raysFor(useSelection.getState(), frame?.selected);
+    const sensitivityRays = raySensitivity(moment === null ? frame?.selected?.explain : moment.explain, output);
     const car = frame === null ? null : frame.cars;
+    const trail = live.trail !== null && live.trail.car === selected ? live.trail : null;
+    // Follow the selected car, or the place it was at while an earlier step is looked at.
     const camera =
-      mode === "follow" && car !== null && car.x.length > selected
-        ? followCamera(car.x[selected], car.y[selected], zoom)
-        : fitCamera(fitPoints, size);
+      mode === "follow" && moment !== null
+        ? followCamera(moment.x, moment.y, zoom)
+        : mode === "follow" && car !== null && car.x.length > selected
+          ? followCamera(car.x[selected], car.y[selected], zoom)
+          : fitCamera(fitPoints, size);
     cameraRef.current = camera;
     const ratio = window.devicePixelRatio || 1;
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
@@ -90,7 +121,39 @@ export function EnvironmentView({
       selected,
       compact,
       highlight,
+      raySensitivity: sensitivityRays,
+      ghost: activeGhost(live, useSelection.getState().whatIf),
+      trail:
+        trail === null
+          ? null
+          : {
+              steps: trail.steps,
+              points: trail.x.map((x, k) => [x, trail.y[k]]),
+              values: trailValues(trail, output),
+            },
+      moment:
+        moment === null
+          ? null
+          : { step: moment.step, x: moment.x, y: moment.y, psi: moment.psi, rays: moment.rays },
     });
+    const trailScreen =
+      trail === null
+        ? []
+        : trail.x.map(
+            (x, k) => worldToScreen(camera, size, x, trail.y[k]).map((v) => Math.round(v)) as [number, number],
+          );
+    trailRef.current = { steps: trail?.steps ?? [], screen: trailScreen };
+    // For browser tests: each trail point as step:x:y on screen, and the step being looked at.
+    canvas.dataset.trail = trailScreen.map(([sx, sy], k) => `${trail?.steps[k]}:${sx}:${sy}`).join(",");
+    canvas.dataset.moment = moment === null ? "" : String(moment.step);
+    canvas.dataset.trailValues = (trailValues(trail, output) ?? []).join(","); // what colours it
+    // Where each car is on screen (CSS pixels), so browser tests can click a particular car.
+    canvas.dataset.cars =
+      car === null
+        ? ""
+        : car.x
+            .map((x, i) => worldToScreen(camera, size, x, car.y[i]).map((v) => Math.round(v)).join(":"))
+            .join(",");
   }, [size, mode, zoom, compact, fitPoints]);
 
   // Redraw when anything the picture depends on changes, at most once per display frame.
@@ -106,32 +169,40 @@ export function EnvironmentView({
     };
     const unsubscribeLive = useLive.subscribe(schedule);
     const unsubscribeSelection = useSelection.subscribe(schedule);
+    const unsubscribePlayback = usePlayback.subscribe(schedule);
     schedule();
     return () => {
       unsubscribeLive();
       unsubscribeSelection();
+      unsubscribePlayback();
       cancelAnimationFrame(pending);
     };
   }, [draw]);
 
   // Clicking a car selects it: its rays are drawn and the other views can follow (§8.2).
+  // Clicking a point of the trail (while paused) looks at that step (task 2.11).
   const onPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const frame = useLive.getState().frame;
     if (frame === null) return;
     const rect = event.currentTarget.getBoundingClientRect();
-    const index = nearestCar(
-      cameraRef.current,
-      size,
-      frame.cars.x,
-      frame.cars.y,
-      event.clientX - rect.left,
-      event.clientY - rect.top,
-      24,
-    );
-    if (index !== null) {
-      useLive.getState().send({ type: "select_car", index });
-      useSelection.getState().select({ carId: index });
+    const px = event.clientX - rect.left;
+    const py = event.clientY - rect.top;
+    const index = nearestCar(cameraRef.current, size, frame.cars.x, frame.cars.y, px, py, 24);
+    if (index !== null && index !== frame.selected?.index) {
+      useSelection.getState().selectCar(index);
+      return;
     }
+    const { steps, screen } = trailRef.current;
+    const step = frame.playing ? null : nearestTrailStep(screen, steps, px, py, 12);
+    // The newest trail points lie under the car: a click nearer the car's centre means the car.
+    const distanceTo = ([sx, sy]: number[]) => Math.hypot(sx - px, sy - py);
+    const onCar =
+      index !== null &&
+      (step === null ||
+        distanceTo(worldToScreen(cameraRef.current, size, frame.cars.x[index], frame.cars.y[index])) <
+          distanceTo(screen[steps.indexOf(step)]));
+    if (onCar) usePlayback.getState().backToLive(); // clicking the selected car: back to now
+    else if (step !== null) usePlayback.getState().view(step);
   };
 
   const zoomBy = (factor: number) => setZoom((z) => Math.min(40, Math.max(1, z * factor)));
@@ -159,20 +230,68 @@ export function EnvironmentView({
           className="env-canvas"
           data-testid="environment-canvas"
           data-highlighted-rays={highlightAttribute}
+          data-ray-sensitivity={sensitivityAttribute}
+          data-ghost={ghostAttribute}
           style={{ width: size.w, height: size.h }}
           onPointerDown={onPointerDown}
           aria-label="Top-down view of the track and the cars"
           role="img"
         />
         <Hud compact={compact} />
+        {!compact && (ghost !== null || sensitivityRow !== null) && (
+          <div className="stage-legends">
+            {ghost !== null && (
+              <div className="stage-legend" data-testid="ghost-legend">
+                <strong>What-if ghost:</strong> where car {(frame?.selected?.index ?? 0) + 1} would
+                be in {ghost.seconds} s holding the what-if action (solid line, see-through car)
+                instead of its real action (dashed); the two endings are{" "}
+                <span data-testid="ghost-gap">{ghostGap(ghost).toFixed(1)}</span> m apart. Held
+                actions only: the network would really decide again every step.
+              </div>
+            )}
+            {sensitivityRow !== null && (
+              <div className="stage-legend" data-testid="ray-legend">
+                Rays coloured by how {output} reacts to them:{" "}
+                <span className="ray-legend-pos">blue</span> = a longer ray pushes {output}{" "}
+                {output === "steer" ? "right" : "up (accelerate)"},{" "}
+                <span className="ray-legend-neg">orange</span> ={" "}
+                {output === "steer" ? "left" : "down (brake)"}; thicker = stronger.
+              </div>
+            )}
+          </div>
+        )}
       </div>
+      {!compact && <TrailPanel />}
       {!compact && (
         <p className="env-hint">
           Drive with the arrow keys or W A S D (up accelerates, down brakes). Press Play first: the
-          car only moves while the simulation runs. Click a car to select it. With the Neuron
-          driver, set its weights on the Network page.
+          car only moves while the simulation runs. Click a car to select it: the Network page
+          and the drawer then show that car. While paused, click a point on its trail (or drag Look
+          back) to see the network at that earlier step. With the Neuron driver, set its weights on the
+          Network page.
         </p>
       )}
     </section>
   );
+}
+
+/** The rays highlighted for the current selection, as a React value (re-renders when it changes). */
+function useSelectedRays(): number[] {
+  const neuron = useSelection((s) => s.neuron);
+  const connection = useSelection((s) => s.connection);
+  const selected = useLive((s) => s.frame?.selected);
+  return raysFor({ neuron, connection }, selected);
+}
+
+/** Index of a named output in the action (steer 0, throttle 1), or null. */
+function outputIndex(output: "steer" | "throttle" | null): number | null {
+  return output === null ? null : output === "steer" ? 0 : 1;
+}
+
+/** The open what-if ghost as a React value (re-renders when it appears or goes). */
+function useGhost() {
+  const result = useLive((s) => s.whatIfResult);
+  const frame = useLive((s) => s.frame);
+  const overrides = useSelection((s) => s.whatIf);
+  return activeGhost({ whatIfResult: result, frame }, overrides);
 }

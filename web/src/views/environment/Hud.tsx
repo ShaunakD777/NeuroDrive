@@ -1,4 +1,5 @@
 import { useLive } from "../../state/live";
+import { useMoment } from "../../state/playback";
 import { describeStatus, formatRayAngle, formatSpeed } from "./status";
 
 /** A horizontal bar showing a value between -1 and +1, filled from the middle. */
@@ -17,7 +18,9 @@ function SignedBar({ value, testId }: { value: number; testId: string }) {
 /**
  * The heads-up display over the canvas: speed, the actions being applied, progress, the five ray
  * distances, and why the episode ended once it has. The compact version shows only speed and
- * status.
+ * status. While an earlier step is looked at (task 2.11) every number is that step's, as the
+ * server recomputed it (`moment`), and the Step row says so; the action shown is the one the car
+ * chose at that step (what the Network view shows there).
  */
 export function Hud({ compact }: { compact: boolean }) {
   const frame = useLive((s) => s.frame);
@@ -25,6 +28,7 @@ export function Hud({ compact }: { compact: boolean }) {
   const geometry = useLive((s) => s.geometry);
   const error = useLive((s) => s.error);
   const status = useLive((s) => s.status);
+  const moment = useMoment();
 
   if (frame === null || scenario === null) {
     return (
@@ -35,16 +39,20 @@ export function Hud({ compact }: { compact: boolean }) {
   }
 
   const i = frame.selected?.index ?? 0;
-  const code = frame.cars.status[i] ?? 0;
+  // Now, or the earlier step being looked at: every number comes from the same moment.
+  const code = moment?.status ?? frame.cars.status[i] ?? 0;
   const text = describeStatus(code);
-  const speed = frame.cars.v[i] ?? 0;
-  const [steer, throttle] = frame.cars.action[i] ?? [0, 0];
-  const progress = frame.cars.progress[i] ?? 0;
+  const speed = moment?.v ?? frame.cars.v[i] ?? 0;
+  const [steer, throttle] = moment?.action ?? frame.cars.action[i] ?? [0, 0];
+  const progress = moment?.progress ?? frame.cars.progress[i] ?? 0;
+  const step = moment?.step ?? frame.step;
+  const time = moment?.time ?? frame.time;
+  const rays = moment?.rays ?? frame.selected?.rays ?? [];
   const laps = geometry === null ? null : progress / geometry.length;
 
   return (
     <>
-      <div className="hud" data-testid="hud">
+      <div className={moment === null ? "hud" : "hud hud-past"} data-testid="hud" data-past={moment !== null}>
         <div className="hud-row">
           <span className="hud-label">Speed</span>
           <span data-testid="hud-speed" data-value={speed}>
@@ -71,16 +79,21 @@ export function Hud({ compact }: { compact: boolean }) {
             </div>
             <div className="hud-row">
               <span className="hud-label">Step</span>
-              <span data-testid="hud-step">{frame.step}</span>
-              <span className="hud-muted">{frame.time.toFixed(2)} s</span>
+              <span data-testid="hud-step">{step}</span>
+              <span className="hud-muted">{time.toFixed(2)} s</span>
             </div>
+            {moment !== null && (
+              <div className="hud-row hud-past-note" data-testid="hud-past">
+                Looking back: now is step {frame.step}
+              </div>
+            )}
             <div className="hud-row">
               <span className="hud-label">Progress</span>
               <span data-testid="hud-progress">{progress.toFixed(1)} m</span>
               {laps !== null && <span className="hud-muted">{laps.toFixed(2)} laps</span>}
             </div>
             <div className="hud-rays" data-testid="hud-rays">
-              {(frame.selected?.rays ?? []).map((distance, k) => (
+              {rays.map((distance, k) => (
                 <div className="hud-row" key={k}>
                   <span className="hud-label">Ray {formatRayAngle(scenario.ray_angles[k])}</span>
                   <span data-testid={`ray-${k}`} data-value={distance}>

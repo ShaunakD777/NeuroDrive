@@ -399,3 +399,283 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   (per-track time limit).
 - Open questions: how will a network that also sets the throttle learn to brake for chicanes?
   Should the Playwright tests run in CI? Phone layout (deferred by the user).
+
+### 2026-10-19 — Task 2.1 Network spec and parameters
+- Concept: a layer is a weight matrix (one row per neuron, one column per input) plus a bias
+  vector; a network is a list of layers; all its numbers laid end to end are the genome.
+- Key equation(s) in words: a layer with n_in inputs and n_out neurons owns n_out times n_in
+  weights plus n_out biases. For [7,16,16,2]: 128 + 272 + 34 = 434. Flat order: each weight matrix
+  row by row, then that layer's biases, layer after layer.
+- What we observed: the hand example [2,2,1] flattens to 1 to 9 in order; flatten then unflatten
+  and save then load both return the same numbers bit for bit; 266 tests pass.
+- Surprise or difficulty: NumPy adds ".npz" to a file name you give it, so saving through an open
+  file keeps checkpoint names exactly as chosen.
+- Open question: how big must the initial random weights be so the 2 outputs do not saturate
+  (task 2.4)?
+
+### 2026-10-19 — Task 2.2 Forward pass with trace
+- Concept: forward propagation, layer by layer, keeping every intermediate value in a trace.
+- Key equation(s) in words: the weighted sums z are the weight matrix times the previous layer's
+  outputs plus the bias; the outputs a are the activation applied to z; a_0 is the observation.
+  For a batch the code computes A times W-transposed plus b, all rows at once.
+- What we observed: the hand 2-2-1 example gives z1 = [-1.5, 1.5], a1 = [-0.9051, 0.9051] and
+  output -0.8051; a batch of 20 matches one-at-a-time passes to 1e-9.
+- Surprise or difficulty: rows of a batch are stored as rows, so the matrix is transposed; the
+  maths in the docs is written for a single column vector.
+- Open question: does a batch give bit-identical results to single passes? Here only to 1e-9.
+
+### 2026-10-19 — Task 2.3 Population forward pass
+- Concept: stacked weights. N networks of one shape keep each layer as one array with a leading
+  network index, so one batched matrix product runs every network on its own car.
+- Key equation(s) in words: for car i, the weighted sums are network i's weight matrix times car
+  i's previous outputs plus network i's bias; then the activation. The same as one network, with
+  an extra index.
+- What we observed: 20 different random networks on 20 different observations match 20 separate
+  single passes to 1e-9; a hand example where the two networks give 3 and 1.5 (network 0 alone
+  would have given 8 for the second car).
+- Surprise or difficulty: a matrix-vector product per car is written as a matrix times a column
+  of height n_in, then the spare dimension is dropped.
+- Open question: how fast is this for hundreds of cars (Phase 7 performance check)?
+
+### 2026-10-19 — Task 2.4 Initialisation
+- Concept: weights start random so that neurons differ (symmetry breaking), and the scale of the
+  start matters: Xavier picks it from the layer sizes.
+- Key equation(s) in words: Xavier draws each weight evenly from minus a to plus a, where a is
+  the square root of 6 divided by (inputs plus neurons). The variance is then 2 divided by
+  (inputs plus neurons). For a 16 to 16 layer: a = 0.4330, variance 0.0625.
+- What we observed: the demo shows zero weights give outputs (0, 0) for every input, and equal
+  weights of 0.1 give 16 identical hidden neurons (spread 0.0000) with steer equal to throttle;
+  Xavier weights give spread 0.36 and 0.28 and different outputs. 200 random default networks
+  almost never hit the +-1 walls.
+- Surprise or difficulty: equal non-zero weights are as bad as zeros for symmetry, but harder to
+  notice, because the network does react to its input.
+- Open question: Phase 3 should show that the gradients stay identical too, so learning cannot
+  separate symmetric neurons.
+
+### 2026-10-19 — Task 2.5 Freeze the observation/action contract v1
+- Concept: every method must see the same 7 inputs and act through the same 2 outputs, otherwise
+  a difference in driving might come from the inputs and not from the learning algorithm.
+- Key equation(s) in words: the five rays are distance divided by 50 m, far-left to far-right;
+  speed is v divided by v_max; heading error is the wrapped angle between the car and the road
+  divided by pi, so it lies in (-1, 1] and facing backwards is +1 from either side. Positive steer
+  turns right; throttle +1 accelerates and -1 brakes; anything outside [-1, 1] is clipped.
+- What we observed: nothing needed to change in the behaviour; the contract was already what the
+  docs say. Three deliberately planted bugs (reversed ray order, heading error divided by 2 pi,
+  steer sign flipped) were each caught by the new test.
+- Surprise or difficulty: the observation range for the heading error excludes -1, because the
+  angle wrap puts the seam at +pi; the test pins this so nobody expects a -1.
+- Open question: o7 uses track knowledge (the road direction); is that a fair input once methods
+  are compared in Phase 8?
+
+### 2026-10-19 — Task 2.6 MLP and Population policies, multi-car scenarios
+- Concept: one brain per car. A policy that wraps a network turns the 7 observations into the 2
+  actions; a population policy gives car i network i, all in one batched calculation.
+- Key equation(s) in words: the action of car i is the output of network i on observation i
+  (the forward pass of task 2.2); the world only clips it to [-1, 1].
+- What we observed: with seed 0, all 20 random brains choose different first actions, but 14 of
+  them brake from the start and never move (a car at speed 0 that brakes stays at 0, so it stalls)
+  and the other 6 crash within seconds. Seeds 1 and 2 are similar: random brains are very poor
+  drivers, and the best one covered about 96 m of a 731 m lap.
+- Surprise or difficulty: most random cars do nothing at all, not something wild. The stall comes
+  from the throttle output being negative for about half of random networks. Also, a seed in the
+  live scenario changes both the brains and the starts, so a test of the brains has to look at the
+  networks directly. A planted bug (the seed ignored for the brains) slipped through until it did.
+- Open question: will a fitness that rewards progress be enough to get evolution out of the
+  "braking at zero speed" trap in Phase 7?
+- Also done: the observation code duplicated in the episode runner and the live session is now one
+  function (`observe`), and the runner no longer casts the rays twice per step; the action contract
+  has named constants like the observation.
+
+### 2026-10-19 — Task 2.7 Network view v1
+- Concept: reading a network diagram. Each column is a layer, each line one entry of a weight
+  matrix, each circle one value of the forward trace. Line colour is the weight's sign, thickness
+  its size; a circle's fill is the neuron's activation right now.
+- Key equation(s) in words: nothing new; the picture shows z (weights times the previous layer's
+  values plus the bias) and a (the activation of z) from task 2.2. In the browser, hovering the
+  steer output of car 5 read z = 0.5383 and tanh(z) = 0.4917, and tanh(0.5383) is 0.4917.
+- What we observed: with 400 lines the diagram stays readable because weak weights are drawn faint
+  and strong ones thick and on top; hovering one neuron dims everything unrelated, so its incoming
+  and outgoing connections stand out. The input circles equal the rays divided by 50, and the
+  numbers change as the car moves.
+- Surprise or difficulty: the trace kept by the last `act` call belongs to the step before the
+  frame being drawn (the world moves after the policy decides), so a frame needs a trace computed
+  for its own observation, otherwise the input circles lag one step behind the rays. A test
+  that compares them for exact equality caught the lag when I planted it.
+- Open question: with 16 neurons per layer it is hard to say what any one hidden neuron means;
+  will the contribution view (task 2.9) make a decision easier to read than the diagram alone?
+
+### 2026-10-19 — Task 2.8 Selection linking (and a compact network for the drawer)
+- Concept: one shared selection drives every view. The car, neuron and weight the user points at
+  live in one store; the track, the full diagram and the drawer all read it and all change it.
+- Key equation(s) in words: none (plumbing). The only rule is a mapping: input k of the
+  observation, for k from 0 to 4, is ray k, so selecting it (or a weight leaving it) emphasises
+  that ray on the track; speed and heading error have no ray.
+- What we observed: clicking a car on the track switches the diagram to that car's weights; the
+  same steer neuron selected on car 1 stays selected on car 2 and shows car 2's own values
+  (z = 0.2097 on one car, for example); a cell clicked in the drawer is outlined in the full
+  diagram and the other way round.
+- Surprise or difficulty: two sources of truth fight unless one wins: the server decides which
+  car's details it sends, so the store copies the server's choice from every frame, and only an
+  explicit action (`selectCar`) sends the command, so following the server never echoes back.
+  Also, after a click the mouse is still over the circle, so the readout has to say "Selected"
+  whenever the thing shown is the selection, hovered or not.
+- Design note: the drawer's compact network was unreadable as a shrunken 41-circle diagram, so
+  it is now a summary for a narrow column: input bars, a strip of 16 coloured cells per hidden
+  layer, and big output bars with words such as "right" and "accelerating".
+- Open question: with the output neuron selected, which inputs matter most? That is task 2.9
+  (contributions and sensitivity).
+
+### 2026-10-19 — Task 2.9 Explain: contributions and sensitivity (finite differences)
+- Concept: two ways to ask why a network output what it did. Contributions say who pushed this
+  neuron and how hard, right now (a receipt for z). Sensitivity says how much the output would
+  move if one input changed a little (a slope).
+- Key equation(s) in words: contribution of input i to neuron j = weight from i to j times the
+  value of i; the contributions plus the bias add up to z. Sensitivity of output m to input k =
+  (output with input k nudged up by h, minus output with it nudged down by h) divided by 2h.
+- What we observed: in the 2-2-1 example the hidden neuron's receipt is 0.5 and -2 (total -1.5),
+  the output's is -1.810297 and +0.905148 plus a bias of 0.1 (z = -0.805148). The output's
+  sensitivity is +0.361413 to input 0 and -0.361413 to input 1, matching the chain rule by hand
+  to 1.8e-9. Over 200 random networks the receipts matched z - b to within 8.9e-16 (40 % of
+  neurons bit for bit; the rest only differ because the forward pass adds in another order).
+  When the hidden neurons are pushed into saturation (huge weights), every sensitivity falls
+  below 1e-6: the inputs can no longer reach the output.
+- Surprise or difficulty: contributions and sensitivity can disagree. A large contribution
+  through a saturated neuron has almost no sensitivity, because a saturated tanh is flat: the
+  input matters to the current value but a small change would not move it.
+- Open question: Phase 3 computes the same slopes exactly with backpropagation; will the two
+  agree to 1e-8 on every driving network, including ReLU ones with kinks?
+
+### 2026-10-19 — Task 2.10 Output inspector v1 and what-if
+- Concept: explaining one decision. The inspector shows the value in words, the receipt of
+  contributions that made it, and the sensitivity to each input; the what-if panel lets you test
+  the sensitivity's prediction against the network's real answer.
+- Key equation(s) in words: predicted output = output now + sum over inputs of (sensitivity times
+  the change in that input). It is a straight-line guess from the slope; the what-if value is the
+  network's real answer for the changed inputs.
+- What we observed: car 5 (seed-0 random brain, step 12) steers 0.492 ("right"); its biggest
+  contributions come from hidden-2 neurons 9 and 7 (+0.189, +0.154). Moving the far-left ray from
+  0.14 to 0.24 gave steer 0.496 against a predicted 0.497: the straight line is very good for a
+  small nudge. Every one of its five ray sensitivities is positive (+0.05 to +0.38): a longer ray
+  in any direction pushes it to steer right. A wall-avoiding driver needs opposite signs for the
+  left and right rays (like S1's hand neuron), so this random brain cannot be a good driver.
+- Surprise or difficulty: a question about a moving car is stale 30 times a second, so what-if is
+  allowed only while paused, and both the sliders and the answer are dropped on the next step.
+  Choosing where the computation lives (frame, command or REST) was a real design decision
+  (ADR-025), because a live network has no address outside its session.
+- Open question: in study S2a, do the circling cars show same-sign ray sensitivities and the
+  crashing cars tiny ones (saturation)?
+
+### 2026-10-19 — Task 2.10 follow-up: the what-if ghost car and choosing a car on the Network page
+- Concept: a what-if is easier to judge when you see where it leads. The ghost car shows where
+  the selected car would be in 2 s if it held the what-if action, next to a dashed path for
+  holding its real action. Both come from the same car physics as the simulation.
+- Key equation(s) in words: none new; the car model of task 1.3 is stepped 60 times with a fixed
+  steer and throttle, once for each action.
+- What we observed: car 5 at step 20 (about 2 m/s) with the +30 degree ray set to 0.9 and the
+  heading error to -0.9: steer drops from 0.464 to 0.204 and throttle from 0.345 to 0.147, and
+  the ghost ends 3.5 m from where the real action would take it. With a 1 s look-ahead the
+  ghost was hidden under the slow car, so the look-ahead is 2 s.
+- Surprise or difficulty: asking "what if nothing changes" did not return exactly the car's real
+  action, for two reasons: the browser's copy of the observation is rounded to 4 decimals, and
+  the real action came from the population's batched forward pass while the what-if used a
+  single-network pass (different summation order, last-bit differences that 60 physics steps
+  can push across a rounding boundary). Sending only the changed inputs and using one function
+  for both fixed it: no change now gives bit-identical actions and paths.
+- Open question: would a closed-loop ghost (the network deciding at every step) teach more
+  than a held action once a network can actually drive?
+
+### 2026-10-20 — Task 2.11: decision trail and looking back
+- Concept: one frame shows one decision; a trail shows the sequence. Colouring the trail by the
+  selected output turns "how did it steer all the way to the wall?" into a picture, and looking
+  back at a step shows what the network saw and computed at that moment.
+- Key equation(s) in words: none new. The weights never change while driving, so the trace at step
+  t is just the forward pass on the observation stored for step t; recomputed by the same
+  function, it equals the live one bit for bit.
+- What we observed: seed 1, car 12 drives 311 steps (about 78 m, up to 12.8 m/s) almost straight
+  (largest |steer| 0.38, mostly about 0.02 to 0.05) and leaves the road in a bend. At its last step
+  the +60 degree ray reads 0.022 (wall 1.1 m away on the left), yet it steers -0.021, slightly
+  towards the wall: its sensitivity to that ray is only -0.004, while to the -30 degree ray it is
+  +1.25. This random brain listens to the wrong ray. Looking back costs about 0.2 ms per step;
+  60 s of 20 cars take 3.8 MB on the server.
+- Surprise or difficulty: random brains are slow, so their trails bunch up under the car at normal
+  zoom; a click near the car could mean the car or a recent trail point, so the nearer of the two
+  wins. On Windows `Trail.tsx` and `trail.ts` count as the same file name, so the helpers became
+  `trailLayout.ts`.
+- Open question: when trained networks drive whole laps, will 60 s of trail be enough to find the
+  moment a run went wrong, or will Phase 5's replays take over that job?
+
+### 2026-10-20 — Task 2.11 follow-up: an honest HUD while looking back
+- Concept: every number on screen should describe the same moment. While looking back, the HUD
+  now shows the earlier step's speed, status, progress, rays and the action chosen there.
+- What we observed: a test that read the HUD at step 2 live and again while looking back at step 2
+  got identical numbers, except steer and throttle: live, the HUD shows the last action *applied*
+  (chosen one step earlier), while looking back it shows the action *chosen* at that step, which
+  is the value the live HUD showed one step later.
+- Surprise or difficulty: the first browser run failed on progress only, because Playwright reused
+  an `nd serve` still running the previous API version (v1.8), which did not send progress yet.
+
+### 2026-10-20 — Task 2.12: Study S2a, random brains
+- Concept: an untrained network's behaviour is set entirely by its random weights; the explain
+  tools (receipts, sensitivity, the decision trail) can read those accidental rules off it.
+- Key equation(s) in words: the change in an output between two moments is about the sum, over
+  the inputs, of sensitivity times the input's change (the what-if prediction, read backwards);
+  the tightest circle at full lock is 2 x wheelbase / tan(max wheel angle) = 9.15 m across.
+- What we observed: of 2,000 random brains, 72 % stall (956 of the 962 that never move brake at
+  step 0: the first throttle is a coin flip, positive 52 % of the time), 28 % crash, 13 drive the
+  full 92 s too slowly and one finishes (seed 10, car 11). Crashers' wiring signs match four coin
+  flips; long drivers are the lucky well-wired ones. No brain circles: untrained tanh outputs stay
+  moderate and a full-lock circle would not fit on the road anyway.
+- Surprise or difficulty: the expected "circling car" never appeared in 4,000 tries, so the study
+  explains a self-stopper instead. Many "stalled" cars were still speeding up when the 2 m in 2 s
+  check ended them. And steering chatter turned out to come from rays grazing the tips of walls: a
+  0.3 degree turn flips a reading between 47 m and 16 m.
+- Open question: will learned networks learn to ignore grazing rays, or will the sensors need
+  smoothing before learning works well?
+
+### 2026-10-20 — Task 2.12 follow-up: random brains on Monza and in other shapes
+- Concept: does a harder track or a different network shape change what random brains do?
+- Key equation(s) in words: Xavier draws a weight with variance 2 / (n_in + n_out), so a first
+  layer with many neurons gets small weights; its neurons' sums of the 7 inputs are then small, and
+  the whole network's outputs are gentler (for 64 first-layer neurons the typical sum is about a
+  third of a no-hidden-layer network's).
+- What we observed: on Monza the shares of stalls and crashes are the same as on the loop, since
+  random brains fail in their first few metres. Three of 6,000 app-shaped brains finished Monza,
+  something no fixed-throttle neuron managed in S1b, by easing off the throttle when the centre ray
+  shortened. The brains that last are largely the same on every track. Wider networks steer more
+  gently, stall more and crash less; depth alone changes little; no shape circles.
+- Surprise or difficulty: two quick claims in the first draft of the report ("every turn under 90
+  degrees", "no brain ever near full lock") were wrong once all 36,000 brains were in; checking
+  every claim against the results file caught them. The one brain that held full lock was too slow
+  to get anywhere before the stall rule ended it.
+- Open question: will a learning method find the "ease off when the road ahead shortens" rule on
+  purpose, and will it transfer across tracks the way the lucky brains' rules did?
+
+### 2026-10-22 — Phase 2 complete (tag `phase-2`)
+- What was built: in `core/nn`, the network spec and flat genome ([7,16,16,2] = 434 numbers,
+  `.npz` files), the forward pass with a full trace, the population forward pass (N networks in
+  one batched step) and initialisation (zeros, uniform, Xavier); the observation/action contract
+  v1 frozen (ADR-005); MLP and population policies and the "20 random networks" scenario; in
+  `explain/`, contributions and finite-difference sensitivity; the live Network view (diagram,
+  legend, hover readouts) and its compact drawer version; one shared selection across the views;
+  the output inspector with what-if and a what-if ghost car; the decision trail with looking back
+  at any step of the last 60 s, the HUD included; study S2a (36,000 random brains over 3 tracks and
+  6 shapes) with view screenshots. Live API v1.4 to v1.9. 424 Python tests, 114 web unit tests,
+  54 browser tests.
+- What was learned: a network is matrices, and its forward pass is a few matrix products whose
+  every intermediate value can be kept and shown; zero initialisation makes every hidden neuron
+  identical, while Xavier keeps signals a sensible size and sets how gentle a random network is;
+  a decision can be explained exactly (contributions add up to z) and locally (sensitivity, the
+  straight-line what-if, read forwards or backwards); untrained networks are coin flips (72 %
+  stall, 28 % crash, wiring signs like coin flips) and the rare survivors are lucky, well-wired
+  brains whose luck can even carry them round Monza; a smooth network fed a jumpy input (a ray
+  grazing a wall tip) makes jumpy decisions; Python stays the only source of numbers, so every
+  value in the browser can be traced back and re-checked.
+- Decisions: ADR-023 (random-networks driver, api v1.4), ADR-024 (network message and trace,
+  v1.5), ADR-025 (selected.explain and what-if, v1.6; REST explain/forward deferred to Phase 5),
+  ADR-026 (ghost car, overrides-only what-if, v1.7), ADR-027 (decision trail and looking back,
+  v1.8), ADR-028 (the HUD shows the step looked at, v1.9).
+- Fixed at the end: quick clicks on the Network page's ‹ › lost a click when the server had not
+  answered yet; the selection store now remembers the pending request.
+- Open questions: will learned networks learn to ignore grazing rays, or do the sensors need
+  smoothing? Will a learning method find "ease off when the road ahead shortens" on purpose? Leaky
+  ReLU and other activations (deferred by the user); Playwright in CI; the phone layout.

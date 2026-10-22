@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
-import { useLive } from "../../state/live";
+import { type ScenarioRequest, useLive } from "../../state/live";
+import { useSelection } from "../../state/selection";
 
 const SPEEDS = [0.5, 1, 2, 4, 8];
 const MAX_CARS = 100; // the server's limit for one scenario
@@ -126,13 +127,14 @@ export function Controls({
             value={scenario?.policy ?? "keyboard"}
             disabled={!ready}
             onChange={(e) => {
-              loadScenario({ policy: e.target.value as "keyboard" | "constant" | "neuron" });
+              loadScenario({ policy: e.target.value as ScenarioRequest["policy"] });
               e.target.blur();
             }}
           >
             <option value="keyboard">Keyboard (you drive)</option>
             <option value="constant">Constant (steer 0, throttle 0.3)</option>
             <option value="neuron">Neuron (you set its weights)</option>
+            <option value="random_networks">Random networks (one per car)</option>
           </select>
         </label>
 
@@ -225,7 +227,7 @@ export function Controls({
               value={selected}
               disabled={!ready}
               onChange={(e) => {
-                send({ type: "select_car", index: Number(e.target.value) });
+                useSelection.getState().selectCar(Number(e.target.value));
                 e.target.blur();
               }}
             >

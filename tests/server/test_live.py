@@ -5,6 +5,7 @@ import math
 import shutil
 from pathlib import Path
 
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
@@ -14,7 +15,9 @@ from neurodrive.server.schemas import (
     API_VERSION,
     EpisodeEndMessage,
     ErrorMessage,
+    ExplanationMessage,
     FrameMessage,
+    NetworkMessage,
     ScenarioMessage,
 )
 
@@ -348,7 +351,7 @@ def test_rest_track_endpoints():
 def test_websocket_session_end_to_end():
     client = TestClient(create_app())
     with client.websocket_connect("/ws/live") as ws:
-        assert json.loads(ws.receive_text())["api"] == API_VERSION == "v1.3"
+        assert json.loads(ws.receive_text())["api"] == API_VERSION == "v1.9"
         ws.send_text(json.dumps({"type": "load_scenario", "track": TRACK, "policy": "constant"}))
         assert json.loads(ws.receive_text())["type"] == "scenario"
         assert json.loads(ws.receive_text())["step"] == 0
@@ -577,3 +580,467 @@ def test_websocket_set_param_end_to_end():
         assert frame["selected"]["neuron"]["bias"] == 1.0
         ws.send_text(json.dumps({"type": "set_param", "name": "activation", "value": "sigmoid"}))
         assert json.loads(ws.receive_text())["selected"]["neuron"]["activation"] == "sigmoid"
+
+
+# ── random networks: one brain per car (api v1.4) ───────────────────────────────────────────
+
+
+def drive_steps(session: LiveSession, steps: int) -> FrameMessage:
+    frame = None
+    for _ in range(steps):
+        frame = send(session, type="step")[0]
+    return frame
+
+
+def test_random_networks_scenario_loads_20_cars_and_reports_the_policy():
+    session = LiveSession(TrackLibrary(TRACKS))
+    scenario, network, frame = send(
+        session, type="load_scenario", track=TRACK, policy="random_networks", n_cars=20, seed=7
+    )
+    assert isinstance(network, NetworkMessage) and network.car == 0
+    assert scenario.policy == "random_networks" and scenario.n_cars == 20 and scenario.seed == 7
+    assert len(frame.cars.x) == 20 and frame.selected.neuron is None
+    (error,) = send(session, type="set_param", name="bias", value=1.0)
+    assert isinstance(error, ErrorMessage) and "neuron" in error.message
+
+
+def test_random_networks_drive_differently_and_every_action_is_in_range():
+    session = loaded("random_networks", n_cars=20)  # no seed: all start on the line, seed 0 brains
+    frame = drive_steps(session, 30)
+    actions = frame.cars.action
+    assert len({tuple(a) for a in actions}) >= 15  # the cars choose differently
+    assert all(-1.0 <= v <= 1.0 for a in actions for v in a)
+    assert len(set(frame.cars.v)) >= 5  # and the cars have different speeds after one second
+
+
+def test_same_seed_same_drive_different_seed_different_drive():
+    a = drive_steps(loaded("random_networks", n_cars=20, seed=5), 40)
+    b = drive_steps(loaded("random_networks", n_cars=20, seed=5), 40)
+    c = drive_steps(loaded("random_networks", n_cars=20, seed=6), 40)
+    assert a.cars == b.cars
+    assert a.cars != c.cars
+
+
+def test_reset_replays_the_same_brains_and_starts():
+    session = loaded("random_networks", n_cars=20, seed=2)
+    first = drive_steps(session, 40)
+    (reset_frame,) = send(session, type="reset")
+    assert reset_frame.step == 0
+    assert drive_steps(session, 40).cars == first.cars
+
+
+def test_seed_none_means_seed_0_brains_and_no_random_starts():
+    none = loaded("random_networks", n_cars=5, seed=None)
+    zero = loaded("random_networks", n_cars=5, seed=0)
+    # seed None: every car starts on the start line; seed 0: seeded random starts
+    assert len(set(send(none, type="reset")[0].cars.x)) == 1
+    assert len(set(send(zero, type="reset")[0].cars.x)) == 5
+
+
+def test_a_single_random_network_car_works():
+    frame = drive_steps(loaded("random_networks", n_cars=1, seed=3), 10)
+    assert len(frame.cars.x) == 1
+
+
+def test_selecting_another_car_shows_that_cars_rays():
+    session = loaded("random_networks", n_cars=20, seed=4)
+    drive_steps(session, 20)
+    first = send(session, type="select_car", index=0)[-1].selected
+    other = send(session, type="select_car", index=7)[-1].selected
+    assert other.index == 7 and other.observation != first.observation
+
+
+def test_the_seed_picks_the_networks_themselves():
+    # Compared directly, because a seed also changes the random starts and would hide a brain bug.
+    def brains(seed):
+        return loaded("random_networks", n_cars=4, seed=seed)._policy.population.genomes()
+
+    assert (brains(5) == brains(5)).all()
+    assert not (brains(5) == brains(6)).all()
+    assert (brains(None) == brains(0)).all()  # seed None means seed 0
+    assert brains(5).shape == (4, 434)
+    assert len({tuple(row[:3]) for row in brains(5)}) == 4  # four different networks
+
+
+# ── the selected car's network: weights once, the trace in every frame (api v1.5) ───────────
+
+
+def network_of(session: LiveSession, car: int) -> NetworkMessage:
+    (message, _frame) = send(session, type="select_car", index=car)
+    assert isinstance(message, NetworkMessage)
+    return message
+
+
+def forward_from_message(network: NetworkMessage, observation: list[float]) -> list[float]:
+    """The network recomputed from the message's own numbers (what a client could check)."""
+    a = np.array(observation)
+    for w, b, name in zip(network.weights, network.biases, network.activations, strict=True):
+        z = np.array(w) @ a + np.array(b)
+        a = {"tanh": np.tanh, "linear": lambda v: v}[name](z)
+    return a.tolist()
+
+
+def test_network_message_comes_after_load_and_after_select_car():
+    session = LiveSession(TrackLibrary(TRACKS))
+    scenario, network, frame = send(
+        session, type="load_scenario", track=TRACK, policy="random_networks", n_cars=20, seed=3
+    )
+    assert isinstance(scenario, ScenarioMessage) and isinstance(frame, FrameMessage)
+    assert network.type == "network" and network.car == 0
+    assert network.layer_sizes == [7, 16, 16, 2] and network.activations == ["tanh"] * 3
+    assert [len(w) for w in network.weights] == [16, 16, 2]
+    assert [len(w[0]) for w in network.weights] == [7, 16, 16]
+    assert [len(b) for b in network.biases] == [16, 16, 2]
+    other = network_of(session, 5)
+    assert other.car == 5 and other.weights != network.weights  # a different brain
+
+
+def test_network_message_holds_that_cars_rounded_weights():
+    session = loaded("random_networks", n_cars=6, seed=1)
+    message = network_of(session, 4)
+    mine = session._policy.population.network(4)
+    np.testing.assert_allclose(message.weights[0], mine.weights[0], atol=5e-5)
+    np.testing.assert_allclose(message.biases[2], mine.biases[2], atol=5e-5)
+
+
+def test_the_frame_trace_has_every_layer_and_starts_with_the_observation():
+    session = loaded("random_networks", n_cars=20, seed=2)
+    frame = drive_steps(session, 15)
+    trace = frame.selected.trace
+    assert [len(a) for a in trace.activations] == [7, 16, 16, 2]
+    assert [len(z) for z in trace.weighted_sums] == [16, 16, 2]
+    assert trace.activations[0] == frame.selected.observation  # the input nodes are the rays etc.
+    assert all(-1.0 <= v <= 1.0 for a in trace.activations[1:] for v in a)  # tanh layers
+
+
+def test_the_trace_is_the_selected_cars_forward_pass_of_its_own_network():
+    session = loaded("random_networks", n_cars=20, seed=2)
+    for car in (0, 9, 19):
+        network = network_of(session, car)
+        frame = drive_steps(session, 5)
+        assert frame.selected.index == car
+        recomputed = forward_from_message(network, frame.selected.observation)
+        assert frame.selected.trace.activations[-1] == pytest.approx(recomputed, abs=2e-3)
+
+
+def test_the_trace_follows_the_current_step_and_the_selected_car():
+    session = loaded("random_networks", n_cars=20, seed=2)
+    early = drive_steps(session, 2).selected.trace.activations[0]
+    later = drive_steps(session, 10).selected.trace.activations[0]
+    assert early != later  # the inputs changed as the car moved
+    network_of(session, 6)
+    (frame,) = send(session, type="pause")
+    assert frame.selected.index == 6
+    assert frame.selected.trace.activations[0] == frame.selected.observation
+
+
+def test_other_drivers_send_no_network_and_no_trace():
+    for policy in ("keyboard", "constant", "neuron"):
+        session = LiveSession(TrackLibrary(TRACKS))
+        replies = send(session, type="load_scenario", track=TRACK, policy=policy, n_cars=3)
+        assert [type(m).__name__ for m in replies] == ["ScenarioMessage", "FrameMessage"]
+        assert replies[1].selected.trace is None
+        (frame,) = send(session, type="select_car", index=1)
+        assert isinstance(frame, FrameMessage) and frame.selected.trace is None
+
+
+def test_select_car_out_of_range_sends_only_an_error():
+    session = loaded("random_networks", n_cars=3, seed=1)
+    (reply,) = send(session, type="select_car", index=3)
+    assert isinstance(reply, ErrorMessage)
+
+
+# ── the output inspector and what-if (api v1.6) ─────────────────────────────────────────────
+
+
+def explained_session(car: int = 4, steps: int = 12) -> LiveSession:
+    session = loaded("random_networks", n_cars=20, seed=None)
+    network_of(session, car)
+    drive_steps(session, steps)
+    return session
+
+
+def test_every_frame_explains_the_selected_cars_outputs_with_the_explain_module():
+    from neurodrive.core.nn.forward import forward
+    from neurodrive.explain.contributions import neuron_contributions
+    from neurodrive.explain.sensitivity import sensitivity
+
+    session = explained_session()
+    (frame,) = send(session, type="pause")
+    explain = frame.selected.explain
+    assert [r.output for r in explain.receipts] == [0, 1]
+    assert len(explain.sensitivity) == 2 and all(len(row) == 7 for row in explain.sensitivity)
+    network = session._policy.network_of(4)
+    obs = session._observe()[4]
+    trace = forward(network, obs)
+    for m, receipt in enumerate(explain.receipts):
+        r = neuron_contributions(network, trace, 2, m)
+        np.testing.assert_allclose(receipt.contributions, r.contributions, atol=5e-5)
+        assert receipt.bias == pytest.approx(r.bias, abs=5e-5)
+        assert receipt.z == pytest.approx(r.z, abs=5e-5)
+        assert receipt.value == pytest.approx(r.output, abs=5e-5)
+        assert receipt.value == frame.selected.trace.activations[-1][m]  # same number as the trace
+    np.testing.assert_allclose(explain.sensitivity, sensitivity(network, obs), atol=5e-5)
+
+
+def test_the_receipt_adds_up_to_z():
+    (frame,) = send(explained_session(), type="pause")
+    for receipt in frame.selected.explain.receipts:
+        assert sum(receipt.contributions) + receipt.bias == pytest.approx(receipt.z, abs=2e-3)
+
+
+def test_other_drivers_get_no_explanation():
+    for policy in ("keyboard", "constant", "neuron"):
+        frame = drive_steps(loaded(policy, n_cars=2), 3)
+        assert frame.selected.explain is None
+
+
+def test_what_if_with_no_overrides_is_exactly_the_real_output():
+    session = explained_session()
+    (frame,) = send(session, type="pause")
+    (answer,) = send(session, type="what_if", overrides={})
+    assert isinstance(answer, ExplanationMessage)
+    assert answer.car == 4 and answer.step == frame.step
+    assert answer.observation == frame.selected.observation
+    assert answer.trace.activations[-1] == answer.base_outputs  # bit-identical, then rounded
+    assert answer.predicted_outputs == answer.base_outputs
+    assert answer.base_outputs == pytest.approx(frame.selected.trace.activations[-1], abs=1e-4)
+
+
+def test_what_if_changes_only_the_overridden_inputs():
+    session = explained_session()
+    (frame,) = send(session, type="pause")
+    (answer,) = send(session, type="what_if", overrides={"2": 0.75, "6": -0.5})
+    expected = list(frame.selected.observation)
+    expected[2], expected[6] = 0.75, -0.5
+    assert answer.observation == expected
+
+
+def test_what_if_on_the_left_ray_moves_steer_as_the_sensitivity_predicts():
+    session = explained_session()
+    (frame,) = send(session, type="pause")
+    s_left = frame.selected.explain.sensitivity[0][0]  # steer with respect to the far-left ray
+    (answer,) = send(session, type="what_if", overrides={0: frame.selected.observation[0] + 0.1})
+    change = answer.trace.activations[-1][0] - answer.base_outputs[0]
+    assert answer.predicted_outputs[0] - answer.base_outputs[0] == pytest.approx(
+        0.1 * s_left, abs=2e-4
+    )
+    assert abs(s_left) > 0.01  # this car's steer does react to the left ray
+    assert np.sign(change) == np.sign(s_left)
+    assert change == pytest.approx(0.1 * s_left, rel=0.5)  # roughly the predicted size
+
+
+def test_what_if_changes_nothing_in_the_simulation():
+    session = explained_session()
+    (before,) = send(session, type="pause")
+    send(session, type="what_if", overrides=dict.fromkeys(range(7), 0.0))
+    (after,) = send(session, type="pause")
+    assert after.step == before.step and after.cars == before.cars
+    assert after.selected.trace == before.selected.trace
+
+
+def test_what_if_is_refused_while_playing_and_for_other_drivers():
+    session = explained_session()
+    send(session, type="play")
+    (error,) = send(session, type="what_if", overrides={0: 0.5})
+    assert isinstance(error, ErrorMessage) and "pause" in error.message
+    neuron = loaded("neuron")
+    (error,) = send(neuron, type="what_if", overrides={0: 0.5})
+    assert isinstance(error, ErrorMessage) and "network driver" in error.message
+
+
+def test_what_if_needs_existing_inputs_and_finite_values():
+    session = explained_session()
+    (error,) = send(session, type="what_if", overrides={7: 0.5})
+    assert isinstance(error, ErrorMessage) and "input 7" in error.message
+    (error,) = send(session, type="what_if", overrides={-1: 0.5})
+    assert isinstance(error, ErrorMessage)
+    bad = session.handle_text('{"type": "what_if", "overrides": {"3": NaN}}')
+    assert isinstance(bad[0], ErrorMessage)
+    (old_form,) = send(session, type="what_if", observation=[0.5] * 7)  # the v1.6 field is gone
+    assert isinstance(old_form, ErrorMessage)
+
+
+# ── the what-if ghost car (api v1.7) ─────────────────────────────────────────────────────────
+
+
+def ghost_for(session: LiveSession, change: dict[int, float]):
+    (frame,) = send(session, type="pause")
+    (answer,) = send(session, type="what_if", overrides=change)
+    return frame, answer.ghost, answer
+
+
+def test_ghost_paths_start_at_the_car_and_last_two_seconds():
+    session = explained_session()
+    frame, ghost, _ = ghost_for(session, {0: 0.9})
+    i = frame.selected.index
+    start = [frame.cars.x[i], frame.cars.y[i]]
+    assert ghost.seconds == 2.0
+    assert len(ghost.real) == len(ghost.what_if) == 61  # now + 60 steps of 1/30 s
+    assert ghost.real[0] == pytest.approx(start, abs=1e-3)
+    assert ghost.what_if[0] == pytest.approx(start, abs=1e-3)
+    assert ghost.real_end[:2] == ghost.real[-1] and ghost.what_if_end[:2] == ghost.what_if[-1]
+
+
+def test_ghost_actions_are_the_networks_answers_clipped():
+    session = explained_session()
+    _, ghost, answer = ghost_for(session, {0: 0.9, 6: 0.5})
+    assert ghost.real_action == pytest.approx(answer.base_outputs, abs=1e-4)
+    assert ghost.what_if_action == pytest.approx(answer.trace.activations[-1], abs=1e-4)
+    assert all(-1.0 <= a <= 1.0 for a in ghost.real_action + ghost.what_if_action)
+
+
+def test_ghost_paths_follow_the_car_physics():
+    from neurodrive.env.car import CarState, step_cars
+
+    session = explained_session()
+    frame, ghost, _ = ghost_for(session, {6: -0.8})
+    i = frame.selected.index
+    cars = session._world.cars
+    state = CarState.from_pose(cars.x[i], cars.y[i], cars.psi[i], cars.v[i])
+    steer, throttle = ghost.what_if_action
+    for _ in range(60):
+        state = step_cars(state, steer, throttle)
+    assert ghost.what_if[-1] == pytest.approx([state.x[0], state.y[0]], abs=2e-3)
+
+
+def test_unchanged_inputs_give_the_same_two_paths_and_a_change_moves_the_ghost():
+    session = explained_session()
+    frame, same, _ = ghost_for(session, {})
+    assert same.what_if == same.real
+    _, moved, _ = ghost_for(session, {6: 0.9})  # heading error far to one side
+    assert moved.what_if[-1] != moved.real[-1]
+    assert moved.real == same.real  # the real path does not depend on the question
+
+
+def test_ghost_never_moves_the_real_car():
+    session = explained_session()
+    before, _, _ = ghost_for(session, {0: 1.0, 4: 0.0})
+    (after,) = send(session, type="pause")
+    assert after.cars == before.cars and after.step == before.step
+
+
+# ── decision trail and scrubbing (task 2.11, ADR-027) ────────────────────────────────────────
+
+
+def trail_session(car: int = 4, steps: int = 30) -> tuple[LiveSession, dict[int, FrameMessage]]:
+    """20 random networks, car ``car`` selected at step 0, then ``steps`` steps; frames by step."""
+    session = loaded("random_networks", n_cars=20, seed=None)
+    (_net, first) = send(session, type="select_car", index=car)
+    frames = {first.step: first}
+    for _ in range(steps):
+        frame = send(session, type="step")[0]
+        frames[frame.step] = frame
+    return session, frames
+
+
+def browser_trail(frames) -> dict[int, tuple[float, float, list[float]]]:
+    """Rebuild the trail the way the browser does: replace, then append."""
+    trail: dict[int, tuple[float, float, list[float]]] = {}
+    for frame in frames:
+        t = frame.selected.trail
+        if t.replace:
+            trail = {}
+        for k, s in enumerate(t.steps):
+            trail[s] = (t.x[k], t.y[k], t.action[k])
+    return trail
+
+
+def test_the_trail_is_the_cars_real_path_and_the_actions_it_took():
+    session, frames = trail_session()
+    trail = browser_trail(frames[s] for s in sorted(frames))
+    assert sorted(trail) == list(range(30))  # one point per step taken, nothing else
+    for t, (x, y, action) in trail.items():
+        assert (x, y) == (frames[t].cars.x[4], frames[t].cars.y[4])  # where it was at step t
+        assert action == frames[t + 1].cars.action[4]  # what it decided there
+
+
+def test_a_new_car_gets_its_whole_trail_and_later_frames_only_new_points():
+    session, frames = trail_session()
+    assert frames[0].selected.trail.replace and frames[0].selected.trail.steps == []
+    assert all(not frames[t].selected.trail.replace for t in range(1, 31))
+    assert all(frames[t].selected.trail.steps == [t - 1] for t in range(1, 31))
+    (_net, other) = send(session, type="select_car", index=7)
+    assert other.selected.trail.replace and other.selected.trail.steps == list(range(30))
+    assert other.selected.trail.x[5] == frames[5].cars.x[7]
+    (again,) = send(session, type="pause")
+    assert not again.selected.trail.replace and again.selected.trail.steps == []
+
+
+def test_at_double_speed_each_frame_carries_the_two_steps_it_covers():
+    session, _ = trail_session(steps=0)
+    send(session, type="set_speed", speed=2)
+    send(session, type="play")
+    frames = [m for _, m in run_clock(session, 1.0) if isinstance(m, FrameMessage)]
+    for frame in frames:
+        assert frame.selected.trail.steps == [frame.step - 2, frame.step - 1]
+
+
+def test_inspect_step_gives_exactly_what_the_live_frame_showed_at_that_step():
+    session, frames = trail_session()
+    for t in range(30):
+        (moment,) = send(session, type="inspect_step", step=t)
+        live = frames[t]
+        assert moment.car == 4 and moment.step == t and moment.time == live.time
+        assert (moment.x, moment.y, moment.psi, moment.v) == (
+            live.cars.x[4], live.cars.y[4], live.cars.psi[4], live.cars.v[4]
+        )  # fmt: skip
+        assert moment.progress == live.cars.progress[4] and moment.status == live.cars.status[4]
+        assert moment.rays == live.selected.rays
+        assert moment.observation == live.selected.observation
+        assert moment.trace == live.selected.trace  # bit-identical, then rounded the same way
+        assert moment.explain == live.selected.explain
+        assert moment.action == frames[t + 1].cars.action[4]
+        assert moment.trace.activations[-1] == pytest.approx(moment.action, abs=1e-3)
+
+
+def test_inspect_step_never_moves_the_simulation():
+    session, frames = trail_session()
+    send(session, type="inspect_step", step=3)
+    (after,) = send(session, type="pause")
+    assert after.step == 30 and after.cars == frames[30].cars
+
+
+def test_inspect_step_needs_a_pause_and_a_remembered_step():
+    session, _ = trail_session(steps=5)
+    (error,) = send(session, type="inspect_step", step=5)  # step 5 has not been decided yet
+    assert isinstance(error, ErrorMessage) and "steps 0 to 4" in error.message
+    send(session, type="play")
+    (error,) = send(session, type="inspect_step", step=2)
+    assert isinstance(error, ErrorMessage) and "pause" in error.message
+    send(session, type="pause")
+    send(session, type="reset")
+    (error,) = send(session, type="inspect_step", step=2)  # a reset forgets the old drive
+    assert isinstance(error, ErrorMessage) and "nothing yet" in error.message
+
+
+def test_only_the_last_trail_seconds_are_remembered(monkeypatch):
+    import neurodrive.server.live as live
+
+    monkeypatch.setattr(live, "TRAIL_SECONDS", 0.5)  # 15 steps
+    session, _ = trail_session(steps=40)
+    (_net, frame) = send(session, type="select_car", index=4)
+    assert frame.selected.trail.steps == list(range(25, 40))
+    assert isinstance(send(session, type="inspect_step", step=24)[0], ErrorMessage)
+    assert send(session, type="inspect_step", step=25)[0].step == 25
+
+
+def test_a_crashed_cars_trail_stops_where_it_crashed():
+    session = loaded("random_networks", n_cars=20, seed=None)
+    drive_steps(session, 200)
+    (frame,) = send(session, type="pause")
+    car = frame.cars.status.index(1)  # the first crashed car
+    (_net, frame) = send(session, type="select_car", index=car)
+    steps = frame.selected.trail.steps
+    assert steps == list(range(len(steps))) and len(steps) < 200
+    (running,) = send(session, type="inspect_step", step=steps[-1])  # its last step on the road
+    (after,) = send(session, type="inspect_step", step=steps[-1] + 1)  # the crash is recorded
+    assert running.status == 0 and after.status == 1
+
+
+def test_moments_work_for_drivers_without_a_network():
+    session = loaded("constant", n_cars=2)
+    frames = [send(session, type="step")[0] for _ in range(3)]
+    (moment,) = send(session, type="inspect_step", step=1)
+    assert moment.trace is None and moment.explain is None
+    assert (moment.x, moment.y) == (frames[0].cars.x[0], frames[0].cars.y[0])

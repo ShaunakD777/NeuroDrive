@@ -1,6 +1,6 @@
 import { viewInfo, type ViewId } from "../nav/views";
 import { EnvironmentView } from "../views/environment/EnvironmentView";
-import { NeuronView } from "../views/network/NeuronView";
+import { NetworkView } from "../views/network/NetworkView";
 import { ViewPanel } from "./ViewPanel";
 
 /**
@@ -36,7 +36,7 @@ export function CompanionDrawer({
           {companion.id === "environment" ? (
             <EnvironmentView compact />
           ) : companion.id === "network" ? (
-            <NeuronView compact />
+            <NetworkView compact />
           ) : (
             <ViewPanel title={companion.title} comingIn={companion.comingIn} compact />
           )}
