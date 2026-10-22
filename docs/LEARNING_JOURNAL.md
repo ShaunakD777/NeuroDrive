@@ -698,3 +698,19 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   launcher; `uv run python -m pytest` works.
 - Open question: Huber's derivative never exceeds δ / M. Will that make imitation learning steadier
   when the expert's labels are noisy, or just slower when the network is far off?
+
+### 2026-10-22 — Task 3.2 Activation derivatives
+- Concept: an activation's derivative f′(z) is the gear ratio between a neuron's weighted sum and its
+  output. Backprop multiplies by it at every neuron, so where it is near 0 (saturation) the
+  learning signal is almost switched off.
+- Key equation(s) in words: tanh′(z) = 1 − tanh(z)²; sigmoid′(z) = s(1 − s) with s = sigmoid(z);
+  ReLU′ = 1 for positive z, 0 for negative (and 0 at the corner by convention); linear′ = 1.
+- What we observed: at z = 0 the slopes are 1 (tanh), 0.25 (sigmoid), 0 (ReLU, by convention)
+  and 1 (linear); at z = 2 tanh's has dropped to 0.0707 and sigmoid's to 0.105. tanh′(5) is under
+  0.0002. Through 5 sigmoid layers the factor is at most 0.25⁵ ≈ 0.001 — a first hint of
+  vanishing gradients (study S2b, task 3.9).
+- Surprise or difficulty: the finite-difference estimate of ReLU's slope at exactly 0 is 0.5 (half
+  of each side), which matches neither convention; the test skips points near the corner. A
+  planted "relu′(0) = 1" bug was therefore caught only by the hand-value test.
+- Open question: how often do ReLU neurons in the driving networks sit at z < 0 for every
+  observation ("dead" neurons that can never learn)?

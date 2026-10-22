@@ -40,6 +40,7 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Huber loss | Squares small misses (½ r²) but counts misses bigger than a threshold δ only in proportion to their size, so one wild miss cannot dominate. Its derivative is the miss capped at ±δ. |
 | Outlier | A data point far from the rest, for example a badly wrong target label. |
 | Derivative / gradient | How much an output changes when an input or parameter changes a tiny bit. |
+| Activation derivative (f′(z)) | How much a neuron's output moves per unit change of its weighted sum z. Backprop multiplies by it at every neuron; tanh's is at most 1, sigmoid's at most 0.25, ReLU's is 0 or 1. |
 | Chain rule | To find how A affects C through B, multiply (how A affects B) × (how B affects C). |
 | Backpropagation | Applying the chain rule backwards through the network to get every parameter's gradient. |
 | Gradient check | Comparing backprop's gradients with ones estimated by nudging each parameter; catches bugs. |

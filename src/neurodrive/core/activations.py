@@ -10,7 +10,11 @@ is used decides the *range* of possible outputs, whatever the weights are:
 * ``linear``  : leaves z unchanged; outputs are unlimited in both directions.
 
 Every function takes an array of any shape and returns an array of the same shape (float64).
-Derivatives are added in Phase 3, when learning needs them.
+
+Each activation also has a derivative ``f'(z)``: how much the output ``a`` moves per unit change of
+``z``. Backpropagation multiplies by it at every neuron; where it is near 0 the neuron is
+*saturated* and passes almost no learning signal back. Derivatives take ``z`` (not ``a``) so all
+four share one interface; look them up with ``get_derivative``.
 """
 
 from collections.abc import Callable
@@ -72,4 +76,58 @@ def get_activation(name: str) -> Activation:
         return ACTIVATIONS[name]
     except (KeyError, TypeError):
         valid = ", ".join(sorted(ACTIVATIONS))
+        raise ValueError(f"unknown activation {name!r}; valid names: {valid}") from None
+
+
+def tanh_derivative(z: ArrayLike) -> NDArray[np.float64]:
+    """Slope of tanh at ``z``: 1 - tanh(z)^2.
+
+    It is 1 at z = 0 (the steepest point) and falls towards 0 as |z| grows, e.g. about 0.0707
+    at z = 2 and 0.00018 at z = 5: a saturated tanh neuron barely reacts.
+    """
+    a = tanh(z)
+    return 1.0 - a * a
+
+
+def sigmoid_derivative(z: ArrayLike) -> NDArray[np.float64]:
+    """Slope of the sigmoid at ``z``: s * (1 - s), where s = sigmoid(z).
+
+    Its largest value is 0.25, at z = 0 (s = 0.5). Built on the overflow-safe ``sigmoid``, so
+    very large |z| gives 0 without warnings.
+    """
+    s = sigmoid(z)
+    return s * (1.0 - s)
+
+
+def relu_derivative(z: ArrayLike) -> NDArray[np.float64]:
+    """Slope of ReLU at ``z``: 1 where z > 0, 0 where z < 0.
+
+    At exactly z = 0 the curve has a corner and no single slope; we use 0 there (the usual
+    convention, also PyTorch's).
+    """
+    return (np.asarray(z, dtype=np.float64) > 0.0).astype(np.float64)
+
+
+def linear_derivative(z: ArrayLike) -> NDArray[np.float64]:
+    """Slope of the identity: 1 everywhere, returned in the shape of ``z``."""
+    return np.ones_like(np.asarray(z, dtype=np.float64))
+
+
+DERIVATIVES: dict[str, Activation] = {
+    "tanh": tanh_derivative,
+    "sigmoid": sigmoid_derivative,
+    "relu": relu_derivative,
+    "linear": linear_derivative,
+}
+
+
+def get_derivative(name: str) -> Activation:
+    """Look up the derivative of the activation called ``name`` (same names as ``ACTIVATIONS``).
+
+    Raises ``ValueError`` listing the valid names if ``name`` is unknown.
+    """
+    try:
+        return DERIVATIVES[name]
+    except (KeyError, TypeError):
+        valid = ", ".join(sorted(DERIVATIVES))
         raise ValueError(f"unknown activation {name!r}; valid names: {valid}") from None
