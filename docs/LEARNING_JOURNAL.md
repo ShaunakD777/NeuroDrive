@@ -679,3 +679,22 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
 - Open questions: will learned networks learn to ignore grazing rays, or do the sensors need
   smoothing? Will a learning method find "ease off when the road ahead shortens" on purpose? Leaky
   ReLU and other activations (deferred by the user); Playwright in CI; the phone layout.
+
+### 2026-10-22 — Task 3.1 Loss functions
+- Concept: a loss turns a whole batch of predictions into one "how wrong" number; its derivative
+  with respect to each prediction says which way and how hard to push that prediction. That array
+  is where backpropagation will start.
+- Key equation(s) in words: with residual r = prediction − target and M = number of entries,
+  MSE = average of r², derivative 2r / M; Huber = average of ½r² (when |r| ≤ δ) or δ(|r| − ½δ)
+  (when |r| > δ), derivative = r capped at ±δ, divided by M.
+- What we observed: for ŷ = [2, 0, 3], y = [1, 0, 0], MSE is 3.3333 and Huber is 1.0. Under MSE
+  the miss of 3 pushes 3 times harder than the miss of 1; under Huber both push equally. With a
+  miss of 100 next to one of 0.2, MSE pushes the outlier 500 times harder, Huber only 5 times.
+  Doubling the batch with copies leaves the loss unchanged and halves each entry's gradient
+  (because of the 1/M).
+- Surprise or difficulty: the first finite-difference test drew random misses and, for one seed,
+  none fell below δ = 0.5, so Huber's squared piece was never tested; the test now spreads the
+  misses evenly over −4…4. Also, Windows Application Control started blocking the `pytest.exe`
+  launcher; `uv run python -m pytest` works.
+- Open question: Huber's derivative never exceeds δ / M. Will that make imitation learning steadier
+  when the expert's labels are noisy, or just slower when the network is far off?

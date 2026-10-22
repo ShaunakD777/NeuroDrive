@@ -36,6 +36,9 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Episode | One drive from start until crash, time limit, stall or finish. |
 | Loss | A number measuring how wrong predictions are; supervised learning makes it smaller. |
 | MSE | Mean squared error: the average of (prediction − target)². |
+| Residual | One prediction's miss with its sign: prediction − target. |
+| Huber loss | Squares small misses (½ r²) but counts misses bigger than a threshold δ only in proportion to their size, so one wild miss cannot dominate. Its derivative is the miss capped at ±δ. |
+| Outlier | A data point far from the rest, for example a badly wrong target label. |
 | Derivative / gradient | How much an output changes when an input or parameter changes a tiny bit. |
 | Chain rule | To find how A affects C through B, multiply (how A affects B) × (how B affects C). |
 | Backpropagation | Applying the chain rule backwards through the network to get every parameter's gradient. |
