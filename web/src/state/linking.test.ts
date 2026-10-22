@@ -82,6 +82,34 @@ describe("selectCar", () => {
     expect(sent).toHaveLength(1);
   });
 
+  it("quick requests each count from the last one asked for, not from late frames", () => {
+    useLive.getState().receive(scenario);
+    useLive.getState().receive(frame(0, 1));
+    useSelection.getState().selectCar(1);
+    useLive.getState().receive(frame(0, 2)); // sent before the server got the request
+    expect(useSelection.getState().carId).toBe(1);
+    useSelection.getState().selectCar(2); // a second click on ›, before any answer
+    expect(sent).toEqual([
+      { type: "select_car", index: 1 },
+      { type: "select_car", index: 2 },
+    ]);
+    useLive.getState().receive(frame(1, 3)); // the answer to the first request
+    expect(useSelection.getState().carId).toBe(2);
+    useLive.getState().receive(frame(2, 4)); // the answer to the second: now the server agrees
+    expect(useSelection.getState().carId).toBe(2);
+    expect(useSelection.getState().pendingCar).toBeNull();
+    useLive.getState().receive(frame(0, 5)); // and later frames are followed again
+    expect(useSelection.getState().carId).toBe(0);
+  });
+
+  it("a new scenario drops an unanswered request (the server starts at car 0)", () => {
+    useSelection.getState().selectCar(2);
+    useLive.getState().receive(scenario);
+    useLive.getState().receive(frame(0, 0));
+    expect(useSelection.getState().pendingCar).toBeNull();
+    expect(useSelection.getState().carId).toBe(0);
+  });
+
   it("keeps the selected neuron, so the same neuron can be compared across cars", () => {
     useSelection.getState().toggleNeuron({ layer: 1, index: 4 }, LAYERS);
     useSelection.getState().selectCar(1);

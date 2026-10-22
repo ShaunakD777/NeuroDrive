@@ -33,8 +33,11 @@ export function NetworkView({
  * from the drop-down. It changes the shared selection, so the Environment view follows (the
  * selected car's rays, the HUD and its own car picker).
  */
-function CarStepper({ index, count, compact }: { index: number; count: number; compact: boolean }) {
+function CarStepper({ index: shown, count, compact }: { index: number; count: number; compact: boolean }) {
   const selectCar = useSelection((s) => s.selectCar);
+  // Count from the car last asked for, not the one the server last confirmed, so two quick
+  // clicks on › move two cars even before the first answer arrives.
+  const index = useSelection((s) => s.carId) ?? shown;
   if (count < 2) return <span className="car-stepper-label">Car {index + 1}</span>;
   return (
     <span className={compact ? "car-stepper car-stepper-compact" : "car-stepper"}>

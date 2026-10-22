@@ -30,6 +30,12 @@ export interface SelectionState {
   /** Which checkpoint of the run. */
   unit: number | null;
   carId: number | null;
+  /**
+   * The car last asked for with `select_car` that no frame has confirmed yet, or null. While it is
+   * set, frames still showing the old car (sent before the server got the request) do not move
+   * `carId` back, so quick clicks on ‹ › each count from the car just asked for.
+   */
+  pendingCar: number | null;
   neuron: NeuronRef | null;
   connection: ConnectionRef | null;
   /** Time index within the shown drive. */
@@ -69,6 +75,7 @@ export const initialSelection: SelectionState = {
   runId: null,
   unit: null,
   carId: null,
+  pendingCar: null,
   neuron: null,
   connection: null,
   step: 0,
@@ -85,7 +92,7 @@ export const useSelection = create<SelectionState & SelectionActions>()((set, ge
 
   selectCar: (index) => {
     if (get().carId === index) return;
-    set({ carId: index });
+    set({ carId: index, pendingCar: index });
     useLive.getState().send({ type: "select_car", index });
   },
 
@@ -149,7 +156,8 @@ export function raysFor(
 useLive.subscribe((live, previous) => {
   const selection = useSelection.getState();
   if (live.scenario !== previous.scenario && live.scenario !== null) {
-    useSelection.setState({ neuron: null, connection: null, output: null, whatIf: {} });
+    // the server starts every scenario at car 0, so an unanswered request no longer applies
+    useSelection.setState({ neuron: null, connection: null, output: null, whatIf: {}, pendingCar: null });
   }
   const moved =
     live.frame !== null &&
@@ -158,7 +166,14 @@ useLive.subscribe((live, previous) => {
       live.frame.selected?.index !== previous.frame.selected?.index);
   if (moved && Object.keys(selection.whatIf).length > 0) useSelection.setState({ whatIf: {} });
   const index = live.frame?.selected?.index;
-  if (index !== undefined && index !== selection.carId) {
+  const pending = useSelection.getState().pendingCar;
+  if (index === undefined) return;
+  if (pending !== null) {
+    // wait for the frame that answers the latest request; earlier frames still show the old car
+    if (index === pending) useSelection.setState({ pendingCar: null, carId: index });
+    return;
+  }
+  if (index !== selection.carId) {
     useSelection.setState({ carId: index });
   }
 });
