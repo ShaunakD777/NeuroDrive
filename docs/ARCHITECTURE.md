@@ -130,7 +130,7 @@ neurodrive/
 │  │  └─ compare.py              aligned comparisons between runs
 │  ├─ explain/
 │  │  ├─ contributions.py        weight × activation breakdowns, top paths
-│  │  ├─ sensitivity.py          d(output)/d(input): finite differences, later backprop
+│  │  ├─ sensitivity.py          d(output)/d(input): backprop (finite differences as test oracle)
 │  │  └─ response.py             response curves across checkpoints
 │  ├─ server/
 │  │  ├─ app.py                  FastAPI app, routes
@@ -402,7 +402,7 @@ WebSocket `/ws/live` (one independent session per connection):
   - `selected.explain {receipts, sensitivity}` (random-networks driver only, ADR-025): for the
     selected car's current observation, `receipts[m]` = `{output, inputs, contributions, bias, z,
     value}` (output m's contributions from the last hidden layer, which add up with the bias to z)
-    and `sensitivity[m][k]` = the central-difference slope of output m with respect to input k.
+    and `sensitivity[m][k]` = the slope of output m with respect to input k (backprop since task 3.6).
     Computed by `explain/` (task 2.9); rounded to 4 decimals.
   - `selected.trail {replace, steps, x, y, action}` (every driver, ADR-027): the selected car's
     decision trail. Entry i: at step `steps[i]` the car was at (`x[i]`, `y[i]`) and chose
@@ -487,7 +487,7 @@ ray k; the neuron driver's selected neuron gives its two rays.
 ### 8.3 Output-neuron inspector (built up over phases)
 1. Readout: the value plus its physical meaning ("−0.93 = hard left").
 2. Contributions: c_i = W[j, i] · a_i for each incoming connection, sorted; total = Σ c_i + b_j.
-3. Sensitivity: ∂output / ∂input_k for each sensor (finite differences in Phase 2, backprop from Phase 3).
+3. Sensitivity: ∂output / ∂input_k for each sensor (finite differences in Phase 2, backprop since task 3.6).
 4. History: response curve of the output against one input at several checkpoints.
 
 *As built (task 2.10):* clicking an output neuron (or the drawer's output row) selects it; the

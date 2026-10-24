@@ -313,8 +313,8 @@ class Explanation(WireModel):
     """The explanation of the selected car's two outputs for one observation (task 2.9).
 
     ``receipts[m]`` explains output m (steer, then throttle). ``sensitivity[m][k]`` is how much
-    output m moves per unit change of input k, measured by central differences: +0.4 means "if
-    input k rose by 0.1, output m would rise by about 0.04". Rounded to 4 decimals.
+    output m moves per unit change of input k, computed exactly by backpropagation (task 3.6): +0.4
+    means "if input k rose by 0.1, output m would rise by about 0.04". Rounded to 4 decimals.
     """
 
     receipts: list[OutputReceipt]

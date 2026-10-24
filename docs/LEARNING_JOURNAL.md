@@ -766,3 +766,23 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   gradient tests.
 - Open question: the sweep uses unit-variance weights, harsher than Xavier; should the training
   code (3.7) run a quick gradient check on its first batch as a safety net?
+
+### 2026-10-24 — Task 3.6 Sensitivity via backprop
+- Concept: the sensitivity table is the network's Jacobian. Backprop gives the input gradient of
+  whatever number its upstream gradient points at; pointing it at one output (G = 1 there, 0
+  elsewhere) gives that output's row. Two copies of the observation with G = the identity give
+  steer's and throttle's rows in one backward pass.
+- Key equation(s) in words: row m of J = backprop's input gradient with G = e_m; for a hidden
+  layer, the same on the network cut off after that layer; the loss's input gradient (task 3.4) is
+  g times this table.
+- What we observed: the exact and the measured tables agree to a median of 1.4e-12 and at worst
+  3.9e-9 over 720 tables (every layer, every activation pair); the hand example's finite-difference
+  values were off by about 1e-9, their truncation error. At a ReLU corner the two genuinely differ
+  (0 vs 0.5). The Network view's numbers do not change at 4 decimals.
+- Surprise or difficulty: the first agreement test refused ReLU networks whose weighted sums were
+  exactly 0 (zero biases, all inputs from switched-off ReLUs), although nothing could cross a
+  corner there; the right condition is "no nudge switches a ReLU on or off". And the exact version
+  is not faster for 7 inputs (84 µs vs 50 µs): finite differences cost grows with the number of
+  inputs, backprop's with the number of outputs.
+- Open question: in the edge glow of task 3.8, should edges glow by the loss gradient (learning)
+  or by this sensitivity (explaining), or should the view offer both?
