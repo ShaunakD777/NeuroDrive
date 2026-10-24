@@ -48,6 +48,8 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Element-wise product (⊙) | Multiplying two arrays of the same shape entry by entry (not a matrix product). Backprop uses it for Δ = G ⊙ f′(Z). |
 | Fan-out | A neuron feeding several neurons in the next layer. In backprop it receives the sum of their pushes: G = Δ W. |
 | Gradient check | Comparing backprop's gradients with ones estimated by nudging each parameter; catches bugs. |
+| Relative error (gradient check) | ‖b − n‖ / (‖b‖ + ‖n‖): the size of the gap between backprop's gradient b and the finite-difference estimate n, compared with their sizes. 0 = identical, about 1 = unrelated; backprop passes below 1e-6. |
+| Rounding error | The tiny error from storing numbers with about 16 significant digits. Subtracting two nearly equal losses magnifies it, so a finite-difference step h cannot be made arbitrarily small. |
 | Gradient descent | Repeatedly moving parameters a small step opposite to the gradient to reduce the loss. |
 | Learning rate | The size of each gradient-descent step. |
 | Epoch | One pass through the whole training dataset. |

@@ -749,3 +749,20 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   in the tests are what catch them.
 - Open question: in the [7, 16, 16, 2] driving network with tanh everywhere, how much smaller is
   Δ in the first layer than in the last on real observations (task 3.9, vanishing gradients)?
+
+### 2026-10-24 — Task 3.5 Gradient checker
+- Concept: backprop is checked against finite differences, which use only the forward pass:
+  nudge one parameter up and down by h, rerun, and divide the loss change by 2h. Agreement to
+  many digits on hundreds of random networks is strong evidence that backprop is right.
+- Key equation(s) in words: central difference n_k = (L(θ_k + h) − L(θ_k − h)) / 2h; relative
+  error r = length of (b − n) divided by (length of b + length of n); pass when r < 1e-6.
+- What we observed: all 240 sweep cases (every hidden × output activation, 5 architectures, 3
+  seeds) pass, typically r ≈ 4e-11. The worst, 3.2e-7, is a saturated tanh output whose gradients
+  are tiny (norm 4e-4): there the rounding noise of the estimate is large compared with the
+  gradient. A smaller h made it worse (3.4e-6 at h = 1e-6, 3.2e-5 at 1e-7), the h trade-off in
+  action. A 1 % error in one layer's gradient gives r ≈ 1e-3 and the checker names the layer.
+- Surprise or difficulty: a planted "average the bias gradient instead of summing it" bug passed
+  17 tests, all with a single example, where mean and sum are equal; batches are essential in
+  gradient tests.
+- Open question: the sweep uses unit-variance weights, harsher than Xavier; should the training
+  code (3.7) run a quick gradient check on its first batch as a safety net?
