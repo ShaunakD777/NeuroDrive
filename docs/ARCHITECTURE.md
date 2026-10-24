@@ -114,8 +114,8 @@ neurodrive/
 │  │  ├─ policies.py             Policy protocol + Keyboard/Neuron/MLP/Expert/Stochastic policies
 │  │  └─ episode.py              episode runner + EpisodeRecording
 │  ├─ learn/
-│  │  ├─ base.py                 Learner contract, budget counters
-│  │  ├─ supervised/             datasets.py, demos.py, imitation.py, dagger.py, toy_tasks.py
+│  │  ├─ base.py                 Learner contract (v0 since task 3.7), budget counters
+│  │  ├─ supervised/             toy_tasks.py, train_toy.py, datasets.py, demos.py, imitation.py, dagger.py
 │  │  ├─ evolution/              random_search.py, ga.py, es.py, neat/ (genome, species, ...)
 │  │  ├─ rl/                     returns.py, gaussian_policy.py, reinforce.py, actor_critic.py, ppo.py
 │  │  └─ hybrid/                 distill.py, pretrain_finetune.py
@@ -290,6 +290,8 @@ text inside the file and also holds the world rules (`world_config`) and `car_pa
 rebuilds the same world. Replaying the actions reproduces every array bit for bit.
 
 ### 6.12 Learner contract (learner v1)
+*Version 0 (task 3.7, ADR-030): `learn/base.py` without save/restore; wall-clock time measured by the runner; `experiment/runner.py` v0 owns a minimal loop.*
+
 Every learning method provides:
 - `name` and `feedback_kind` ∈ {`labels`, `episode_score`, `step_reward`, `none`}
 - set-up from (config, seeded generator)
@@ -303,6 +305,8 @@ The **Runner** (not the learner) owns the loop, checkpoint schedule, exam schedu
 stop conditions (max env steps, max wall-clock, max units).
 
 ### 6.13 Run folder (run v1)
+*Version 0 (task 3.7, ADR-030): a strict subset (no `exams/`, `run_version: 0` in meta.json, `extra/dataset.npz` for toy runs), written by `experiment/store.py`.*
+
 ```
 runs/<YYYYMMDD-HHMMSS>-<method>-<tag>/
   config.yaml        fully resolved config, including seed

@@ -53,6 +53,10 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Gradient descent | Repeatedly moving parameters a small step opposite to the gradient to reduce the loss. |
 | Learning rate | The size of each gradient-descent step. |
 | Epoch | One pass through the whole training dataset. |
+| Full-batch gradient descent | Gradient descent where every step uses the whole dataset at once (one step per epoch); minibatches (task 4.1) use a small part per step. |
+| Divergence (training) | Learning breaking down: the steps overshoot so badly that the loss and the weights grow without bound, until they become infinite or NaN ("not a number"). Usually a too-large learning rate. |
+| Learner / runner | A learner owns a learning method (its networks and update rule) and does one unit of learning on request; the runner owns the loop around it: how long to train, what to record, when to save and when to stop. |
+| Run folder | The folder on disk that records one training run: its config, metadata, a metrics line per unit, checkpoints and extras. The master record of the run. |
 | Minibatch | A small random subset of the data used for one update. |
 | Momentum / RMSProp / Adam | Gradient-descent variants that smooth or rescale steps to learn faster and more stably. |
 | Overfitting | Doing well on training data but badly on new data. |

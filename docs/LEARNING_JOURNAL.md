@@ -786,3 +786,21 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   inputs, backprop's with the number of outputs.
 - Open question: in the edge glow of task 3.8, should edges glow by the loss gradient (learning)
   or by this sensitivity (explaining), or should the view offer both?
+
+### 2026-10-24 — Task 3.7 Toy tasks and plain gradient descent
+- Concept: gradient descent walks downhill on the loss: every epoch, compute ∂L/∂θ by backprop
+  and move every parameter a small step η against it. The learner owns that rule; the runner owns
+  the loop and the record on disk (the run folder), so later methods plug into the same frame.
+- Key equation(s) in words: θ ← θ − η · ∂L/∂θ, once per pass over the whole toy dataset.
+- What we observed: the hand example (one linear neuron, x = [0, 1, 2], y = [1, 3, 5], η = 0.1)
+  goes loss 11.67 → 3.21 → 0.90 exactly as computed by hand. The line task recovers slope 2 and
+  intercept −0.5 to machine precision; XOR (2-4-1, tanh/sigmoid) goes from 0.263 to 0.0002 on every
+  seed tried; sine reaches 0.0034. A too-large step (η = 50 on sine) makes the loss explode to
+  1e301 in 50 epochs and the run is stopped as diverged, with the last finite network kept.
+- Surprise or difficulty: on sine a *bigger* learning rate gave a *worse* result: η = 0.1 ended
+  at 0.019 against 0.0034 for 0.05, and η = 0.2 diverged after 444 epochs; steps that are too
+  large bounce across the valley instead of settling. In the prototype, XOR with a linear output diverged to NaN for
+  every seed at η = 1 and 2 (4 of 10 seeds at η = 0.5), while a sigmoid output never did; likely
+  because the sigmoid's slope (at most 0.25) shrinks every step through it.
+- Open question: XOR is solved by every seed with 4 hidden neurons; with only 2 (the textbook
+  minimum) how many seeds get stuck, and does the activation matter (study S2b, task 3.9)?
