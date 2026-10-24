@@ -45,6 +45,8 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Upstream gradient (g = ∂L/∂a) | The push arriving at a neuron's output from further along the chain: how the loss changes per unit of that output. For the last layer it comes from the loss's derivative. |
 | Error signal (δ, delta) | ∂L/∂z, how the loss changes per unit of a neuron's weighted sum: the upstream gradient times the activation's slope, δ = g · f′(z). Every weight, bias and input gradient of that neuron is δ times one more factor. |
 | Backpropagation | Applying the chain rule backwards through the network to get every parameter's gradient. |
+| Element-wise product (⊙) | Multiplying two arrays of the same shape entry by entry (not a matrix product). Backprop uses it for Δ = G ⊙ f′(Z). |
+| Fan-out | A neuron feeding several neurons in the next layer. In backprop it receives the sum of their pushes: G = Δ W. |
 | Gradient check | Comparing backprop's gradients with ones estimated by nudging each parameter; catches bugs. |
 | Gradient descent | Repeatedly moving parameters a small step opposite to the gradient to reduce the loss. |
 | Learning rate | The size of each gradient-descent step. |

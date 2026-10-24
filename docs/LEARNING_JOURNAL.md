@@ -731,3 +731,21 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   every linear-activation test, because there f′ = 1.
 - Open question: the input gradient δ · w is the neuron's sensitivity to its inputs; will it
   match the finite-difference sensitivity of task 2.9 for whole networks (task 3.6)?
+
+### 2026-10-24 — Task 3.4 Backprop for the full MLP
+- Concept: backprop through a network is the one-neuron step of task 3.3 repeated layer by layer
+  from the top down. What a layer pushes onto its inputs is exactly the upstream gradient of the
+  layer below, and a neuron feeding several others receives the sum of their pushes.
+- Key equation(s) in words: per layer, error signals Δ = G ⊙ f′(Z); weight gradient = Δ transposed
+  times the layer's inputs (summed over the batch); bias gradient = column sums of Δ; push down
+  G = Δ W. The last push is the gradient for the network's inputs.
+- What we observed: on the 2-2-1 example (x = [1, 2], target 0) the gradient for the inputs,
+  [−0.582, +0.582], equals the loss's push g = −1.610 times task 2.9's finite-difference
+  sensitivity [0.361, −0.361]: the same quantity, now exact and from one backward pass. One step
+  at learning rate 0.1 on all nine parameters drops the loss from 0.648 to 0.035. All 192
+  finite-difference cases agree to 1e-5.
+- Surprise or difficulty: two plausible bugs (forgetting f′, or passing G down instead of Δ) still
+  pass about half the tests, every case where the layer is linear and f′ = 1. Mixed activations
+  in the tests are what catch them.
+- Open question: in the [7, 16, 16, 2] driving network with tanh everywhere, how much smaller is
+  Δ in the first layer than in the last on real observations (task 3.9, vanishing gradients)?
