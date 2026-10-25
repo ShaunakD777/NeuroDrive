@@ -2,7 +2,7 @@
 
 Run from the repository root:
 
-    uv run python scripts/copy_the_neuron.py                 # 4 to 8 minutes
+    uv run python scripts/copy_the_neuron.py                 # about 10 minutes
     uv run python scripts/copy_the_neuron.py --epochs 100    # 2 to 3 minutes (most of it driving)
 
 A preview of Phase 6 (imitation learning), with the only driver we have so far as the teacher:
