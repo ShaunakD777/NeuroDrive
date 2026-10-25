@@ -804,3 +804,20 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   because the sigmoid's slope (at most 0.25) shrinks every step through it.
 - Open question: XOR is solved by every seed with 4 hidden neurons; with only 2 (the textbook
   minimum) how many seeds get stuck, and does the activation matter (study S2b, task 3.9)?
+
+### 2026-10-25 — Task 3.7 follow-up: the driving network copies the hand neuron
+- Concept: the same gradient descent that solved XOR, applied to our real driving network with
+  a teacher's actions as targets (a preview of imitation learning, Phase 6). The only driver we
+  have is the hand-wired neuron of S1, so it is the teacher (`scripts/copy_the_neuron.py`).
+- Key equation(s) in words: minimise the mean squared gap between the network's (steer, throttle)
+  and the teacher's on every observation the teacher saw; θ ← θ − η ∂L/∂θ with η = 0.5.
+- What we observed: 51,743 examples from 20 teacher drives; loss 0.413 → 0.023 (epoch 10) →
+  0.0092 (100) → 0.0083 (2,000), with held-out drives tracking it (0.0080), so no memorising.
+  At epochs 1 and 10 the student stalls at the start (throttle not yet near 0.24, the S2a
+  problem); from epoch 100 on it finishes all 20 drives, like the teacher, although its steering
+  is off by 0.07–0.10 on average.
+- Surprise or difficulty: the loss stops at about 0.008 and wobbles (0.0083 → 0.0089 → 0.0083),
+  and the steering error even grows from 0.065 to 0.10 after epoch 500: a fixed step struggles
+  with the teacher's steep steering (weight 12). Driving is forgiving: imperfect copies still lap.
+- Open question: the student never leaves the teacher's paths here; what happens on a track where
+  a small error takes it somewhere the teacher never went (distribution shift, Phase 6)?
