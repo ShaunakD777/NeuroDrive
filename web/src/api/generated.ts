@@ -30,6 +30,30 @@ export interface CarColumns {
 }
 
 /**
+ * Answer to ``GET /api/runs/{id}/checkpoints``: the units that have a saved network.
+ */
+export interface CheckpointList {
+  run_id: string;
+  units: number[];
+}
+
+/**
+ * Answer to ``GET /api/runs/{id}/checkpoints/{unit}``: the network saved at that unit.
+ *
+ * Same layout as the live ``network`` message: ``weights[l]`` is W_l as ``n_out`` rows of
+ * ``n_in`` numbers, ``biases[l]`` is b_l, ``activations[l]`` the activation of weight layer l.
+ * Rounded to 4 decimals.
+ */
+export interface CheckpointNetwork {
+  activations: ("tanh" | "sigmoid" | "relu" | "linear")[];
+  biases: number[][];
+  layer_sizes: number[];
+  run_id: string;
+  unit: number;
+  weights: number[][][];
+}
+
+/**
  * Sent once when every car has stopped; the session then pauses.
  *
  * ``status`` has one name per car: crashed, finished, stalled or timeout.
@@ -503,6 +527,78 @@ export interface Reset {
 }
 
 /**
+ * Answer to ``GET /api/runs/{id}``: the run's ``config.yaml`` and ``meta.json`` as stored.
+ */
+export interface RunDetail {
+  config: {
+    [k: string]: unknown;
+  };
+  meta: {
+    [k: string]: unknown;
+  };
+  run_id: string;
+}
+
+/**
+ * Answer to ``GET /api/runs``: every run folder, newest first.
+ */
+export interface RunListResponse {
+  runs: RunSummary[];
+}
+/**
+ * One entry of ``GET /api/runs`` (api v1.10, ADR-031): a run folder's identity and state.
+ *
+ * ``run_id`` is the folder name (``<YYYYMMDD-HHMMSS>-<method>-<tag>``), ``status`` one of
+ * running, completed, diverged, failed. ``checkpoints`` is how many checkpoints it holds and
+ * ``last_unit`` the latest one (null when there are none).
+ */
+export interface RunSummary {
+  checkpoints: number;
+  ended_at: string | null;
+  last_unit: number | null;
+  method: string;
+  run_id: string;
+  started_at: string;
+  status: "running" | "completed" | "diverged" | "failed";
+  tag: string;
+}
+
+/**
+ * Answer to ``GET /api/runs/{id}/metrics``: ``metrics.jsonl`` as columns (entry i = one unit).
+ *
+ * ``loss`` is the loss after unit ``unit[i]`` (null if it diverged), ``loss_before`` the loss
+ * before that unit's step, so ``loss_before[0]`` is the untrained network's loss (unit 0).
+ * ``grad_norm[l][i]`` is the gradient size of weight layer ``l`` in that unit. Numbers keep 6
+ * significant digits.
+ */
+export interface RunMetrics {
+  diverged: boolean[];
+  grad_norm: (number | null)[][];
+  loss: (number | null)[];
+  loss_before: (number | null)[];
+  run_id: string;
+  unit: number[];
+}
+
+/**
+ * One entry of ``GET /api/runs`` (api v1.10, ADR-031): a run folder's identity and state.
+ *
+ * ``run_id`` is the folder name (``<YYYYMMDD-HHMMSS>-<method>-<tag>``), ``status`` one of
+ * running, completed, diverged, failed. ``checkpoints`` is how many checkpoints it holds and
+ * ``last_unit`` the latest one (null when there are none).
+ */
+export interface RunSummary {
+  checkpoints: number;
+  ended_at: string | null;
+  last_unit: number | null;
+  method: string;
+  run_id: string;
+  started_at: string;
+  status: "running" | "completed" | "diverged" | "failed";
+  tag: string;
+}
+
+/**
  * Sent after ``load_scenario``: what was loaded and the constants needed to draw it.
  *
  * ``dt`` is the physics step in seconds, ``ray_angles`` the sensor directions in radians
@@ -647,6 +743,49 @@ export interface SetSpeed {
  */
 export interface Step {
   type: "step";
+}
+
+/**
+ * Answer to ``GET /api/runs/{id}/checkpoints/{unit}/toy``: the toy lab's view of a checkpoint.
+ *
+ * ``loss`` is the loss on the run's dataset (``data_x`` rows, targets ``data_y``) for this
+ * checkpoint's ``network``. For a 1-input task ``prediction_curve[k]`` is the network's output
+ * at x = ``grid_x[k]``; for a 2-input task ``prediction_map[i][k]`` is its output at
+ * (``grid_x[k]``, ``grid_y[i]``); the other is null. ``weight_gradients`` and
+ * ``bias_gradients`` are dL/dW and dL/db at this checkpoint (6 significant digits);
+ * ``glow[l][j][i]`` = |dL/dW_l[j][i]| / ``max_gradient``, the largest |dL/dW| (3 decimals).
+ * Computed by ``experiment/toy_view.py``.
+ */
+export interface ToyCheckpointResponse {
+  bias_gradients: number[][];
+  data_x: number[][];
+  data_y: number[];
+  glow: number[][][];
+  grid_x: number[];
+  grid_y: number[] | null;
+  loss: number;
+  max_gradient: number;
+  network: CheckpointNetwork;
+  prediction_curve: number[] | null;
+  prediction_map: number[][] | null;
+  run_id: string;
+  unit: number;
+  weight_gradients: number[][][];
+}
+/**
+ * Answer to ``GET /api/runs/{id}/checkpoints/{unit}``: the network saved at that unit.
+ *
+ * Same layout as the live ``network`` message: ``weights[l]`` is W_l as ``n_out`` rows of
+ * ``n_in`` numbers, ``biases[l]`` is b_l, ``activations[l]`` the activation of weight layer l.
+ * Rounded to 4 decimals.
+ */
+export interface CheckpointNetwork {
+  activations: ("tanh" | "sigmoid" | "relu" | "linear")[];
+  biases: number[][];
+  layer_sizes: number[];
+  run_id: string;
+  unit: number;
+  weights: number[][][];
 }
 
 /**

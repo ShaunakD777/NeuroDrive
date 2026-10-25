@@ -53,6 +53,10 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Gradient descent | Repeatedly moving parameters a small step opposite to the gradient to reduce the loss. |
 | Learning rate | The size of each gradient-descent step. |
 | Epoch | One pass through the whole training dataset. |
+| Learning curve | The loss (or another score) plotted against training time, here epochs. Usually drawn on a log scale because the loss falls by factors of ten. |
+| Log scale | An axis where each factor of ten takes the same distance (0.001 → 0.01 → 0.1), so both large early changes and small late ones stay visible. |
+| Decision boundary | Where a classifier's output crosses halfway between the two labels (0.5 for labels 0 and 1): the line separating the inputs it calls one class from those it calls the other. The toy lab's XOR map shows it as the grey band. |
+| Gradient glow | The toy lab's picture of where learning happens: each connection is drawn as bright as its loss gradient |dL/dw| relative to the largest one in that checkpoint. |
 | Full-batch gradient descent | Gradient descent where every step uses the whole dataset at once (one step per epoch); minibatches (task 4.1) use a small part per step. |
 | Divergence (training) | Learning breaking down: the steps overshoot so badly that the loss and the weights grow without bound, until they become infinite or NaN ("not a number"). Usually a too-large learning rate. |
 | Learner / runner | A learner owns a learning method (its networks and update rule) and does one unit of learning on request; the runner owns the loop around it: how long to train, what to record, when to save and when to stop. |

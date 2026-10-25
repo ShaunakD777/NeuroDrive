@@ -4,6 +4,8 @@ Each subcommand is one thing you can ask NeuroDrive to do from a terminal. ``ver
 ``serve`` exist so far; ``train``, ``sweep``, ``exam`` and others are added by later tasks.
 """
 
+from pathlib import Path
+
 import typer
 
 from neurodrive import __version__
@@ -34,11 +36,15 @@ def serve(
         "127.0.0.1", help="Address to listen on (127.0.0.1 = this machine only)."
     ),
     port: int = typer.Option(8000, help="Port to listen on."),
+    runs_dir: str | None = typer.Option(
+        None, help="Folder of run folders to show (default: runs/ in the repository)."
+    ),
 ) -> None:
     """Start the NeuroDrive server (REST and WebSocket) for the web viewer."""
     # Imported here so that `nd --help` stays fast and only this command touches the server.
     import uvicorn
 
-    from neurodrive.server.app import app as server_app
+    from neurodrive.server.app import create_app
 
-    uvicorn.run(server_app, host=host, port=port)
+    app_ = create_app(runs_dir=Path(runs_dir) if runs_dir else None)
+    uvicorn.run(app_, host=host, port=port)

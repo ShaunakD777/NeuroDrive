@@ -8,17 +8,23 @@
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
+    # Every hook here runs through Python instead of its generated .exe launcher: Windows Smart
+    # App Control judges each launcher by its own file hash and blocks some of them
+    # ([WinError 4551]; detect-private-key first, trailing-whitespace-fixer since 2026-10-25).
+    # Same check, same code.
     hooks:
       - id: check-added-large-files
+        entry: python -m pre_commit_hooks.check_added_large_files
         args: [--maxkb=1000]
-      # Run through Python instead of the generated detect-private-key.exe launcher, which
-      # Windows Smart App Control can block ([WinError 4551]). Same check, same code.
       - id: detect-private-key
         entry: python -m pre_commit_hooks.detect_private_key
       - id: end-of-file-fixer
+        entry: python -m pre_commit_hooks.end_of_file_fixer
       - id: trailing-whitespace
+        entry: python -m pre_commit_hooks.trailing_whitespace_fixer
         args: [--markdown-linebreak-ext=md]
       - id: check-yaml
+        entry: python -m pre_commit_hooks.check_yaml
 
   # Secret scan before every commit. detect-secrets is written in Python, so it runs through Python
   # like the hook above; Windows Smart App Control blocks compiled hook programs such as the

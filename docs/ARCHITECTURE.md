@@ -123,6 +123,7 @@ neurodrive/
 │  │  ├─ config.py               Pydantic models for every config file
 │  │  ├─ runner.py               training loop orchestration, checkpoint & exam schedules
 │  │  ├─ store.py                run folder read/write
+│  │  ├─ toy_view.py             toy lab numbers for one checkpoint: predictions, loss, gradients, glow
 │  │  ├─ db.py                   SQLite mirror: schema, insert/update, rebuild, check
 │  │  ├─ exam.py                 the Driving Exam
 │  │  ├─ metrics.py              driving metric definitions
@@ -136,6 +137,7 @@ neurodrive/
 │  │  ├─ app.py                  FastAPI app, routes
 │  │  ├─ schemas.py              Pydantic message models (source for TS types)
 │  │  ├─ live.py                 live sessions over WebSocket
+│  │  ├─ runs.py                 run folders as REST answers (read-only, api v1.10)
 │  │  └─ runs_watch.py           progress streaming for active runs
 │  └─ cli.py                     `nd serve | train | sweep | exam | demo-record | ...`
 ├─ tests/                        mirrors src/neurodrive (core/, env/, learn/, experiment/, explain/, server/)
@@ -149,7 +151,7 @@ neurodrive/
 │  ├─ src/state/                 selection store, layout store (Page/Split/All, drawers), playback clock
 │  ├─ src/views/environment/     canvas renderer, trails, HUD, population mode
 │  ├─ src/views/network/         SVG diagram, output inspector, what-if panel, diff
-│  ├─ src/views/experiment/      run list, timeline, charts, comparison page, toy lab
+│  ├─ src/views/experiment/      toy lab (ToyLab, LossChart, PredictionPlot, ToyNetwork); later run list, timeline, comparison
 │  └─ src/components/            shared UI pieces
 └─ docs/                         concept, architecture, roadmap, checklist, protocol, journal ...
 ```
@@ -326,7 +328,7 @@ Exam spec version, list of tracks, per-episode metrics (track, start index, prog
 crashed, lap times, mean speed, smoothness, time to crash), and aggregates per track and overall
 (median, IQR, completion rate). See `EXPERIMENT_PROTOCOL.md`.
 
-## 7. Server API (api v1.9, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028)
+## 7. Server API (api v1.10, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031)
 
 REST (`/api/...`):
 - `GET health` → `{status: "ok", version}` (`version` is the NeuroDrive package version)
@@ -337,6 +339,16 @@ REST (`/api/...`):
   the function's values on those z (so the browser can draw the curves without computing them)
 - `GET runs`, `GET runs/{id}` (config, meta, metrics), `GET runs/{id}/checkpoints`
 - `GET runs/{id}/checkpoints/{unit}`: network as JSON
+  *As built (task 3.8, ADR-031, api v1.10):* `GET runs` → `{runs: [{run_id, method, tag, status,
+  started_at, ended_at, checkpoints, last_unit}]}` newest first; `GET runs/{id}` → `{run_id,
+  config, meta}`; `GET runs/{id}/metrics` → metrics as columns `{unit, loss, loss_before,
+  grad_norm[layer], diverged}` (6 significant digits); `GET runs/{id}/checkpoints` → `{units}`;
+  `GET runs/{id}/checkpoints/{unit}` → `{layer_sizes, activations, weights, biases}` (the live
+  `network` layout); `GET runs/{id}/checkpoints/{unit}/toy` (toy runs only) → `{network, loss,
+  data_x, data_y, grid_x, grid_y, prediction_curve | prediction_map, weight_gradients,
+  bias_gradients, glow, max_gradient}`, glow = |dL/dW| / max|dL/dW| per checkpoint. Read-only;
+  run ids must look like folder names (no path escape); unknown → 404, toy view of a non-toy run
+  → 400. `nd serve --runs-dir` chooses the folder (default `<repo>/runs`).
 - `GET runs/{id}/checkpoints/{unit}/diff?from={unit}`: per-weight change
 - `POST runs` (launch from a config), `POST runs/{id}/stop`
 - `POST replay` {run, unit, track, seed, focus_cars} → Episode Recording

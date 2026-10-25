@@ -126,7 +126,7 @@ These are created in Phase 0. If a task changes a command, update this section i
 | All Python tests | `uv run pytest` |
 | One area, quiet | `uv run pytest tests/core -q` |
 | Lint and format | `uv run ruff check . && uv run ruff format .` |
-| Start backend (port 8000) | `uv run nd serve` |
+| Start backend (port 8000) | `uv run python -m neurodrive serve` (or `uv run nd serve`; add `--runs-dir <folder>` to show other runs) |
 | Start web app (port 5173) | `cd web && npm install && npm run dev` |
 | Regenerate the track files in `tracks/` | `uv run python scripts/make_tracks.py` |
 | Train a toy task (line, sine, xor, two_spirals) into `runs/` (until `nd train`, task 4.6) | `uv run python scripts/train_toy.py --task xor` |
@@ -140,7 +140,13 @@ These are created in Phase 0. If a task changes a command, update this section i
 | Install the git hooks (once per clone) | `uv run python -m pre_commit install` |
 
 The pre-commit commands use `python -m pre_commit` because Windows Smart App Control can block the
-generated `pre-commit.exe` launcher; the installed git hook already calls Python this way.
+generated `pre-commit.exe` launcher; the installed git hook already calls Python this way. For the
+same reason the backend is started with `python -m neurodrive` (the `nd.exe` launcher is blocked on
+the development machine; the browser tests start it this way too), and `uv run python -m pytest`
+works wherever `uv run pytest` does not. If Smart App Control blocks Python's own `asyncio` DLLs in
+the Python that uv downloads (seen on 2026-10-25), install Python 3.12 from python.org and run
+`uv sync --python <path to its python.exe>`; the browser tests also train two small toy runs into
+`runs/` (tag `e2e`) the first time.
 
 **Not available yet** (the command is listed so its final form is fixed; running it today gives
 "No such command"): `nd train` arrives in task 4.6, `nd sweep` in 4.7, `nd exam` in 5.4 and

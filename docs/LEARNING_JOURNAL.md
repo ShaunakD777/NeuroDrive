@@ -821,3 +821,25 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   with the teacher's steep steering (weight 12). Driving is forgiving: imperfect copies still lap.
 - Open question: the student never leaves the teacher's paths here; what happens on a track where
   a small error takes it somewhere the teacher never went (distribution shift, Phase 6)?
+
+### 2026-10-25 — Task 3.8 Toy lab in the Experiment view
+- Concept: watching learning happen, three ways at once: the learning curve says how much the
+  network improves, the prediction plot says what it has learned, and the gradient glow says
+  where the next step will change it. Every number is computed in Python from the run folder
+  (the same forward, backward and loss as training); the browser only draws.
+- Key equation(s) in words: glow of a weight = |dL/dw| at that checkpoint divided by the largest
+  |dL/dw| of the checkpoint; edge colour = the direction of the next step, −dL/dw; predictions =
+  the checkpoint's network on a grid of inputs.
+- What we observed: sine (1-16-1) goes from a flat line (loss 1.89) to a curve through the data
+  (0.0097) in 300 epochs; at epoch 5 it is a single rising S, and the wave's two bends appear
+  later. XOR's map turns from a nearly uniform grey-blue (every output near 0.5) to two blue
+  diagonal bands around the 1-corners, with the grey decision boundary between; its learning curve
+  is flat for about 50 epochs, then falls from about 0.25 to 0.0008. Late in training the largest
+  gradient is tiny (6e-4 for XOR at epoch 1000), and for XOR the brightest edges sit next to the
+  output.
+- Surprise or difficulty: a flaky browser test exposed a real race (the previous run's slider
+  stayed usable while a new run loaded). Mid-task, Windows Smart App Control began refusing two
+  of Python's own asyncio DLLs in uv's downloaded Python, which stopped pytest and the server;
+  python.org's signed Python 3.12.10 fixed it, Python 3.15 could not install PyYAML (no wheels).
+- Open question: in study S2b (task 3.9), will sigmoid networks show dim glow in the first layer
+  (vanishing gradients) while tanh and ReLU light it up?

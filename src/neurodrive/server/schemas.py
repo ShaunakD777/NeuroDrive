@@ -4,11 +4,11 @@ Every shape is a Pydantic model, and the TypeScript types for the web app are ge
 these (task 0.4), so the two sides cannot drift apart.
 """
 
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
-API_VERSION = "v1.9"
+API_VERSION = "v1.10"
 
 
 class WireModel(BaseModel):
@@ -466,6 +466,106 @@ class ErrorMessage(WireModel):
 
 # Every model the browser sends or receives. `npm run gen:types` turns each one into a TypeScript
 # type, so a new message shape is added here and nowhere else.
+class RunSummary(WireModel):
+    """One entry of ``GET /api/runs`` (api v1.10, ADR-031): a run folder's identity and state.
+
+    ``run_id`` is the folder name (``<YYYYMMDD-HHMMSS>-<method>-<tag>``), ``status`` one of
+    running, completed, diverged, failed. ``checkpoints`` is how many checkpoints it holds and
+    ``last_unit`` the latest one (null when there are none).
+    """
+
+    run_id: str
+    method: str
+    tag: str
+    status: Literal["running", "completed", "diverged", "failed"]
+    started_at: str
+    ended_at: str | None
+    checkpoints: int
+    last_unit: int | None
+
+
+class RunListResponse(WireModel):
+    """Answer to ``GET /api/runs``: every run folder, newest first."""
+
+    runs: list[RunSummary]
+
+
+class RunDetail(WireModel):
+    """Answer to ``GET /api/runs/{id}``: the run's ``config.yaml`` and ``meta.json`` as stored."""
+
+    run_id: str
+    config: dict[str, Any]
+    meta: dict[str, Any]
+
+
+class RunMetrics(WireModel):
+    """Answer to ``GET /api/runs/{id}/metrics``: ``metrics.jsonl`` as columns (entry i = one unit).
+
+    ``loss`` is the loss after unit ``unit[i]`` (null if it diverged), ``loss_before`` the loss
+    before that unit's step, so ``loss_before[0]`` is the untrained network's loss (unit 0).
+    ``grad_norm[l][i]`` is the gradient size of weight layer ``l`` in that unit. Numbers keep 6
+    significant digits.
+    """
+
+    run_id: str
+    unit: list[int]
+    loss: list[float | None]
+    loss_before: list[float | None]
+    grad_norm: list[list[float | None]]
+    diverged: list[bool]
+
+
+class CheckpointList(WireModel):
+    """Answer to ``GET /api/runs/{id}/checkpoints``: the units that have a saved network."""
+
+    run_id: str
+    units: list[int]
+
+
+class CheckpointNetwork(WireModel):
+    """Answer to ``GET /api/runs/{id}/checkpoints/{unit}``: the network saved at that unit.
+
+    Same layout as the live ``network`` message: ``weights[l]`` is W_l as ``n_out`` rows of
+    ``n_in`` numbers, ``biases[l]`` is b_l, ``activations[l]`` the activation of weight layer l.
+    Rounded to 4 decimals.
+    """
+
+    run_id: str
+    unit: int
+    layer_sizes: list[int]
+    activations: list[Literal["tanh", "sigmoid", "relu", "linear"]]
+    weights: list[list[list[float]]]
+    biases: list[list[float]]
+
+
+class ToyCheckpointResponse(WireModel):
+    """Answer to ``GET /api/runs/{id}/checkpoints/{unit}/toy``: the toy lab's view of a checkpoint.
+
+    ``loss`` is the loss on the run's dataset (``data_x`` rows, targets ``data_y``) for this
+    checkpoint's ``network``. For a 1-input task ``prediction_curve[k]`` is the network's output
+    at x = ``grid_x[k]``; for a 2-input task ``prediction_map[i][k]`` is its output at
+    (``grid_x[k]``, ``grid_y[i]``); the other is null. ``weight_gradients`` and
+    ``bias_gradients`` are dL/dW and dL/db at this checkpoint (6 significant digits);
+    ``glow[l][j][i]`` = |dL/dW_l[j][i]| / ``max_gradient``, the largest |dL/dW| (3 decimals).
+    Computed by ``experiment/toy_view.py``.
+    """
+
+    run_id: str
+    unit: int
+    network: CheckpointNetwork
+    loss: float
+    data_x: list[list[float]]
+    data_y: list[float]
+    grid_x: list[float]
+    grid_y: list[float] | None
+    prediction_curve: list[float] | None
+    prediction_map: list[list[float]] | None
+    weight_gradients: list[list[list[float]]]
+    bias_gradients: list[list[float]]
+    glow: list[list[list[float]]]
+    max_gradient: float
+
+
 WIRE_MODELS: tuple[type[WireModel], ...] = (
     HealthResponse,
     HelloMessage,
@@ -499,4 +599,11 @@ WIRE_MODELS: tuple[type[WireModel], ...] = (
     FrameMessage,
     EpisodeEndMessage,
     ErrorMessage,
+    RunSummary,
+    RunListResponse,
+    RunDetail,
+    RunMetrics,
+    CheckpointList,
+    CheckpointNetwork,
+    ToyCheckpointResponse,
 )
