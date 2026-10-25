@@ -843,3 +843,25 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   python.org's signed Python 3.12.10 fixed it, Python 3.15 could not install PyYAML (no wheels).
 - Open question: in study S2b (task 3.9), will sigmoid networks show dim glow in the first layer
   (vanishing gradients) while tanh and ReLU light it up?
+
+### 2026-10-25 — Task 3.9 Study S2b: activations and vanishing gradients
+- Concept: backprop multiplies the learning signal by each layer's activation slope, so the
+  activation decides whether the signal reaches the first layers. Sigmoid's slope is at most 0.25;
+  tanh's and ReLU's are 1 at best; ReLU's is 0 when the neuron is off.
+- Key equation(s) in words: ρ = gradient size of the first weight layer divided by that of the
+  output layer, at epoch 1; for sigmoid it shrinks by about 1 / 0.25 = 4 per extra layer.
+- What we observed: 960 runs (Study S2b). ρ for sigmoid fell 4.7-fold (sine) and 4.4-fold (XOR)
+  per extra layer, to 0.0008 at five layers; tanh, ReLU and linear stayed between 0.75 and 2.
+  Deep sigmoid networks learned to predict the average (XOR loss 0.25) within 5 epochs and sat on
+  that plateau for the rest of the 3,000; giving them their best learning rate did not help at
+  depth 5. ReLU fitted sine 8–16 times better than tanh; on XOR the two were indistinguishable.
+  ReLU's failures were all-or-nothing: in the stuck XOR run the whole last hidden layer died, the
+  output became a constant 0.5 and every gradient was exactly zero. Linear hidden layers never
+  beat the best straight line.
+- Surprise or difficulty: saturation was not the cause of sigmoid's vanishing gradients (0 % of
+  neurons saturated at the start); the 0.25 slope ceiling alone was enough. And a dead ReLU in a
+  deeper layer can come back to life when the layers below it change, while one in the first
+  layer cannot. In the toy lab the two failures look opposite: sigmoid's glow fades towards the
+  inputs, a tanh run's glow is brightest at the inputs, and the dead ReLU network is dark.
+- Open question: would He initialisation or a larger learning rate rescue deep sigmoid and ReLU
+  networks, and do the [7, 16, 16, 2] driving networks of Phase 6 show any of these failures?

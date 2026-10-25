@@ -16,10 +16,12 @@ function edgeName(e: Edge): string {
   return `W${e.layer + 1}[${e.to},${e.from}]`;
 }
 
+/** Column caption; short forms ("in", "h2", "out") when many columns share the width. */
 function columnName(layer: number, layers: number): string {
-  if (layer === 0) return "inputs";
-  if (layer === layers - 1) return "output";
-  return `hidden ${layer}`;
+  const short = layers > 4;
+  if (layer === 0) return short ? "in" : "inputs";
+  if (layer === layers - 1) return short ? "out" : "output";
+  return short ? `h${layer}` : `hidden ${layer}`;
 }
 
 /**

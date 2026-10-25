@@ -56,6 +56,10 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Learning curve | The loss (or another score) plotted against training time, here epochs. Usually drawn on a log scale because the loss falls by factors of ten. |
 | Log scale | An axis where each factor of ten takes the same distance (0.001 → 0.01 → 0.1), so both large early changes and small late ones stay visible. |
 | Decision boundary | Where a classifier's output crosses halfway between the two labels (0.5 for labels 0 and 1): the line separating the inputs it calls one class from those it calls the other. The toy lab's XOR map shows it as the grey band. |
+| Vanishing gradient | The learning signal shrinking as backprop passes it down through the layers, because it is multiplied by every layer's activation slope; the first layers then barely learn. Sigmoid (slope at most 0.25) shrinks it about 4-fold per layer. |
+| Dead ReLU | A ReLU neuron whose weighted sum is negative for every input, so it outputs 0 and passes back no gradient; if its inputs never change it can never recover. A whole dead layer disconnects the network. |
+| Plateau (loss) | A long flat stretch of the learning curve where every gradient is tiny, e.g. a network predicting the average for every input; learning may escape after many steps or never. |
+| He initialisation | Starting weights scaled for ReLU layers (variance 2 / n_in), the usual alternative to Xavier for ReLU networks; not used in NeuroDrive so far. |
 | Gradient glow | The toy lab's picture of where learning happens: each connection is drawn as bright as its loss gradient |dL/dw| relative to the largest one in that checkpoint. |
 | Full-batch gradient descent | Gradient descent where every step uses the whole dataset at once (one step per epoch); minibatches (task 4.1) use a small part per step. |
 | Divergence (training) | Learning breaking down: the steps overshoot so badly that the loss and the weights grow without bound, until they become infinite or NaN ("not a number"). Usually a too-large learning rate. |
