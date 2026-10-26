@@ -199,3 +199,7 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Shuffling | Putting the training examples in a new random order each epoch, so every minibatch is a fair sample and the order never becomes a pattern to learn. |
 | Optimizer | The rule that turns gradients into new parameter values. Backprop says which way is downhill; the optimizer decides how far to step. |
 | SGD (stochastic gradient descent) | The simplest optimizer: every parameter moves by the learning rate times its gradient, against the gradient. "Stochastic" because the gradient comes from a random minibatch. |
+| Momentum | An optimizer that keeps a running "velocity" of past gradients: consistent directions add up and speed the parameters along, zig-zags partly cancel. |
+| Velocity | In momentum, the remembered, decaying sum of past gradients for one parameter; the step is the learning rate times the velocity. |
+| Momentum coefficient (β) | The fraction of the old velocity kept at each step, between 0 and 1 (usually 0.9). β = 0 is plain SGD. |
+| Optimizer state | The memory an optimizer carries between steps (momentum's velocities; later RMSProp's and Adam's averages). SGD has none. |

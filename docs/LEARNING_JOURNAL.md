@@ -923,3 +923,16 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   exactly rate 1 (factor of size 1), which gives a first rule of thumb for "too high".
 - Open question: real losses are not bowls, so where is the too-high threshold for the sine
   network, and does Adam (4.5) move it?
+
+### 2026-10-26 — Task 4.3 Momentum
+- Concept: momentum keeps a velocity per parameter, a decaying sum of past gradients, and steps by
+  the learning rate times that velocity, like a heavy ball rolling downhill.
+- Key equation(s) in words: new velocity = beta times old velocity plus gradient; new parameter =
+  old parameter minus learning rate times new velocity. With beta 0 it is plain SGD.
+- What we observed: on the bowl (w - 3)^2 the walk is 0.6, 1.62, 2.814 (SGD: 0.6, 1.08), overshoots
+  3 and settles; in a narrow valley (one steep and one shallow direction) 100 steps leave momentum
+  0.0012 from the minimum and SGD 0.405.
+- Surprise or difficulty: settling is slow (the wobble shrinks about 5 percent per step), so my own
+  test needed 400 steps rather than 200 to get within 1e-6.
+- Open question: when does the overshoot hurt more than the speed-up helps (large beta with a large
+  learning rate), and does Adam's normalisation make the choice less delicate?

@@ -56,7 +56,7 @@ released, add its tag (e.g. `phase-1`) to the phase's header row.
 | **Phase 4** | **Optimisers and experiment basics** | | | |
 | 4.1 | Minibatching and splits | ✅ | 2026-10-26 | `uv run python -m pytest` 1286 passed (25 new in tests/learn/supervised/test_datasets.py); N=10, B=4 gives batches of 4, 4, 2 with every example once per epoch; same seed gives identical orders over 4 epochs, epochs differ from each other; 10 examples, f=0.3 gives 7 train / 3 validation, disjoint; ruff clean |
 | 4.2 | Optimizer contract + SGD | ✅ | 2026-10-26 | `uv run python -m pytest` 1300 passed (14 new in tests/core/optim/test_sgd.py); f(w)=(w−3)² from w=0, lr 0.1: 0.6, 1.08, 1.464, distance to 3 = 3·0.8ⁿ, 50 steps within 1e-4; lr 1.1 diverges; one SGD step on a real 2-3-1 network equals the plain θ−η·g update and lowers the loss; `params_of` order = `Network.flatten()`; ruff clean |
-| 4.3 | Momentum | ☐ | | |
+| 4.3 | Momentum | ✅ | 2026-10-26 | `uv run python -m pytest` 1312 passed (26 in tests/core/optim, 12 new in test_momentum.py); bowl (w−3)² from 0, lr 0.1, β 0.9: 0.6, 1.62, 2.814 (SGD: 0.6, 1.08), overshoots 3 then settles; β = 0 identical to SGD over 30 steps; constant gradient: velocity → g/(1−β); narrow valley ½(w₁²+100w₂²), 100 steps: distance 0.0012 (momentum) vs 0.405 (SGD); ruff clean |
 | 4.4 | RMSProp | ☐ | | |
 | 4.5 | Adam | ☐ | | |
 | 4.6 | Config system + `nd train` | ☐ | | |
