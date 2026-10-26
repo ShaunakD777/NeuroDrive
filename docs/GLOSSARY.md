@@ -197,3 +197,5 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Train/validation split | Randomly dividing a dataset into the training part (used for learning) and the validation part (used only for checking). |
 | Batch size | The number of examples B in one minibatch; one epoch of N examples has ceil(N / B) learning steps. |
 | Shuffling | Putting the training examples in a new random order each epoch, so every minibatch is a fair sample and the order never becomes a pattern to learn. |
+| Optimizer | The rule that turns gradients into new parameter values. Backprop says which way is downhill; the optimizer decides how far to step. |
+| SGD (stochastic gradient descent) | The simplest optimizer: every parameter moves by the learning rate times its gradient, against the gradient. "Stochastic" because the gradient comes from a random minibatch. |

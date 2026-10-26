@@ -911,3 +911,15 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   (a fraction that rounds to zero validation examples, a batch size of zero).
 - Open question: with a small batch the gradient is noisy; does that noise help or hurt on the
   sine task once optimizers arrive (4.2 onwards)?
+
+### 2026-10-26 — Task 4.2 Optimizer contract and SGD
+- Concept: an optimizer is the rule that turns a gradient into a parameter change; SGD moves each
+  parameter against its gradient by a fixed fraction, the learning rate.
+- Key equation(s) in words: new value = old value minus learning rate times gradient.
+- What we observed: on the bowl (w - 3)^2 from w = 0 with learning rate 0.1 the walk is 0.6, 1.08,
+  1.464, ... and the distance to 3 shrinks by a factor 0.8 each step (1 minus twice the rate); with
+  rate 1.1 the factor is -1.2, so the walk overshoots and the error grows.
+- Surprise or difficulty: none; the useful discovery is that for a bowl the stability limit is
+  exactly rate 1 (factor of size 1), which gives a first rule of thumb for "too high".
+- Open question: real losses are not bowls, so where is the too-high threshold for the sine
+  network, and does Adam (4.5) move it?
