@@ -7,12 +7,14 @@ Every task in `ROADMAP.md` follows the same loop. The user starts a task by nami
 
 1. **Read.** The task entry in `ROADMAP.md`, its row in `CHECKLIST.md`, the relevant contracts in
    `ARCHITECTURE.md`, and any ADRs it touches.
-2. **Brief.** Post the Brief (template below). If the task is marked ⚑ (decision needed), or you
-   found a decision that is not covered, stop here and wait for the user.
+2. **Brief.** Post the Brief (template below) and save it to `task-notes/` (§2a). If the task is
+   marked ⚑ (decision needed), or you found a decision that is not covered, stop here and wait
+   for the user.
 3. **Implement.** Only the files named in the Brief. Mark the task ◐ in the checklist.
 4. **Verify.** Run the task's verification. Fix and re-run if needed. After two failed fix attempts,
    stop and report the diagnosis.
-5. **Report.** Post the Report (template below). Mark ☑ then ✅ once verification has passed.
+5. **Report.** Post the Report (template below) and save it to `task-notes/` (§2a). Mark ☑ then ✅
+   once verification has passed.
 6. **Record.** Append a journal entry, add new glossary terms, add an ADR if a decision was made,
    and commit `task X.Y: <summary>` on the phase branch (staging files by name; see §7).
 7. **Stop.** Name the next task, but do not start it.
@@ -35,6 +37,28 @@ If the user says "brief only", do steps 1–2 and stop.
 **7. Verification plan:** which tests or experiments, and what success looks like.
 **8. What you'll observe:** what the user should see or be able to do afterwards.
 ```
+
+## 2a. Saving Briefs and Reports (ADR-029)
+
+Every Brief and Report is posted in the chat **and** saved as a file, so it can be read again
+later. The files live in `task-notes/`, which is ignored by git: they stay on this machine and are
+never committed or pushed.
+
+- **Where:** `task-notes/phase-<N>/task-<X.Y>-brief.md` and `task-notes/phase-<N>/task-<X.Y>-report.md`
+  (for example `task-notes/phase-3/task-3.4-brief.md`).
+- **Format:** first line `# Task X.Y — <title from the checklist> · Brief` (or `· Report`), then a
+  quote line `> Posted YYYY-MM-DD.`, a blank line, and the message exactly as posted in the chat.
+  Links in the chat are relative to the repository root, so in the file every relative link gets
+  the prefix `../../` (for example `src/neurodrive/core/nn/backward.py` becomes
+  `../../src/neurodrive/core/nn/backward.py`), so it opens from the file.
+- **Changes:** if a Brief is re-posted (for example after a decision), replace the file with the new
+  version. If a task gets a follow-up after its Report, append a section
+  `## Follow-up (YYYY-MM-DD)` to the Report file.
+- **Index:** add or update the task's row in `task-notes/README.md` (one table per phase:
+  task, title, links to the Brief and the Report).
+- `/brief` saves its Brief too; that file is the only one it writes.
+- Never stage anything under `task-notes/`. Study reports are different: they go in
+  `docs/studies/` and are committed (§4).
 
 ## 3. Report template
 

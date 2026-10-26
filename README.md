@@ -7,14 +7,15 @@ simulator with three linked views: **Environment**, **Neural Network** and **Exp
 > decisions, and what can their successes and failures teach us about AI?
 
 ## Status
-Phase 2 ("Multilayer network and Network view") complete, tagged `phase-2`: multilayer networks
-written from scratch in NumPy (spec, forward pass with a full trace, a whole population at once,
-Xavier initialisation), 20 cars each driven by its own random network, the live Network view and a
-compact drawer version, one shared selection across the views, explanations (contributions and
-sensitivity), the output inspector with what-if and a ghost car, the decision trail with looking
-back at any of the last 60 s, and study S2a on random networks (`docs/studies/`). Phase 1 ("One
-neuron can drive") is tagged `phase-1` and Phase 0 (foundations) `phase-0`. Next: Phase 3,
-"Backpropagation (toy lab)" (see `docs/CHECKLIST.md`).
+Phase 3 ("Backpropagation (toy lab)") complete, tagged `phase-3`: loss functions and activation
+derivatives, backpropagation for one neuron and for the whole multilayer network (batched), a
+gradient checker that agrees with finite differences on every activation and architecture,
+sensitivity computed by backprop, toy tasks (line, sine, XOR, two spirals) trained by plain gradient
+descent into run folders, the toy lab in the Experiment view (loss curve, predictions, edge glow by
+gradient size), and study S2b on activations and vanishing gradients (`docs/studies/`). Phase 2
+("Multilayer network and Network view") is tagged `phase-2`, Phase 1 ("One neuron can drive")
+`phase-1` and Phase 0 (foundations) `phase-0`. Next: Phase 4, "Optimisers and experiment basics"
+(see `docs/CHECKLIST.md`).
 
 ## Prerequisites
 - [uv](https://docs.astral.sh/uv/) for Python. It downloads Python 3.12 by itself; your system

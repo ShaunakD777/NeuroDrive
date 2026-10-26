@@ -10,6 +10,7 @@ import { VIEWS, viewInfo, type ViewId } from "./nav/views";
 import { effectivePartner, useLayout } from "./state/layout";
 import { useLive } from "./state/live";
 import { EnvironmentView } from "./views/environment/EnvironmentView";
+import { ToyLab } from "./views/experiment/ToyLab";
 import { NetworkView } from "./views/network/NetworkView";
 
 export function App() {
@@ -35,6 +36,7 @@ export function App() {
 function MainView({ id, headerExtra }: { id: ViewId; headerExtra?: ReactNode }) {
   if (id === "environment") return <EnvironmentView headerExtra={headerExtra} />;
   if (id === "network") return <NetworkView headerExtra={headerExtra} />;
+  if (id === "experiment") return <ToyLab headerExtra={headerExtra} />;
   const v = viewInfo(id);
   return <ViewPanel title={v.title} comingIn={v.comingIn} headerExtra={headerExtra} />;
 }

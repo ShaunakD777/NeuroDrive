@@ -114,8 +114,8 @@ neurodrive/
 │  │  ├─ policies.py             Policy protocol + Keyboard/Neuron/MLP/Expert/Stochastic policies
 │  │  └─ episode.py              episode runner + EpisodeRecording
 │  ├─ learn/
-│  │  ├─ base.py                 Learner contract, budget counters
-│  │  ├─ supervised/             datasets.py, demos.py, imitation.py, dagger.py, toy_tasks.py
+│  │  ├─ base.py                 Learner contract (v0 since task 3.7), budget counters
+│  │  ├─ supervised/             toy_tasks.py, train_toy.py, datasets.py, demos.py, imitation.py, dagger.py
 │  │  ├─ evolution/              random_search.py, ga.py, es.py, neat/ (genome, species, ...)
 │  │  ├─ rl/                     returns.py, gaussian_policy.py, reinforce.py, actor_critic.py, ppo.py
 │  │  └─ hybrid/                 distill.py, pretrain_finetune.py
@@ -123,6 +123,7 @@ neurodrive/
 │  │  ├─ config.py               Pydantic models for every config file
 │  │  ├─ runner.py               training loop orchestration, checkpoint & exam schedules
 │  │  ├─ store.py                run folder read/write
+│  │  ├─ toy_view.py             toy lab numbers for one checkpoint: predictions, loss, gradients, glow
 │  │  ├─ db.py                   SQLite mirror: schema, insert/update, rebuild, check
 │  │  ├─ exam.py                 the Driving Exam
 │  │  ├─ metrics.py              driving metric definitions
@@ -130,12 +131,13 @@ neurodrive/
 │  │  └─ compare.py              aligned comparisons between runs
 │  ├─ explain/
 │  │  ├─ contributions.py        weight × activation breakdowns, top paths
-│  │  ├─ sensitivity.py          d(output)/d(input): finite differences, later backprop
+│  │  ├─ sensitivity.py          d(output)/d(input): backprop (finite differences as test oracle)
 │  │  └─ response.py             response curves across checkpoints
 │  ├─ server/
 │  │  ├─ app.py                  FastAPI app, routes
 │  │  ├─ schemas.py              Pydantic message models (source for TS types)
 │  │  ├─ live.py                 live sessions over WebSocket
+│  │  ├─ runs.py                 run folders as REST answers (read-only, api v1.10)
 │  │  └─ runs_watch.py           progress streaming for active runs
 │  └─ cli.py                     `nd serve | train | sweep | exam | demo-record | ...`
 ├─ tests/                        mirrors src/neurodrive (core/, env/, learn/, experiment/, explain/, server/)
@@ -149,7 +151,7 @@ neurodrive/
 │  ├─ src/state/                 selection store, layout store (Page/Split/All, drawers), playback clock
 │  ├─ src/views/environment/     canvas renderer, trails, HUD, population mode
 │  ├─ src/views/network/         SVG diagram, output inspector, what-if panel, diff
-│  ├─ src/views/experiment/      run list, timeline, charts, comparison page, toy lab
+│  ├─ src/views/experiment/      toy lab (ToyLab, LossChart, PredictionPlot, ToyNetwork); later run list, timeline, comparison
 │  └─ src/components/            shared UI pieces
 └─ docs/                         concept, architecture, roadmap, checklist, protocol, journal ...
 ```
@@ -290,6 +292,8 @@ text inside the file and also holds the world rules (`world_config`) and `car_pa
 rebuilds the same world. Replaying the actions reproduces every array bit for bit.
 
 ### 6.12 Learner contract (learner v1)
+*Version 0 (task 3.7, ADR-030): `learn/base.py` without save/restore; wall-clock time measured by the runner; `experiment/runner.py` v0 owns a minimal loop.*
+
 Every learning method provides:
 - `name` and `feedback_kind` ∈ {`labels`, `episode_score`, `step_reward`, `none`}
 - set-up from (config, seeded generator)
@@ -303,6 +307,8 @@ The **Runner** (not the learner) owns the loop, checkpoint schedule, exam schedu
 stop conditions (max env steps, max wall-clock, max units).
 
 ### 6.13 Run folder (run v1)
+*Version 0 (task 3.7, ADR-030): a strict subset (no `exams/`, `run_version: 0` in meta.json, `extra/dataset.npz` for toy runs), written by `experiment/store.py`.*
+
 ```
 runs/<YYYYMMDD-HHMMSS>-<method>-<tag>/
   config.yaml        fully resolved config, including seed
@@ -322,7 +328,7 @@ Exam spec version, list of tracks, per-episode metrics (track, start index, prog
 crashed, lap times, mean speed, smoothness, time to crash), and aggregates per track and overall
 (median, IQR, completion rate). See `EXPERIMENT_PROTOCOL.md`.
 
-## 7. Server API (api v1.9, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028)
+## 7. Server API (api v1.10, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031)
 
 REST (`/api/...`):
 - `GET health` → `{status: "ok", version}` (`version` is the NeuroDrive package version)
@@ -333,6 +339,16 @@ REST (`/api/...`):
   the function's values on those z (so the browser can draw the curves without computing them)
 - `GET runs`, `GET runs/{id}` (config, meta, metrics), `GET runs/{id}/checkpoints`
 - `GET runs/{id}/checkpoints/{unit}`: network as JSON
+  *As built (task 3.8, ADR-031, api v1.10):* `GET runs` → `{runs: [{run_id, method, tag, status,
+  started_at, ended_at, checkpoints, last_unit}]}` newest first; `GET runs/{id}` → `{run_id,
+  config, meta}`; `GET runs/{id}/metrics` → metrics as columns `{unit, loss, loss_before,
+  grad_norm[layer], diverged}` (6 significant digits); `GET runs/{id}/checkpoints` → `{units}`;
+  `GET runs/{id}/checkpoints/{unit}` → `{layer_sizes, activations, weights, biases}` (the live
+  `network` layout); `GET runs/{id}/checkpoints/{unit}/toy` (toy runs only) → `{network, loss,
+  data_x, data_y, grid_x, grid_y, prediction_curve | prediction_map, weight_gradients,
+  bias_gradients, glow, max_gradient}`, glow = |dL/dW| / max|dL/dW| per checkpoint. Read-only;
+  run ids must look like folder names (no path escape); unknown → 404, toy view of a non-toy run
+  → 400. `nd serve --runs-dir` chooses the folder (default `<repo>/runs`).
 - `GET runs/{id}/checkpoints/{unit}/diff?from={unit}`: per-weight change
 - `POST runs` (launch from a config), `POST runs/{id}/stop`
 - `POST replay` {run, unit, track, seed, focus_cars} → Episode Recording
@@ -402,7 +418,7 @@ WebSocket `/ws/live` (one independent session per connection):
   - `selected.explain {receipts, sensitivity}` (random-networks driver only, ADR-025): for the
     selected car's current observation, `receipts[m]` = `{output, inputs, contributions, bias, z,
     value}` (output m's contributions from the last hidden layer, which add up with the bias to z)
-    and `sensitivity[m][k]` = the central-difference slope of output m with respect to input k.
+    and `sensitivity[m][k]` = the slope of output m with respect to input k (backprop since task 3.6).
     Computed by `explain/` (task 2.9); rounded to 4 decimals.
   - `selected.trail {replace, steps, x, y, action}` (every driver, ADR-027): the selected car's
     decision trail. Entry i: at step `steps[i]` the car was at (`x[i]`, `y[i]`) and chose
@@ -487,7 +503,7 @@ ray k; the neuron driver's selected neuron gives its two rays.
 ### 8.3 Output-neuron inspector (built up over phases)
 1. Readout: the value plus its physical meaning ("−0.93 = hard left").
 2. Contributions: c_i = W[j, i] · a_i for each incoming connection, sorted; total = Σ c_i + b_j.
-3. Sensitivity: ∂output / ∂input_k for each sensor (finite differences in Phase 2, backprop from Phase 3).
+3. Sensitivity: ∂output / ∂input_k for each sensor (finite differences in Phase 2, backprop since task 3.6).
 4. History: response curve of the output against one input at several checkpoints.
 
 *As built (task 2.10):* clicking an output neuron (or the drawer's output row) selects it; the
@@ -523,7 +539,8 @@ See `EXPERIMENT_PROTOCOL.md` §1 for the component verification table.
 and `.env.local.example`; keys and certificates
 (`*.pem`, `*.key`, `*.p12`, `id_rsa*`); tokens or passwords in any form; `runs/` (run folders,
 checkpoints, recordings, SQLite database); `data/` (recorded demonstrations); `node_modules/`,
-build output and caches; `.claude/settings.local.json`; editor and OS files.
+build output and caches; `.claude/settings.local.json`; `task-notes/` (the saved task Briefs and
+Reports, kept locally only, ADR-029); editor and OS files.
 
 **Configuration and secrets:** NeuroDrive needs no secrets. If one is ever needed (for example a
 token for an optional external service), it is read only from an environment variable prefixed

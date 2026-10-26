@@ -36,13 +36,35 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Episode | One drive from start until crash, time limit, stall or finish. |
 | Loss | A number measuring how wrong predictions are; supervised learning makes it smaller. |
 | MSE | Mean squared error: the average of (prediction − target)². |
+| Residual | One prediction's miss with its sign: prediction − target. |
+| Huber loss | Squares small misses (½ r²) but counts misses bigger than a threshold δ only in proportion to their size, so one wild miss cannot dominate. Its derivative is the miss capped at ±δ. |
+| Outlier | A data point far from the rest, for example a badly wrong target label. |
 | Derivative / gradient | How much an output changes when an input or parameter changes a tiny bit. |
+| Activation derivative (f′(z)) | How much a neuron's output moves per unit change of its weighted sum z. Backprop multiplies by it at every neuron; tanh's is at most 1, sigmoid's at most 0.25, ReLU's is 0 or 1. |
 | Chain rule | To find how A affects C through B, multiply (how A affects B) × (how B affects C). |
+| Upstream gradient (g = ∂L/∂a) | The push arriving at a neuron's output from further along the chain: how the loss changes per unit of that output. For the last layer it comes from the loss's derivative. |
+| Error signal (δ, delta) | ∂L/∂z, how the loss changes per unit of a neuron's weighted sum: the upstream gradient times the activation's slope, δ = g · f′(z). Every weight, bias and input gradient of that neuron is δ times one more factor. |
 | Backpropagation | Applying the chain rule backwards through the network to get every parameter's gradient. |
+| Element-wise product (⊙) | Multiplying two arrays of the same shape entry by entry (not a matrix product). Backprop uses it for Δ = G ⊙ f′(Z). |
+| Fan-out | A neuron feeding several neurons in the next layer. In backprop it receives the sum of their pushes: G = Δ W. |
 | Gradient check | Comparing backprop's gradients with ones estimated by nudging each parameter; catches bugs. |
+| Relative error (gradient check) | ‖b − n‖ / (‖b‖ + ‖n‖): the size of the gap between backprop's gradient b and the finite-difference estimate n, compared with their sizes. 0 = identical, about 1 = unrelated; backprop passes below 1e-6. |
+| Rounding error | The tiny error from storing numbers with about 16 significant digits. Subtracting two nearly equal losses magnifies it, so a finite-difference step h cannot be made arbitrarily small. |
 | Gradient descent | Repeatedly moving parameters a small step opposite to the gradient to reduce the loss. |
 | Learning rate | The size of each gradient-descent step. |
 | Epoch | One pass through the whole training dataset. |
+| Learning curve | The loss (or another score) plotted against training time, here epochs. Usually drawn on a log scale because the loss falls by factors of ten. |
+| Log scale | An axis where each factor of ten takes the same distance (0.001 → 0.01 → 0.1), so both large early changes and small late ones stay visible. |
+| Decision boundary | Where a classifier's output crosses halfway between the two labels (0.5 for labels 0 and 1): the line separating the inputs it calls one class from those it calls the other. The toy lab's XOR map shows it as the grey band. |
+| Vanishing gradient | The learning signal shrinking as backprop passes it down through the layers, because it is multiplied by every layer's activation slope; the first layers then barely learn. Sigmoid (slope at most 0.25) shrinks it about 4-fold per layer. |
+| Dead ReLU | A ReLU neuron whose weighted sum is negative for every input, so it outputs 0 and passes back no gradient; if its inputs never change it can never recover. A whole dead layer disconnects the network. |
+| Plateau (loss) | A long flat stretch of the learning curve where every gradient is tiny, e.g. a network predicting the average for every input; learning may escape after many steps or never. |
+| He initialisation | Starting weights scaled for ReLU layers (variance 2 / n_in), the usual alternative to Xavier for ReLU networks; not used in NeuroDrive so far. |
+| Gradient glow | The toy lab's picture of where learning happens: each connection is drawn as bright as its loss gradient |dL/dw| relative to the largest one in that checkpoint. |
+| Full-batch gradient descent | Gradient descent where every step uses the whole dataset at once (one step per epoch); minibatches (task 4.1) use a small part per step. |
+| Divergence (training) | Learning breaking down: the steps overshoot so badly that the loss and the weights grow without bound, until they become infinite or NaN ("not a number"). Usually a too-large learning rate. |
+| Learner / runner | A learner owns a learning method (its networks and update rule) and does one unit of learning on request; the runner owns the loop around it: how long to train, what to record, when to save and when to stop. |
+| Run folder | The folder on disk that records one training run: its config, metadata, a metrics line per unit, checkpoints and extras. The master record of the run. |
 | Minibatch | A small random subset of the data used for one update. |
 | Momentum / RMSProp / Adam | Gradient-descent variants that smooth or rescale steps to learn faster and more stably. |
 | Overfitting | Doing well on training data but badly on new data. |
@@ -155,6 +177,7 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Neuron policy | A driver whose steering is one neuron: it reads the far-left and far-right rays, weights them, adds a bias, and passes the sum through an activation. |
 | Contribution | One input's share of the weighted sum: its weight times its value. |
 | Sensitivity | How much an output moves per unit change of one input, with the other inputs held still (the slope, or partial derivative). +0.4 means: if the input rose by 0.1, the output would rise by about 0.04. |
+| Jacobian | The whole sensitivity table: one row per output, one column per input, entry [m, k] = ∂output_m / ∂input_k. Backprop finds row m by starting from an upstream gradient that is 1 for output m and 0 elsewhere. |
 | Random brain | An untrained network whose weights were drawn at random (Xavier, biases 0). Its "driving rules" are accidents of the draw; Study S2a shows most of them stall or crash. |
 | Straight-line breakdown | Explaining how much each input caused an output's change between two moments: input k's share is its sensitivity times its change, s_k x (change in input k), and the shares add up to the predicted change. Treats the network as a flat slope around that moment, so it is trustworthy only when the prediction comes close to the real change. The what-if prediction, read backwards. |
 | Wiring signs | Whether the signs of steer's sensitivity to the side rays point the wall-avoiding way: negative for the left rays, positive for the right rays (0 to 4 of the four right). Random brains get them right like coin flips. |

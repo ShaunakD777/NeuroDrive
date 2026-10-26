@@ -679,3 +679,221 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
 - Open questions: will learned networks learn to ignore grazing rays, or do the sensors need
   smoothing? Will a learning method find "ease off when the road ahead shortens" on purpose? Leaky
   ReLU and other activations (deferred by the user); Playwright in CI; the phone layout.
+
+### 2026-10-22 — Task 3.1 Loss functions
+- Concept: a loss turns a whole batch of predictions into one "how wrong" number; its derivative
+  with respect to each prediction says which way and how hard to push that prediction. That array
+  is where backpropagation will start.
+- Key equation(s) in words: with residual r = prediction − target and M = number of entries,
+  MSE = average of r², derivative 2r / M; Huber = average of ½r² (when |r| ≤ δ) or δ(|r| − ½δ)
+  (when |r| > δ), derivative = r capped at ±δ, divided by M.
+- What we observed: for ŷ = [2, 0, 3], y = [1, 0, 0], MSE is 3.3333 and Huber is 1.0. Under MSE
+  the miss of 3 pushes 3 times harder than the miss of 1; under Huber both push equally. With a
+  miss of 100 next to one of 0.2, MSE pushes the outlier 500 times harder, Huber only 5 times.
+  Doubling the batch with copies leaves the loss unchanged and halves each entry's gradient
+  (because of the 1/M).
+- Surprise or difficulty: the first finite-difference test drew random misses and, for one seed,
+  none fell below δ = 0.5, so Huber's squared piece was never tested; the test now spreads the
+  misses evenly over −4…4. Also, Windows Application Control started blocking the `pytest.exe`
+  launcher; `uv run python -m pytest` works.
+- Open question: Huber's derivative never exceeds δ / M. Will that make imitation learning steadier
+  when the expert's labels are noisy, or just slower when the network is far off?
+
+### 2026-10-22 — Task 3.2 Activation derivatives
+- Concept: an activation's derivative f′(z) is the gear ratio between a neuron's weighted sum and its
+  output. Backprop multiplies by it at every neuron, so where it is near 0 (saturation) the
+  learning signal is almost switched off.
+- Key equation(s) in words: tanh′(z) = 1 − tanh(z)²; sigmoid′(z) = s(1 − s) with s = sigmoid(z);
+  ReLU′ = 1 for positive z, 0 for negative (and 0 at the corner by convention); linear′ = 1.
+- What we observed: at z = 0 the slopes are 1 (tanh), 0.25 (sigmoid), 0 (ReLU, by convention)
+  and 1 (linear); at z = 2 tanh's has dropped to 0.0707 and sigmoid's to 0.105. tanh′(5) is under
+  0.0002. Through 5 sigmoid layers the factor is at most 0.25⁵ ≈ 0.001 — a first hint of
+  vanishing gradients (study S2b, task 3.9).
+- Surprise or difficulty: the finite-difference estimate of ReLU's slope at exactly 0 is 0.5 (half
+  of each side), which matches neither convention; the test skips points near the corner. A
+  planted "relu′(0) = 1" bug was therefore caught only by the hand-value test.
+- Open question: how often do ReLU neurons in the driving networks sit at z < 0 for every
+  observation ("dead" neurons that can never learn)?
+
+### 2026-10-22 — Task 3.3 Backprop for one neuron
+- Concept: backpropagation is the chain rule walked backwards. The loss's push on the output (the
+  upstream gradient g) times the activation's slope gives the error signal δ = ∂L/∂z; every other
+  gradient of the neuron is δ times one more factor.
+- Key equation(s) in words: δ = g · f′(z); weight gradient = δ times that weight's input; bias
+  gradient = δ; input gradient = δ times that input's weight. For a batch, weight and bias
+  gradients are summed over examples (the 1/M is already inside g).
+- What we observed: for the tanh neuron w = [0.5, −1], b = 0.5 on x = [2, 1] with target 1, the
+  output 0.462 is too low, δ = −0.846, and every weight and bias gradient is negative ("raise me").
+  One step at learning rate 0.1 drops the loss from 0.289 to 0.055. A saturated neuron (z = 10)
+  passes back almost nothing (gradients below 1e-7).
+- Surprise or difficulty: the input gradient uses the weights and the weight gradient uses the
+  inputs; swapping them is an easy mistake and broke 55 of 72 tests. Leaving out f′ still passed
+  every linear-activation test, because there f′ = 1.
+- Open question: the input gradient δ · w is the neuron's sensitivity to its inputs; will it
+  match the finite-difference sensitivity of task 2.9 for whole networks (task 3.6)?
+
+### 2026-10-24 — Task 3.4 Backprop for the full MLP
+- Concept: backprop through a network is the one-neuron step of task 3.3 repeated layer by layer
+  from the top down. What a layer pushes onto its inputs is exactly the upstream gradient of the
+  layer below, and a neuron feeding several others receives the sum of their pushes.
+- Key equation(s) in words: per layer, error signals Δ = G ⊙ f′(Z); weight gradient = Δ transposed
+  times the layer's inputs (summed over the batch); bias gradient = column sums of Δ; push down
+  G = Δ W. The last push is the gradient for the network's inputs.
+- What we observed: on the 2-2-1 example (x = [1, 2], target 0) the gradient for the inputs,
+  [−0.582, +0.582], equals the loss's push g = −1.610 times task 2.9's finite-difference
+  sensitivity [0.361, −0.361]: the same quantity, now exact and from one backward pass. One step
+  at learning rate 0.1 on all nine parameters drops the loss from 0.648 to 0.035. All 192
+  finite-difference cases agree to 1e-5.
+- Surprise or difficulty: two plausible bugs (forgetting f′, or passing G down instead of Δ) still
+  pass about half the tests, every case where the layer is linear and f′ = 1. Mixed activations
+  in the tests are what catch them.
+- Open question: in the [7, 16, 16, 2] driving network with tanh everywhere, how much smaller is
+  Δ in the first layer than in the last on real observations (task 3.9, vanishing gradients)?
+
+### 2026-10-24 — Task 3.5 Gradient checker
+- Concept: backprop is checked against finite differences, which use only the forward pass:
+  nudge one parameter up and down by h, rerun, and divide the loss change by 2h. Agreement to
+  many digits on hundreds of random networks is strong evidence that backprop is right.
+- Key equation(s) in words: central difference n_k = (L(θ_k + h) − L(θ_k − h)) / 2h; relative
+  error r = length of (b − n) divided by (length of b + length of n); pass when r < 1e-6.
+- What we observed: all 240 sweep cases (every hidden × output activation, 5 architectures, 3
+  seeds) pass, typically r ≈ 4e-11. The worst, 3.2e-7, is a saturated tanh output whose gradients
+  are tiny (norm 4e-4): there the rounding noise of the estimate is large compared with the
+  gradient. A smaller h made it worse (3.4e-6 at h = 1e-6, 3.2e-5 at 1e-7), the h trade-off in
+  action. A 1 % error in one layer's gradient gives r ≈ 1e-3 and the checker names the layer.
+- Surprise or difficulty: a planted "average the bias gradient instead of summing it" bug passed
+  17 tests, all with a single example, where mean and sum are equal; batches are essential in
+  gradient tests.
+- Open question: the sweep uses unit-variance weights, harsher than Xavier; should the training
+  code (3.7) run a quick gradient check on its first batch as a safety net?
+
+### 2026-10-24 — Task 3.6 Sensitivity via backprop
+- Concept: the sensitivity table is the network's Jacobian. Backprop gives the input gradient of
+  whatever number its upstream gradient points at; pointing it at one output (G = 1 there, 0
+  elsewhere) gives that output's row. Two copies of the observation with G = the identity give
+  steer's and throttle's rows in one backward pass.
+- Key equation(s) in words: row m of J = backprop's input gradient with G = e_m; for a hidden
+  layer, the same on the network cut off after that layer; the loss's input gradient (task 3.4) is
+  g times this table.
+- What we observed: the exact and the measured tables agree to a median of 1.4e-12 and at worst
+  3.9e-9 over 720 tables (every layer, every activation pair); the hand example's finite-difference
+  values were off by about 1e-9, their truncation error. At a ReLU corner the two genuinely differ
+  (0 vs 0.5). The Network view's numbers do not change at 4 decimals.
+- Surprise or difficulty: the first agreement test refused ReLU networks whose weighted sums were
+  exactly 0 (zero biases, all inputs from switched-off ReLUs), although nothing could cross a
+  corner there; the right condition is "no nudge switches a ReLU on or off". And the exact version
+  is not faster for 7 inputs (84 µs vs 50 µs): finite differences cost grows with the number of
+  inputs, backprop's with the number of outputs.
+- Open question: in the edge glow of task 3.8, should edges glow by the loss gradient (learning)
+  or by this sensitivity (explaining), or should the view offer both?
+
+### 2026-10-24 — Task 3.7 Toy tasks and plain gradient descent
+- Concept: gradient descent walks downhill on the loss: every epoch, compute ∂L/∂θ by backprop
+  and move every parameter a small step η against it. The learner owns that rule; the runner owns
+  the loop and the record on disk (the run folder), so later methods plug into the same frame.
+- Key equation(s) in words: θ ← θ − η · ∂L/∂θ, once per pass over the whole toy dataset.
+- What we observed: the hand example (one linear neuron, x = [0, 1, 2], y = [1, 3, 5], η = 0.1)
+  goes loss 11.67 → 3.21 → 0.90 exactly as computed by hand. The line task recovers slope 2 and
+  intercept −0.5 to machine precision; XOR (2-4-1, tanh/sigmoid) goes from 0.263 to 0.0002 on every
+  seed tried; sine reaches 0.0034. A too-large step (η = 50 on sine) makes the loss explode to
+  1e301 in 50 epochs and the run is stopped as diverged, with the last finite network kept.
+- Surprise or difficulty: on sine a *bigger* learning rate gave a *worse* result: η = 0.1 ended
+  at 0.019 against 0.0034 for 0.05, and η = 0.2 diverged after 444 epochs; steps that are too
+  large bounce across the valley instead of settling. In the prototype, XOR with a linear output diverged to NaN for
+  every seed at η = 1 and 2 (4 of 10 seeds at η = 0.5), while a sigmoid output never did; likely
+  because the sigmoid's slope (at most 0.25) shrinks every step through it.
+- Open question: XOR is solved by every seed with 4 hidden neurons; with only 2 (the textbook
+  minimum) how many seeds get stuck, and does the activation matter (study S2b, task 3.9)?
+
+### 2026-10-25 — Task 3.7 follow-up: the driving network copies the hand neuron
+- Concept: the same gradient descent that solved XOR, applied to our real driving network with
+  a teacher's actions as targets (a preview of imitation learning, Phase 6). The only driver we
+  have is the hand-wired neuron of S1, so it is the teacher (`scripts/copy_the_neuron.py`).
+- Key equation(s) in words: minimise the mean squared gap between the network's (steer, throttle)
+  and the teacher's on every observation the teacher saw; θ ← θ − η ∂L/∂θ with η = 0.5.
+- What we observed: 51,743 examples from 20 teacher drives; loss 0.413 → 0.023 (epoch 10) →
+  0.0092 (100) → 0.0083 (2,000), with held-out drives tracking it (0.0080), so no memorising.
+  At epochs 1 and 10 the student stalls at the start (throttle not yet near 0.24, the S2a
+  problem); from epoch 100 on it finishes all 20 drives, like the teacher, although its steering
+  is off by 0.07–0.10 on average.
+- Surprise or difficulty: the loss stops at about 0.008 and wobbles (0.0083 → 0.0089 → 0.0083),
+  and the steering error even grows from 0.065 to 0.10 after epoch 500: a fixed step struggles
+  with the teacher's steep steering (weight 12). Driving is forgiving: imperfect copies still lap.
+- Open question: the student never leaves the teacher's paths here; what happens on a track where
+  a small error takes it somewhere the teacher never went (distribution shift, Phase 6)?
+
+### 2026-10-25 — Task 3.8 Toy lab in the Experiment view
+- Concept: watching learning happen, three ways at once: the learning curve says how much the
+  network improves, the prediction plot says what it has learned, and the gradient glow says
+  where the next step will change it. Every number is computed in Python from the run folder
+  (the same forward, backward and loss as training); the browser only draws.
+- Key equation(s) in words: glow of a weight = |dL/dw| at that checkpoint divided by the largest
+  |dL/dw| of the checkpoint; edge colour = the direction of the next step, −dL/dw; predictions =
+  the checkpoint's network on a grid of inputs.
+- What we observed: sine (1-16-1) goes from a flat line (loss 1.89) to a curve through the data
+  (0.0097) in 300 epochs; at epoch 5 it is a single rising S, and the wave's two bends appear
+  later. XOR's map turns from a nearly uniform grey-blue (every output near 0.5) to two blue
+  diagonal bands around the 1-corners, with the grey decision boundary between; its learning curve
+  is flat for about 50 epochs, then falls from about 0.25 to 0.0008. Late in training the largest
+  gradient is tiny (6e-4 for XOR at epoch 1000), and for XOR the brightest edges sit next to the
+  output.
+- Surprise or difficulty: a flaky browser test exposed a real race (the previous run's slider
+  stayed usable while a new run loaded). Mid-task, Windows Smart App Control began refusing two
+  of Python's own asyncio DLLs in uv's downloaded Python, which stopped pytest and the server;
+  python.org's signed Python 3.12.10 fixed it, Python 3.15 could not install PyYAML (no wheels).
+- Open question: in study S2b (task 3.9), will sigmoid networks show dim glow in the first layer
+  (vanishing gradients) while tanh and ReLU light it up?
+
+### 2026-10-25 — Task 3.9 Study S2b: activations and vanishing gradients
+- Concept: backprop multiplies the learning signal by each layer's activation slope, so the
+  activation decides whether the signal reaches the first layers. Sigmoid's slope is at most 0.25;
+  tanh's and ReLU's are 1 at best; ReLU's is 0 when the neuron is off.
+- Key equation(s) in words: ρ = gradient size of the first weight layer divided by that of the
+  output layer, at epoch 1; for sigmoid it shrinks by about 1 / 0.25 = 4 per extra layer.
+- What we observed: 960 runs (Study S2b). ρ for sigmoid fell 4.7-fold (sine) and 4.4-fold (XOR)
+  per extra layer, to 0.0008 at five layers; tanh, ReLU and linear stayed between 0.75 and 2.
+  Deep sigmoid networks learned to predict the average (XOR loss 0.25) within 5 epochs and sat on
+  that plateau for the rest of the 3,000; giving them their best learning rate did not help at
+  depth 5. ReLU fitted sine 8–16 times better than tanh; on XOR the two were indistinguishable.
+  ReLU's failures were all-or-nothing: in the stuck XOR run the whole last hidden layer died, the
+  output became a constant 0.5 and every gradient was exactly zero. Linear hidden layers never
+  beat the best straight line.
+- Surprise or difficulty: saturation was not the cause of sigmoid's vanishing gradients (0 % of
+  neurons saturated at the start); the 0.25 slope ceiling alone was enough. And a dead ReLU in a
+  deeper layer can come back to life when the layers below it change, while one in the first
+  layer cannot. In the toy lab the two failures look opposite: sigmoid's glow fades towards the
+  inputs, a tanh run's glow is brightest at the inputs, and the dead ReLU network is dark.
+- Open question: would He initialisation or a larger learning rate rescue deep sigmoid and ReLU
+  networks, and do the [7, 16, 16, 2] driving networks of Phase 6 show any of these failures?
+
+### 2026-10-26 — Phase 3 complete (tag `phase-3`)
+- What was built: in `core`, MSE and Huber losses and the four activation derivatives; backprop
+  for one neuron and for the full batched multilayer network (gradients for every weight, every
+  bias and the inputs); a gradient checker that compares backprop with central differences;
+  `explain` sensitivity switched to backprop, with finite differences kept as the test oracle;
+  toy tasks (line, sine, XOR, two spirals), plain gradient descent, learner v0 and run folder v0;
+  the toy lab in the Experiment view (loss curve, prediction plot, edge glow by gradient size)
+  with six read-only run endpoints; study S2b (960 runs); a side experiment in which the driving
+  network copies the hand-wired neuron by gradient descent. API v1.10. 1,261 Python tests, 129
+  web unit tests, 57 browser tests.
+- What was learned: the loss says how wrong the network is, and the derivative says which way to
+  nudge each number; backprop is the chain rule applied layer by layer from the output back, so a
+  gradient is a sensitivity that is multiplied by an activation slope at every layer; the gradient
+  check is what makes such a long chain of signs and indices trustworthy (worst relative error
+  3.2e-7 over 240 networks, median 4e-11); a batch gradient is the sum of the single-example
+  gradients; the activation decides whether the learning signal reaches the first layers: sigmoid's
+  slope ceiling of 0.25 shrinks the first layer's gradient about 4.5-fold per layer (deep sigmoid
+  networks solve 0 of 10), tanh and ReLU keep it near 1, and ReLU can fail all at once when a whole
+  layer dies; XOR is solved (loss below 0.01 for seeds 0–4).
+- Decisions: ADR-029 (task notes kept as local files), ADR-030 (learner v0 and run folder v0),
+  ADR-031 (one-task toy lab and the run endpoints, api v1.10).
+- Fixed at the end: a race in the toy lab (the old run's slider shown while a new run loads),
+  found by a flaky browser test.
+- Environment: Windows Smart App Control blocked uv's Python and several launcher .exe files, so
+  the virtual environment now uses python.org 3.12.10 and the server starts with
+  `python -m neurodrive serve`.
+- Open questions: would He initialisation or a larger learning rate rescue deep sigmoid and ReLU
+  networks? Does the [7, 16, 16, 2] driving network show any of these failures in Phase 6? Plain
+  gradient descent is slow on the plateau, so do momentum and Adam (Phase 4) change that? Whether
+  the user can do backprop on a 2-2-1 network on paper is for the user to confirm; the hand 2-2-1
+  example is in the task 3.4 notes.

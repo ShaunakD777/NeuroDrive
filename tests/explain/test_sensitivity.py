@@ -1,14 +1,16 @@
-"""Tests for explain/sensitivity.py: slopes measured by central differences."""
+"""Tests for explain/sensitivity.py: exact slopes by backprop, checked by central differences."""
 
 import numpy as np
 import pytest
 
+import neurodrive.explain.sensitivity as sensitivity_module
+from neurodrive.core.activations import ACTIVATIONS
 from neurodrive.core.nn.forward import forward, predict
 from neurodrive.core.nn.init import init_network
 from neurodrive.core.nn.network import Network
 from neurodrive.core.nn.spec import NetworkSpec
 from neurodrive.core.rng import make_rng
-from neurodrive.explain.sensitivity import sensitivity
+from neurodrive.explain.sensitivity import sensitivity, sensitivity_finite_difference
 
 T = np.tanh(1.5)
 DT = 1.0 - T * T  # tanh'(1.5) = tanh'(-1.5) = 0.180707...
@@ -60,11 +62,13 @@ def test_sensitivity_predicts_a_small_real_nudge_on_a_driving_network():
         np.testing.assert_allclose(predict(net, nudged) - base, 0.01 * s[:, k], atol=5e-5)
 
 
-def test_smaller_step_gives_the_same_answer():
+def test_finite_difference_smaller_step_gives_the_same_answer():
     net = init_network(NetworkSpec(), make_rng(3))
     obs = make_rng(4).uniform(0, 1, 7)
     np.testing.assert_allclose(
-        sensitivity(net, obs, step=1e-3), sensitivity(net, obs, step=1e-5), atol=1e-6
+        sensitivity_finite_difference(net, obs, step=1e-3),
+        sensitivity_finite_difference(net, obs, step=1e-5),
+        atol=1e-6,
     )
 
 
@@ -107,9 +111,14 @@ def test_bad_arguments_rejected():
         sensitivity(net, [[1.0, 2.0]])
     for step in (0.0, -1e-4, float("nan")):
         with pytest.raises(ValueError, match="step"):
-            sensitivity(net, [1.0, 2.0], step=step)
-    with pytest.raises(IndexError):
-        sensitivity(net, [1.0, 2.0], layer=3)
+            sensitivity_finite_difference(net, [1.0, 2.0], step=step)
+    for f in (sensitivity, sensitivity_finite_difference):
+        with pytest.raises(IndexError):
+            f(net, [1.0, 2.0], layer=3)
+        with pytest.raises(IndexError):
+            f(net, [1.0, 2.0], layer=-4)
+        with pytest.raises(ValueError, match="observation"):
+            f(net, [1.0, 2.0, 3.0])
 
 
 def test_matches_the_trace_based_formula_for_one_hidden_layer():
@@ -122,3 +131,76 @@ def test_matches_the_trace_based_formula_for_one_hidden_layer():
     a1 = forward(net, obs).activations[1]
     exact = net.weights[1] @ np.diag(1.0 - a1**2) @ net.weights[0]
     np.testing.assert_allclose(sensitivity(net, obs), exact, atol=1e-8)
+
+
+# --- Backprop (task 3.6) against the finite-difference oracle ---
+
+
+def test_hand_example_is_exact_with_backprop():
+    # J = δ1 W1 with δ1 = [2, 1] * tanh'(±1.5) = [0.361413, 0.180707]
+    s = sensitivity(hand_network(), [1.0, 2.0])
+    np.testing.assert_allclose(s, [[2 * DT * 0.5 + DT, -2 * DT]], atol=1e-12)
+    np.testing.assert_allclose(s, [[0.361413, -0.361413]], atol=1e-6)
+    oracle = sensitivity_finite_difference(hand_network(), [1.0, 2.0])
+    assert 0 < np.abs(s - oracle).max() < 1e-8  # the oracle's own truncation error
+
+
+@pytest.mark.parametrize("seed", range(3))
+@pytest.mark.parametrize("sizes", [(7, 16, 16, 2), (7, 8, 2), (3, 5, 4, 3, 2)], ids=str)
+@pytest.mark.parametrize("out_act", sorted(ACTIVATIONS))
+@pytest.mark.parametrize("hidden_act", sorted(ACTIVATIONS))
+def test_backprop_agrees_with_finite_differences_at_every_layer(hidden_act, out_act, sizes, seed):
+    spec = NetworkSpec(sizes, hidden_activation=hidden_act, output_activation=out_act)
+    rng = make_rng(seed)
+    net = init_network(spec, rng)
+    obs = rng.uniform(0, 1, sizes[0])
+    trace = forward(net, obs)
+    # A finite difference across a ReLU corner averages two slopes, so the oracle is only valid
+    # when no nudge x ± h e_k switches any ReLU neuron on or off.
+    nudges = sensitivity_module.DEFAULT_STEP * np.eye(sizes[0])
+    nudged = forward(net, np.concatenate([obs + nudges, obs - nudges]))
+    for layer, z in enumerate(trace.weighted_sums):
+        if spec.activation_name(layer) == "relu":
+            assert np.array_equal(
+                nudged.weighted_sums[layer] > 0, np.broadcast_to(z > 0, (2 * sizes[0], z.size))
+            )
+    for layer in range(-1, len(sizes)):
+        exact = sensitivity(net, obs, layer=layer)
+        measured = sensitivity_finite_difference(net, obs, layer=layer)
+        assert exact.shape == measured.shape == (trace.activations[layer].size, sizes[0])
+        np.testing.assert_allclose(exact, measured, atol=1e-5)
+
+
+def test_exact_at_relu_corner_where_finite_differences_average():
+    # hidden neuron 0 sits exactly on its corner (z = 0): backprop uses slope 0 there,
+    # the finite difference reports the average of 0 and 1
+    spec = NetworkSpec((2, 2, 1), hidden_activation="relu", output_activation="linear")
+    net = Network(spec, [[[1.0, 0.0], [0.0, 1.0]], [[1.0, 1.0]]], [[0.0, 0.0], [0.0]])
+    np.testing.assert_allclose(sensitivity(net, [0.0, 2.0]), [[0.0, 1.0]], atol=1e-12)
+    np.testing.assert_allclose(
+        sensitivity_finite_difference(net, [0.0, 2.0]), [[0.5, 1.0]], atol=1e-9
+    )
+
+
+def test_one_forward_and_one_backward_pass(monkeypatch):
+    calls = {"forward": 0, "backward": 0}
+    real_forward, real_backward = sensitivity_module.forward, sensitivity_module.backward
+
+    def counting_forward(*args):
+        calls["forward"] += 1
+        return real_forward(*args)
+
+    def counting_backward(*args):
+        calls["backward"] += 1
+        return real_backward(*args)
+
+    monkeypatch.setattr(sensitivity_module, "forward", counting_forward)
+    monkeypatch.setattr(sensitivity_module, "backward", counting_backward)
+    sensitivity(init_network(NetworkSpec(), make_rng(0)), np.full(7, 0.5))
+    assert calls == {"forward": 1, "backward": 1}
+
+
+def test_loss_gradient_for_inputs_is_upstream_gradient_times_sensitivity():
+    # task 3.4: the loss gradient for x was [-0.581983, 0.581983] with g = -1.610297
+    s = sensitivity(hand_network(), [1.0, 2.0])
+    np.testing.assert_allclose(-1.610297 * s[0], [-0.581983, 0.581983], atol=1e-6)

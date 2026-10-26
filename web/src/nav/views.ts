@@ -23,7 +23,7 @@ export const VIEWS: readonly ViewInfo[] = [
   {
     id: "experiment",
     title: "Experiment",
-    comingIn: "Phase 4 and later",
+    comingIn: "task 3.8 (toy lab; runs, sweeps and the timeline in Phases 4 and 5)",
     companion: "environment",
   },
 ];
