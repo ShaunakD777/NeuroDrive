@@ -897,3 +897,17 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   gradient descent is slow on the plateau, so do momentum and Adam (Phase 4) change that? Whether
   the user can do backprop on a 2-2-1 network on paper is for the user to confirm; the hand 2-2-1
   example is in the task 3.4 notes.
+
+### 2026-10-26 — Task 4.1 Minibatching and splits
+- Concept: an epoch is one pass through the training data; a minibatch is a small group of
+  examples used for one learning step; a validation set is held back so its loss can reveal
+  memorising instead of learning.
+- Key equation(s) in words: batches per epoch K = ceil(N / B); validation size = round(f x N).
+- What we observed: 10 numbered examples with B = 4 are dealt as 4, 4, 2 in a new order each epoch
+  (for example [4, 6, 2, 7] [3, 5, 9, 0] [8, 1], then [2, 9, 3, 6] [0, 4, 8, 7] [5, 1]); every
+  number appears once per epoch; the same seed repeats the orders exactly; f = 0.3 gives 7 training
+  and 3 validation examples.
+- Surprise or difficulty: none; the care went into rejecting settings that silently misbehave
+  (a fraction that rounds to zero validation examples, a batch size of zero).
+- Open question: with a small batch the gradient is noisy; does that noise help or hurt on the
+  sine task once optimizers arrive (4.2 onwards)?

@@ -193,3 +193,7 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Negative control | A run deliberately set up to fail (zero weights, flipped signs) to show that the success was caused by the thing being tested. |
 | Driving Exam (preview) | The fixed set of starts and limits every controller is judged on: 10 starts, 2 laps, 90 s. Built properly in Phase 5. |
 | Interquartile range (IQR) | The spread of the middle half of the results (25th to 75th percentile); reported with the median instead of a single best run. |
+| Validation set | Examples set aside that the network never learns from; its loss shows whether the network learned the pattern or only memorised the training examples. |
+| Train/validation split | Randomly dividing a dataset into the training part (used for learning) and the validation part (used only for checking). |
+| Batch size | The number of examples B in one minibatch; one epoch of N examples has ceil(N / B) learning steps. |
+| Shuffling | Putting the training examples in a new random order each epoch, so every minibatch is a fair sample and the order never becomes a pattern to learn. |
