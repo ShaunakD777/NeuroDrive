@@ -865,3 +865,35 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   inputs, a tanh run's glow is brightest at the inputs, and the dead ReLU network is dark.
 - Open question: would He initialisation or a larger learning rate rescue deep sigmoid and ReLU
   networks, and do the [7, 16, 16, 2] driving networks of Phase 6 show any of these failures?
+
+### 2026-10-26 — Phase 3 complete (tag `phase-3`)
+- What was built: in `core`, MSE and Huber losses and the four activation derivatives; backprop
+  for one neuron and for the full batched multilayer network (gradients for every weight, every
+  bias and the inputs); a gradient checker that compares backprop with central differences;
+  `explain` sensitivity switched to backprop, with finite differences kept as the test oracle;
+  toy tasks (line, sine, XOR, two spirals), plain gradient descent, learner v0 and run folder v0;
+  the toy lab in the Experiment view (loss curve, prediction plot, edge glow by gradient size)
+  with six read-only run endpoints; study S2b (960 runs); a side experiment in which the driving
+  network copies the hand-wired neuron by gradient descent. API v1.10. 1,261 Python tests, 129
+  web unit tests, 57 browser tests.
+- What was learned: the loss says how wrong the network is, and the derivative says which way to
+  nudge each number; backprop is the chain rule applied layer by layer from the output back, so a
+  gradient is a sensitivity that is multiplied by an activation slope at every layer; the gradient
+  check is what makes such a long chain of signs and indices trustworthy (worst relative error
+  3.2e-7 over 240 networks, median 4e-11); a batch gradient is the sum of the single-example
+  gradients; the activation decides whether the learning signal reaches the first layers: sigmoid's
+  slope ceiling of 0.25 shrinks the first layer's gradient about 4.5-fold per layer (deep sigmoid
+  networks solve 0 of 10), tanh and ReLU keep it near 1, and ReLU can fail all at once when a whole
+  layer dies; XOR is solved (loss below 0.01 for seeds 0–4).
+- Decisions: ADR-029 (task notes kept as local files), ADR-030 (learner v0 and run folder v0),
+  ADR-031 (one-task toy lab and the run endpoints, api v1.10).
+- Fixed at the end: a race in the toy lab (the old run's slider shown while a new run loads),
+  found by a flaky browser test.
+- Environment: Windows Smart App Control blocked uv's Python and several launcher .exe files, so
+  the virtual environment now uses python.org 3.12.10 and the server starts with
+  `python -m neurodrive serve`.
+- Open questions: would He initialisation or a larger learning rate rescue deep sigmoid and ReLU
+  networks? Does the [7, 16, 16, 2] driving network show any of these failures in Phase 6? Plain
+  gradient descent is slow on the plateau, so do momentum and Adam (Phase 4) change that? Whether
+  the user can do backprop on a 2-2-1 network on paper is for the user to confirm; the hand 2-2-1
+  example is in the task 3.4 notes.
