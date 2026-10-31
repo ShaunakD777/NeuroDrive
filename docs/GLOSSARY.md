@@ -203,3 +203,7 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Velocity | In momentum, the remembered, decaying sum of past gradients for one parameter; the step is the learning rate times the velocity. |
 | Momentum coefficient (β) | The fraction of the old velocity kept at each step, between 0 and 1 (usually 0.9). β = 0 is plain SGD. |
 | Optimizer state | The memory an optimizer carries between steps (momentum's velocities; later RMSProp's and Adam's averages). SGD has none. |
+| RMSProp | An optimizer that divides each parameter's gradient by the typical size of its recent gradients (a running root mean square), so every parameter moves at a similar pace. |
+| Exponential moving average | A running average that keeps a fraction ρ of the old value and mixes in (1 − ρ) of the new one at each step, so recent values count most and old ones fade away. |
+| Adaptive learning rate | A step size that differs per parameter and adjusts itself during training, as in RMSProp and Adam. |
+| Epsilon (ε) in optimizers | A tiny number (such as 1e-8) added to a denominator so it can never be zero; it only matters when gradients are themselves tiny. |

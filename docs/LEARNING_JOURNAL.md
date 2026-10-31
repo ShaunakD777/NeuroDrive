@@ -936,3 +936,19 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   test needed 400 steps rather than 200 to get within 1e-6.
 - Open question: when does the overshoot hurt more than the speed-up helps (large beta with a large
   learning rate), and does Adam's normalisation make the choice less delicate?
+
+### 2026-10-31 — Task 4.4 RMSProp
+- Concept: RMSProp gives every parameter its own step size by dividing its gradient by the root
+  mean square of its recent gradients (an exponential moving average of g squared).
+- Key equation(s) in words: s = rho times old s plus (1 - rho) times gradient squared; new
+  parameter = old parameter minus learning rate times gradient over (square root of s plus eps).
+- What we observed: gradients 10 and 0.1 both give a first step of 0.3162 (= 0.1 / sqrt(0.1));
+  the bowl walk is 0.31623, 0.53318, 0.70823; multiplying the loss by 1000 leaves the 50-step walk
+  unchanged to nine digits while SGD's steps grow 1000-fold; in the narrow valley RMSProp ends
+  0.124 from the minimum (SGD 0.405) with both directions at 0.0876, moving at the same pace.
+- Surprise or difficulty: two of my test expectations were wrong. eps is not negligible for a
+  gradient of 1e-4 (it shortens the step by 3 parts in 10,000), and with a fixed learning rate
+  RMSProp hovers about one step size from the minimum instead of settling, because its steps do not
+  shrink as the gradient does.
+- Open question: does Adam's bias correction remove the oversized first steps, and does its
+  momentum part reduce the hovering?
