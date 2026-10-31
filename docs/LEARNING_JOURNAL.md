@@ -967,3 +967,17 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   learning rate is unfair, so each needs its own tuned value.
 - Open question: on the sine task, which optimizer wins when each gets its best learning rate, and
   how wide is each one's range of learning rates that work (Study S3)?
+
+### 2026-10-31 — Task 4.6a Toy learner on the optimizers (split from 4.6, ADR-032)
+- Concept: an epoch is now K = ceil(N / B) optimizer steps, one per minibatch, with any of the four
+  optimizers; a held-back validation set gives a second loss that can reveal overfitting.
+- Key equation(s) in words: steps per epoch = training examples divided by batch size, rounded up;
+  each step uses the batch's gradient, an estimate of the full gradient.
+- What we observed: the defaults reproduce Phase 3 networks bit for bit; on sine after 1000 epochs
+  (from 1.888) SGD reaches 0.0056, Momentum 0.00081, RMSProp 0.0064 and Adam 0.00014, Adam starting
+  slower but ending 40 times lower than SGD; with batch 16 and a quarter held back, validation loss
+  tracks training loss (0.0031 against 0.0016 at epoch 300), so no overfitting here.
+- Surprise or difficulty: keeping Phase 3 bit-identical needed the full batch not to be shuffled,
+  because adding the same numbers in another order changes the last bits of a floating-point sum.
+- Open question: what does an overfitting run look like on these tasks (a big network, few points),
+  and how early does validation loss turn upward?

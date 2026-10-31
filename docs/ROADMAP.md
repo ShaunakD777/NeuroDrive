@@ -349,8 +349,13 @@ step on f(w) = (w − 3)² from w = 0 with lr 0.1 gives w = 0.6.
 **4.3 Momentum:** `core/optim/momentum.py`, tests. Verify: first two steps match hand values.
 **4.4 RMSProp:** `core/optim/rmsprop.py`, tests. Verify: hand values.
 **4.5 Adam:** `core/optim/adam.py`, tests, including bias correction. Verify: hand values for 3 steps.
-**4.6 Config system and `nd train`:** `experiment/config.py` (Pydantic), `configs/toy_*.yaml`,
-`cli.py`. Verify: invalid configs give clear errors; a toy run is created from YAML.
+**4.6a Toy learner on the optimizers (split from 4.6, ADR-032):** `learn/supervised/train_toy.py`
+uses an optimizer chosen by name (`core/optim`), minibatches and an optional validation split
+(`learn/supervised/datasets.py`) and reports `val_loss`. Verify: the defaults reproduce Phase 3
+runs bit for bit; every optimizer lowers the sine loss; an epoch takes ceil(N / B) steps.
+**4.6b Config system and `nd train` (ADR-032):** `experiment/config.py` (Pydantic), `configs/toy_*.yaml`,
+`cli.py`; `scripts/train_toy.py` removed. Verify: invalid configs give clear errors; a toy run is
+created from YAML.
 **4.7 Sweeps and overlays:** `nd sweep`, `experiment/stats.py` (median, IQR, bootstrap CI),
 `web/src/views/experiment/RunList.tsx` + `Charts.tsx` (overlaid curves with bands). Verify: stats
 unit tests; 5-seed sweep displayed.

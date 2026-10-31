@@ -211,3 +211,5 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | First moment (m) | In Adam, the running average of the gradient: its smoothed direction. |
 | Second moment (v) | In Adam, the running average of the squared gradient: its typical size. |
 | Bias correction | Dividing Adam's moments by 1 − βᵗ (t = step number) to undo the fact that they start at 0 and are too small for the first steps. Fades away as t grows. |
+| Validation loss | The loss measured on the validation set after each epoch. Falling training loss with rising validation loss is the signature of overfitting. |
+| Stochastic gradient | The gradient of the loss on one minibatch: an estimate of the full-data gradient, noisy because the batch is a random sample. |

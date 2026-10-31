@@ -138,3 +138,134 @@ def test_learn_never_imports_experiment_or_server():
     pattern = re.compile(r"^\s*(from|import)\s+neurodrive\.(experiment|server)\b", re.MULTILINE)
     offenders = [p.name for p in LEARN_ROOT.rglob("*.py") if pattern.search(p.read_text("utf-8"))]
     assert offenders == []
+
+
+# --- task 4.6a: optimizers, minibatches, validation split ---
+
+
+def phase3_epoch(net, x, y, lr):
+    """The Phase 3 update, written out by hand: full batch, MSE, θ ← θ − η ∂L/∂θ."""
+    from neurodrive.core.losses import mse_grad
+    from neurodrive.core.nn.backward import backward
+    from neurodrive.core.nn.forward import forward
+    from neurodrive.core.nn.network import Network
+
+    trace = forward(net, x)
+    grads = backward(net, trace, mse_grad(trace.output, y))
+    new_w = [w - lr * g for w, g in zip(net.weights, grads.weights, strict=True)]
+    new_b = [b - lr * g for b, g in zip(net.biases, grads.biases, strict=True)]
+    return Network(net.spec, new_w, new_b)
+
+
+@pytest.mark.parametrize("task", ["sine", "xor"])
+def test_defaults_reproduce_the_phase3_update_bit_for_bit(task):
+    learner = ToyLearner(ToyConfig.for_task(task), make_rng(0))
+    net = learner.network
+    for _ in range(30):
+        learner.train_unit()
+        net = phase3_epoch(net, learner.dataset.x, learner.dataset.y, learner.config.learning_rate)
+        np.testing.assert_array_equal(learner.network.flatten(), net.flatten())
+
+
+@pytest.mark.parametrize(
+    "optimizer,lr",
+    [("sgd", 0.05), ("momentum", 0.05), ("rmsprop", 0.005), ("adam", 0.01)],
+)
+def test_every_optimizer_lowers_the_sine_loss(optimizer, lr):
+    config = ToyConfig.for_task("sine", optimizer=optimizer, learning_rate=lr)
+    learner = ToyLearner(config, make_rng(0))
+    start = learner.loss()
+    results = train(learner, 300)
+    assert not results[-1].diverged
+    assert results[-1].metrics["loss"] < 0.5 * start
+
+
+class CountingOptimizer:
+    """Wraps an optimizer and counts its steps."""
+
+    def __init__(self, inner):
+        self.inner, self.steps = inner, 0
+
+    def step(self, params, grads):
+        self.steps += 1
+        return self.inner.step(params, grads)
+
+
+@pytest.mark.parametrize(
+    "batch_size,val_fraction,expected",
+    [(32, 0.0, 4), (32, 0.25, 3), (50, 0.0, 3), (1000, 0.0, 1), (None, 0.25, 1), (1, 0.0, 128)],
+)
+def test_an_epoch_takes_ceil_n_over_b_steps(batch_size, val_fraction, expected):
+    config = ToyConfig.for_task("sine", batch_size=batch_size, val_fraction=val_fraction)
+    learner = ToyLearner(config, make_rng(0))  # sine has N = 128 examples
+    counter = CountingOptimizer(learner.optimizer)
+    learner.optimizer = counter
+    learner.train_unit()
+    assert counter.steps == expected
+
+
+def test_split_sizes_and_val_loss_only_with_a_split():
+    plain = ToyLearner(ToyConfig.for_task("sine"), make_rng(0))
+    assert plain.x_val is None and plain.val_loss() is None
+    assert "val_loss" not in plain.train_unit().metrics
+    split = ToyLearner(ToyConfig.for_task("sine", val_fraction=0.25), make_rng(0))
+    assert split.x_train.shape == (96, 1) and split.x_val.shape == (32, 1)
+    metrics = split.train_unit().metrics
+    assert metrics["val_loss"] == pytest.approx(split.val_loss())
+    assert metrics["loss"] == pytest.approx(split.loss())
+
+
+def test_minibatch_runs_are_seeded():
+    def run(seed: int):
+        config = ToyConfig.for_task(
+            "sine",
+            seed=seed,
+            optimizer="adam",
+            learning_rate=0.01,
+            batch_size=16,
+            val_fraction=0.25,
+        )
+        learner = ToyLearner(config, make_rng(seed))
+        results = train(learner, 20)
+        return [r.metrics["val_loss"] for r in results], learner.network.flatten()
+
+    (va, pa), (vb, pb), (vc, _) = run(0), run(0), run(1)
+    assert va == vb
+    np.testing.assert_array_equal(pa, pb)
+    assert va != vc
+
+
+def test_batches_and_split_do_not_change_the_starting_weights():
+    a = ToyLearner(ToyConfig.for_task("sine"), make_rng(0))
+    b = ToyLearner(ToyConfig.for_task("sine", batch_size=8, val_fraction=0.5), make_rng(0))
+    np.testing.assert_array_equal(a.network.flatten(), b.network.flatten())
+    np.testing.assert_array_equal(a.dataset.x, b.dataset.x)
+
+
+def test_divergence_with_minibatches_keeps_the_last_epoch_network():
+    config = ToyConfig.for_task("sine", learning_rate=50.0, batch_size=16)
+    learner = ToyLearner(config, make_rng(0))
+    for _ in range(200):
+        before = learner.network.flatten()
+        result = learner.train_unit()
+        if result.diverged:
+            break
+    assert result.diverged
+    np.testing.assert_array_equal(learner.network.flatten(), before)
+
+
+def test_new_fields_are_validated_and_old_dicts_still_load():
+    with pytest.raises(ValueError, match="unknown optimizer"):
+        ToyConfig.for_task("sine", optimizer="adma")
+    with pytest.raises(ValueError, match="no setting"):
+        ToyConfig.for_task("sine", optimizer="sgd", optimizer_settings={"beta1": 0.9})
+    with pytest.raises(ValueError, match="batch_size"):
+        ToyConfig.for_task("sine", batch_size=0)
+    with pytest.raises(ValueError, match="val_fraction"):
+        ToyConfig.for_task("sine", val_fraction=1.0)
+    old = ToyConfig.for_task("xor").to_dict()
+    for key in ("optimizer", "optimizer_settings", "batch_size", "val_fraction"):
+        del old[key]  # a Phase 3 run folder's config.yaml
+    assert ToyConfig.from_dict(old) == ToyConfig.for_task("xor")
+    adam = ToyConfig.for_task("xor", optimizer="adam", optimizer_settings={"beta1": 0.8})
+    assert ToyConfig.from_dict(adam.to_dict()) == adam
