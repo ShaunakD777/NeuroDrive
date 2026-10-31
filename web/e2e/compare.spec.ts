@@ -2,8 +2,9 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { formatNumber } from "../src/views/experiment/charts";
 
-// "Compare runs" in the Experiment view (task 4.7b, ADR-033). global-setup.ts trains a 5-seed sine
-// sweep tagged "e2esweep" (100 epochs); the newest such sweep is used here.
+// "Compare runs" in the Experiment view (task 4.7b, ADR-033). global-setup.ts trains two 5-seed sine
+// sweeps: "e2esweep" (100 epochs, no validation set) and "e2eval" (the validation example config,
+// 50 epochs); the newest of each is used here.
 
 interface RunSummary {
   run_id: string;
@@ -13,13 +14,13 @@ interface RunSummary {
 
 async function latestSweep(
   page: Page,
+  tag = "e2esweep",
 ): Promise<{ sweep: string; runIds: string[] }> {
   const { runs } = (await (await page.request.get("/api/runs")).json()) as {
     runs: RunSummary[];
   };
-  const sweepRuns = runs.filter(
-    (r) => /-toy_sine-e2esweep-s\d+$/.test(r.run_id) && r.sweep,
-  );
+  const pattern = new RegExp(`-toy_sine-${tag}-s\\d+$`);
+  const sweepRuns = runs.filter((r) => pattern.test(r.run_id) && r.sweep);
   expect(sweepRuns.length, "an e2e sweep").toBeGreaterThanOrEqual(5);
   const sweep = sweepRuns[0].sweep!; // newest first
   return {
@@ -89,5 +90,29 @@ test("compare runs: validation loss is skipped for runs without a validation set
   await expect(page.getByTestId("compare-skipped")).toContainText(
     "5 ticked runs have no validation loss",
   );
+  await expect(page.getByTestId("compare-skipped")).toContainText("configs/toy_sine_val.yaml");
   await expect(page.getByTestId("compare-chart")).toHaveCount(0);
+});
+
+test("compare runs: the hover box and the validation curves of the validation example", async ({
+  page,
+}) => {
+  const { sweep } = await latestSweep(page, "e2eval");
+  await openCompare(page);
+  await page.locator(`[data-testid="runlist-group"][data-group-id="${sweep}"]`).locator("input").first().check();
+  await expect(page.getByTestId("compare-median")).toHaveCount(1);
+
+  // The read-out is an HTML box (not SVG text) with one row per group.
+  await page.getByTestId("compare-chart").locator("rect.toy-hit").hover();
+  const hover = page.getByTestId("compare-hover");
+  await expect(hover).toBeVisible();
+  expect(await hover.evaluate((el) => el.tagName)).toBe("DIV");
+  await expect(hover.locator(".cmp-hover-row")).toHaveCount(1);
+  await expect(page.getByTestId("compare-crosshair")).toHaveCount(1);
+
+  // These runs held back a validation set, so their validation curves are drawn (from epoch 1).
+  await page.getByRole("button", { name: "validation loss" }).click();
+  await expect(page.getByTestId("compare-chart")).toContainText("validation loss after each epoch");
+  await expect(page.getByTestId("compare-run-line")).toHaveCount(5);
+  await expect(page.getByTestId("compare-skipped")).toHaveCount(0);
 });

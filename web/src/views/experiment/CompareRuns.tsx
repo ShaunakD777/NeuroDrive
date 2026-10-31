@@ -181,7 +181,13 @@ export function CompareRuns({ headerExtra }: { headerExtra?: ReactNode }) {
                   {data.skipped.length} ticked run
                   {data.skipped.length === 1 ? " has" : "s have"} no{" "}
                   {metricLabel} (no validation set):{" "}
-                  {data.skipped.map(shortName).join(", ")}.
+                  {data.skipped.map(shortName).join(", ")}. Validation loss exists only for runs
+                  that hold examples back (<code>training.val_fraction</code> above 0 in the
+                  config). Try{" "}
+                  <code>
+                    uv run python -m neurodrive sweep --config configs/toy_sine_val.yaml --seeds 0-4
+                  </code>{" "}
+                  and press Refresh list.
                 </p>
               )}
               {data.groups.length > 0 && (

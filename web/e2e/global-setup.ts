@@ -26,21 +26,24 @@ function hasCompletedRun(task: string): boolean {
     });
 }
 
-// A 5-seed sweep for the "Compare runs" tab (task 4.7b): sine for 100 epochs, tag "e2esweep".
-export const E2E_SWEEP = { tag: "e2esweep", seeds: 5, epochs: 100 };
+// Two 5-seed sweeps for the "Compare runs" tab (task 4.7b): sine for 100 epochs (tag "e2esweep"),
+// and the validation example config for 50 epochs (tag "e2eval"), whose runs have a validation loss.
+export const E2E_SWEEPS = [
+  { config: "configs/toy_sine.yaml", tag: "e2esweep", seeds: 5, epochs: 100 },
+  { config: "configs/toy_sine_val.yaml", tag: "e2eval", seeds: 5, epochs: 50 },
+];
 
-function hasCompletedSweep(): boolean {
+function hasCompletedSweep(tag: string, seeds: number): boolean {
   if (!existsSync(runsDir)) return false;
   const counts = new Map<string, number>();
   for (const name of readdirSync(runsDir)) {
-    if (!/-toy_sine-e2esweep-s\d+$/.test(name)) continue;
+    if (!new RegExp(`-toy_sine-${tag}-s\\d+$`).test(name)) continue;
     const meta = join(runsDir, name, "meta.json");
     if (!existsSync(meta)) continue;
     const m = JSON.parse(readFileSync(meta, "utf8"));
-    if (m.status === "completed" && m.sweep)
-      counts.set(m.sweep, (counts.get(m.sweep) ?? 0) + 1);
+    if (m.status === "completed" && m.sweep) counts.set(m.sweep, (counts.get(m.sweep) ?? 0) + 1);
   }
-  return [...counts.values()].some((n) => n === E2E_SWEEP.seeds);
+  return [...counts.values()].some((n) => n === seeds);
 }
 
 export default function globalSetup(): void {
@@ -52,11 +55,11 @@ export default function globalSetup(): void {
       { cwd: repoRoot, stdio: "inherit" },
     );
   }
-  if (!hasCompletedSweep()) {
-    const { tag, seeds, epochs } = E2E_SWEEP;
+  for (const { config, tag, seeds, epochs } of E2E_SWEEPS) {
+    if (hasCompletedSweep(tag, seeds)) continue;
     execFileSync(
       "uv",
-      ["run", "python", "-m", "neurodrive", "sweep", "--config", "configs/toy_sine.yaml", "--seeds", `0-${seeds - 1}`, "--tag", tag, "--epochs", String(epochs)],
+      ["run", "python", "-m", "neurodrive", "sweep", "--config", config, "--seeds", `0-${seeds - 1}`, "--tag", tag, "--epochs", String(epochs)],
       { cwd: repoRoot, stdio: "inherit" },
     );
   }

@@ -1024,3 +1024,8 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   showed a clipped tab switch that the tests could not see.
 - Open question: Adam's band is much wider than SGD's at the end; is Adam less reliable across
   seeds, or just further along a curve that SGD has not reached yet (Study S3 can run longer)?
+- Follow-up (same day, after the user's screenshot): the hover text smeared on a large screen
+  because SVG text and its outline are stretched with the chart (about 1.9 times at 1917 px); the
+  read-out is now an HTML box. Validation loss only exists for runs that hold examples back, and no
+  shipped config did; `configs/toy_sine_val.yaml` does (final validation loss median 0.00677 over 5
+  seeds at 1000 epochs).

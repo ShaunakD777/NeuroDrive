@@ -160,3 +160,9 @@ def test_file_errors(tmp_path):
         load_config(listing)
     with pytest.raises(ConfigError, match="cannot read"):
         load_config(tmp_path / "missing.yaml")
+
+
+def test_validation_example_config():
+    toy = to_toy_config(load_config(CONFIGS / "toy_sine_val.yaml"))
+    assert (toy.task, toy.val_fraction, toy.batch_size) == ("sine", 0.25, 16)
+    assert (toy.optimizer, toy.learning_rate, toy.tag) == ("adam", 0.01, "val")

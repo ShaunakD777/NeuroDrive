@@ -1768,3 +1768,44 @@ body {
   text-align: left;
   border-bottom: 1px solid var(--border);
 }
+
+/* The hover read-out of the compare chart: an HTML box, so its text keeps its size and stays sharp. */
+.cmp-plot {
+  position: relative;
+}
+
+.cmp-hover {
+  position: absolute;
+  transform: translateX(8px);
+  pointer-events: none;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.18);
+}
+
+.cmp-hover-left {
+  transform: translateX(calc(-100% - 8px));
+}
+
+.cmp-hover-title {
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.cmp-hover-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cmp-hover-value {
+  margin-left: auto;
+  padding-left: 10px;
+}

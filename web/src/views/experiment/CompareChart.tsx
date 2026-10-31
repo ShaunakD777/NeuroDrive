@@ -123,8 +123,14 @@ export function CompareChart({
           .map(({ g, i }) => ({
             id: g.group.group_id,
             slot: g.slot,
-            text: `${shortName(g.group.group_id)}: ${show(g.group.median[i])} [${show(g.group.q1[i])}, ${show(g.group.q3[i])}]`,
+            name: shortName(g.group.group_id),
+            value: `${show(g.group.median[i])} [${show(g.group.q1[i])}, ${show(g.group.q3[i])}]`,
           }));
+  // The read-out is an HTML box over the chart (not SVG text), so it keeps its normal size and
+  // stays sharp however much the chart is scaled; it sits right of the crosshair, or left of it
+  // in the chart's right half.
+  const hoverX = hover === null ? 0 : x(shift(hover));
+  const hoverLeft = hoverX > (M.left + W - M.right) / 2;
 
   return (
     <figure className="toy-figure" data-testid="compare-chart">
@@ -132,6 +138,7 @@ export function CompareChart({
         {metricLabel} after each epoch: median line, IQR band, one thin line per
         run
       </figcaption>
+      <div className="cmp-plot">
       <svg
         className="toy-svg"
         viewBox={`0 0 ${W} ${H}`}
@@ -252,47 +259,34 @@ export function CompareChart({
           onMouseLeave={() => setHover(null)}
         />
         {hover !== null && (
-          <g
-            className="toy-tooltip"
+          <line
+            className="toy-crosshair"
             pointerEvents="none"
-            data-testid="compare-hover"
-          >
-            <line
-              className="toy-crosshair"
-              x1={x(shift(hover))}
-              x2={x(shift(hover))}
-              y1={M.top}
-              y2={H - M.bottom}
-            />
-            <text
-              x={
-                x(shift(hover)) > (M.left + W - M.right) / 2
-                  ? x(shift(hover)) - 8
-                  : x(shift(hover)) + 8
-              }
-              y={M.top + 14}
-              textAnchor={
-                x(shift(hover)) > (M.left + W - M.right) / 2 ? "end" : "start"
-              }
-            >
-              <tspan>{`epoch ${hover}: median [Q1, Q3]`}</tspan>
-              {hoverRows.map((row, i) => (
-                <tspan
-                  key={row.id}
-                  x={
-                    x(shift(hover)) > (M.left + W - M.right) / 2
-                      ? x(shift(hover)) - 8
-                      : x(shift(hover)) + 8
-                  }
-                  dy={i === 0 ? 18 : 16}
-                >
-                  {row.text}
-                </tspan>
-              ))}
-            </text>
-          </g>
+            data-testid="compare-crosshair"
+            x1={hoverX}
+            x2={hoverX}
+            y1={M.top}
+            y2={H - M.bottom}
+          />
         )}
       </svg>
+      {hover !== null && (
+        <div
+          className={hoverLeft ? "cmp-hover cmp-hover-left" : "cmp-hover"}
+          data-testid="compare-hover"
+          style={{ left: `${(hoverX / W) * 100}%`, top: `${(M.top / H) * 100}%` }}
+        >
+          <div className="cmp-hover-title">epoch {hover}: median [Q1, Q3]</div>
+          {hoverRows.map((row) => (
+            <div key={row.id} className="cmp-hover-row" style={seriesStyle(row.slot)}>
+              <span className="cmp-swatch" />
+              <span className="cmp-hover-name">{row.name}</span>
+              <span className="cmp-hover-value">{row.value}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      </div>
       <div className="toy-legend" data-testid="compare-legend">
         {groups.map((g) => (
           <span
