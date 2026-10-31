@@ -7,15 +7,15 @@ simulator with three linked views: **Environment**, **Neural Network** and **Exp
 > decisions, and what can their successes and failures teach us about AI?
 
 ## Status
-Phase 3 ("Backpropagation (toy lab)") complete, tagged `phase-3`: loss functions and activation
-derivatives, backpropagation for one neuron and for the whole multilayer network (batched), a
-gradient checker that agrees with finite differences on every activation and architecture,
-sensitivity computed by backprop, toy tasks (line, sine, XOR, two spirals) trained by plain gradient
-descent into run folders, the toy lab in the Experiment view (loss curve, predictions, edge glow by
-gradient size), and study S2b on activations and vanishing gradients (`docs/studies/`). Phase 2
-("Multilayer network and Network view") is tagged `phase-2`, Phase 1 ("One neuron can drive")
-`phase-1` and Phase 0 (foundations) `phase-0`. Next: Phase 4, "Optimisers and experiment basics"
-(see `docs/CHECKLIST.md`).
+Phase 4 ("Optimisers and experiment basics") complete, tagged `phase-4`: seeded minibatches and
+train/validation splits, four optimizers written from scratch (SGD, Momentum, RMSProp, Adam) and
+cross-checked against PyTorch, YAML run configs with `nd train`, multi-seed sweeps with `nd sweep`
+and median/IQR statistics with bootstrap intervals, a "Compare runs" tab in the Experiment view
+(median curves with IQR bands, training or validation loss), mouse pan and zoom in the Environment
+view, and study S3 on learning rates, optimizers and overfitting (`docs/studies/`). Phase 3
+("Backpropagation (toy lab)") is tagged `phase-3`, Phase 2 ("Multilayer network and Network view")
+`phase-2`, Phase 1 ("One neuron can drive") `phase-1` and Phase 0 (foundations) `phase-0`. Next:
+Phase 5, "The Driving Exam, baselines and training infrastructure" (see `docs/CHECKLIST.md`).
 
 ## Prerequisites
 - [uv](https://docs.astral.sh/uv/) for Python. It downloads Python 3.12 by itself; your system

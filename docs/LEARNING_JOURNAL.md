@@ -1078,3 +1078,37 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   decides which way a step goes; rounding gets amplified, not the maths changed.
 - Open question: does that sensitivity matter for reproducibility across machines (different
   BLAS libraries round differently), and would Phase 6 want Adam rather than RMSProp because of it?
+
+### 2026-11-01 — Phase 4 complete (tag `phase-4`)
+- What was built: in `learn/supervised`, seeded minibatching and train/validation splits; in
+  `core/optim`, a functional optimizer contract with SGD, Momentum (PyTorch style), RMSProp and
+  Adam and a registry; the toy learner with optimizers, minibatches and a validation loss; config
+  file v1 (nested, validated by Pydantic, resolved copies stored in run folders) with `nd train`;
+  `experiment/stats.py` (percentiles, curve bands, seeded bootstrap intervals) and `nd sweep`;
+  the "Compare runs" tab (`GET /api/runs/compare`, api v1.11) with median curves, IQR bands, a
+  run table and training or validation loss; mouse pan and zoom in the Environment view (task
+  4.10, added at the user's request); study S3 (220 runs) with the new toy task `noisy_sine`;
+  a PyTorch cross-check in `reference/` and a guard that keeps ML frameworks out of `src/`.
+  1,513 Python tests (plus 9 PyTorch tests run on demand), 143 web unit tests, 64 browser tests.
+- What was learned: an optimizer is a rule for turning a gradient into a step; momentum adds a
+  memory of past steps, RMSProp gives every weight its own step size, Adam combines both and
+  corrects their start-up bias; the learning rate sets an edge of stability (gradient descent
+  stays stable along a direction of curvature lambda while lr times lambda is below 2, with
+  momentum below 2 times (1 + beta)): on sine SGD and Momentum blow up between 0.1 and 0.3, while
+  RMSProp and Adam never overflow but stop improving; a fair comparison tunes each method on some
+  seeds and reports on fresh ones (Adam ended about 580 times lower than SGD, paired bootstrap
+  interval excluding 0); a big network on few noisy points overfits (validation loss lowest near
+  epoch 500, then 2.5 times worse), which is what early stopping is for; and our gradients and
+  optimizers agree with PyTorch to about 1e-14, while RMSProp amplifies rounding differences.
+- Decisions: ADR-032 (config v1, resolved configs in run folders, `nd train` replaces the toy
+  script, task 4.6 split), ADR-033 (sweeps as run folders with a `sweep` id, statistics in Python,
+  the Compare-runs tab, task 4.7 split). No learning-rate schedule (the user's choice in 4.5).
+- Fixed along the way: a Prettier run that re-wrapped working web files (undone; no formatter is
+  run on existing web files), blurry hover text in the compare chart (now an HTML box), and three
+  Compare-runs bugs found by study S3 (a stack overflow on large runs, labels ahead of the data,
+  clipped end labels).
+- Open questions: would a learning-rate schedule or keeping the best checkpoint remove the late
+  spikes near the edge? Is RMSProp's best rate below the grid? Which optimizer and rate should
+  imitation learning (Phase 6) start from, Adam at 0.01 as on sine? Does RMSProp's rounding
+  sensitivity matter across machines? Whether the user can predict too-high learning-rate
+  behaviour (this phase's last criterion) is for the user to confirm; the evidence is in S3.
