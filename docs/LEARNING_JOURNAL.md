@@ -897,3 +897,218 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   gradient descent is slow on the plateau, so do momentum and Adam (Phase 4) change that? Whether
   the user can do backprop on a 2-2-1 network on paper is for the user to confirm; the hand 2-2-1
   example is in the task 3.4 notes.
+
+### 2026-10-26 — Task 4.1 Minibatching and splits
+- Concept: an epoch is one pass through the training data; a minibatch is a small group of
+  examples used for one learning step; a validation set is held back so its loss can reveal
+  memorising instead of learning.
+- Key equation(s) in words: batches per epoch K = ceil(N / B); validation size = round(f x N).
+- What we observed: 10 numbered examples with B = 4 are dealt as 4, 4, 2 in a new order each epoch
+  (for example [4, 6, 2, 7] [3, 5, 9, 0] [8, 1], then [2, 9, 3, 6] [0, 4, 8, 7] [5, 1]); every
+  number appears once per epoch; the same seed repeats the orders exactly; f = 0.3 gives 7 training
+  and 3 validation examples.
+- Surprise or difficulty: none; the care went into rejecting settings that silently misbehave
+  (a fraction that rounds to zero validation examples, a batch size of zero).
+- Open question: with a small batch the gradient is noisy; does that noise help or hurt on the
+  sine task once optimizers arrive (4.2 onwards)?
+
+### 2026-10-26 — Task 4.2 Optimizer contract and SGD
+- Concept: an optimizer is the rule that turns a gradient into a parameter change; SGD moves each
+  parameter against its gradient by a fixed fraction, the learning rate.
+- Key equation(s) in words: new value = old value minus learning rate times gradient.
+- What we observed: on the bowl (w - 3)^2 from w = 0 with learning rate 0.1 the walk is 0.6, 1.08,
+  1.464, ... and the distance to 3 shrinks by a factor 0.8 each step (1 minus twice the rate); with
+  rate 1.1 the factor is -1.2, so the walk overshoots and the error grows.
+- Surprise or difficulty: none; the useful discovery is that for a bowl the stability limit is
+  exactly rate 1 (factor of size 1), which gives a first rule of thumb for "too high".
+- Open question: real losses are not bowls, so where is the too-high threshold for the sine
+  network, and does Adam (4.5) move it?
+
+### 2026-10-26 — Task 4.3 Momentum
+- Concept: momentum keeps a velocity per parameter, a decaying sum of past gradients, and steps by
+  the learning rate times that velocity, like a heavy ball rolling downhill.
+- Key equation(s) in words: new velocity = beta times old velocity plus gradient; new parameter =
+  old parameter minus learning rate times new velocity. With beta 0 it is plain SGD.
+- What we observed: on the bowl (w - 3)^2 the walk is 0.6, 1.62, 2.814 (SGD: 0.6, 1.08), overshoots
+  3 and settles; in a narrow valley (one steep and one shallow direction) 100 steps leave momentum
+  0.0012 from the minimum and SGD 0.405.
+- Surprise or difficulty: settling is slow (the wobble shrinks about 5 percent per step), so my own
+  test needed 400 steps rather than 200 to get within 1e-6.
+- Open question: when does the overshoot hurt more than the speed-up helps (large beta with a large
+  learning rate), and does Adam's normalisation make the choice less delicate?
+
+### 2026-10-31 — Task 4.4 RMSProp
+- Concept: RMSProp gives every parameter its own step size by dividing its gradient by the root
+  mean square of its recent gradients (an exponential moving average of g squared).
+- Key equation(s) in words: s = rho times old s plus (1 - rho) times gradient squared; new
+  parameter = old parameter minus learning rate times gradient over (square root of s plus eps).
+- What we observed: gradients 10 and 0.1 both give a first step of 0.3162 (= 0.1 / sqrt(0.1));
+  the bowl walk is 0.31623, 0.53318, 0.70823; multiplying the loss by 1000 leaves the 50-step walk
+  unchanged to nine digits while SGD's steps grow 1000-fold; in the narrow valley RMSProp ends
+  0.124 from the minimum (SGD 0.405) with both directions at 0.0876, moving at the same pace.
+- Surprise or difficulty: two of my test expectations were wrong. eps is not negligible for a
+  gradient of 1e-4 (it shortens the step by 3 parts in 10,000), and with a fixed learning rate
+  RMSProp hovers about one step size from the minimum instead of settling, because its steps do not
+  shrink as the gradient does.
+- Open question: does Adam's bias correction remove the oversized first steps, and does its
+  momentum part reduce the hovering?
+
+### 2026-10-31 — Task 4.5 Adam
+- Concept: Adam keeps a running average of the gradient (direction, like momentum) and of the
+  squared gradient (size, like RMSProp), steps by their ratio, and corrects both for starting at 0.
+- Key equation(s) in words: m = beta1 m + (1 - beta1) g; v = beta2 v + (1 - beta2) g squared;
+  m-hat = m / (1 - beta1^t), v-hat = v / (1 - beta2^t); new parameter = old minus learning rate
+  times m-hat over (square root of v-hat plus eps).
+- What we observed: the bowl walk is 0.1, 0.19990, 0.29962, about one learning rate per step from
+  the very first; without the correction step 1 would be 3.16 times too long. In the narrow valley
+  after 100 steps: SGD 0.405, Momentum 0.0012, RMSProp 0.124, Adam (0.01) 0.317, Adam (0.05) 0.006.
+- Surprise or difficulty: Adam with the same learning rate was slower than RMSProp in the valley,
+  because its learning rate is almost literally its step length; comparing optimizers at one shared
+  learning rate is unfair, so each needs its own tuned value.
+- Open question: on the sine task, which optimizer wins when each gets its best learning rate, and
+  how wide is each one's range of learning rates that work (Study S3)?
+
+### 2026-10-31 — Task 4.6a Toy learner on the optimizers (split from 4.6, ADR-032)
+- Concept: an epoch is now K = ceil(N / B) optimizer steps, one per minibatch, with any of the four
+  optimizers; a held-back validation set gives a second loss that can reveal overfitting.
+- Key equation(s) in words: steps per epoch = training examples divided by batch size, rounded up;
+  each step uses the batch's gradient, an estimate of the full gradient.
+- What we observed: the defaults reproduce Phase 3 networks bit for bit; on sine after 1000 epochs
+  (from 1.888) SGD reaches 0.0056, Momentum 0.00081, RMSProp 0.0064 and Adam 0.00014, Adam starting
+  slower but ending 40 times lower than SGD; with batch 16 and a quarter held back, validation loss
+  tracks training loss (0.0031 against 0.0016 at epoch 300), so no overfitting here.
+- Surprise or difficulty: keeping Phase 3 bit-identical needed the full batch not to be shuffled,
+  because adding the same numbers in another order changes the last bits of a floating-point sum.
+- Open question: what does an overfitting run look like on these tasks (a big network, few points),
+  and how early does validation loss turn upward?
+
+### 2026-10-31 — Task 4.6b Config system and `nd train` (ADR-032)
+- Concept: a config file is the written recipe of a run; validation refuses a bad recipe before
+  any work starts; the run folder keeps the resolved recipe, every default written out.
+- Key equation(s) in words: none, plumbing task.
+- What we observed: `nd train --config configs/toy_sine.yaml` took sine from 1.888 to 0.00341 in
+  3000 epochs; changing two lines to Adam with learning rate 0.01 reached 0.0000042, about 800
+  times lower; a file with `learning_rat` and `tahn` was refused with three named problems and no
+  run folder. The browser tests now train their runs with `nd train` too.
+- Surprise or difficulty: storing the nested form in run folders would have crashed the toy lab's
+  summary line, which read the old flat fields; caught while checking what reads `config.yaml`,
+  fixed with a display helper that reads both forms.
+- Open question: which settings deserve a command-line override (today seed, tag, epochs), and
+  which should always be changed in a copied file so the change is recorded?
+
+### 2026-10-31 — Task 4.7a Statistics and `nd sweep` (split from 4.7, ADR-033)
+- Concept: one run is one roll of the dice, so results are summarised over seeds: the median (not
+  dragged by one wild seed), the IQR (spread of the middle half) and a bootstrap interval (how much
+  the median moves when the seeds are re-drawn with replacement).
+- Key equation(s) in words: percentile position = (n - 1) times p / 100, interpolating between
+  neighbours; a diverged run counts as infinity.
+- What we observed: SGD on sine, 300 epochs, seeds 0-4: median final loss 0.00996 [IQR 0.00974 to
+  0.01222]; Adam (0.01): 0.00508 [0.00264 to 0.00861]; paired bootstrap of the difference 0.0049
+  with 95 % interval [0.0011, 0.0110], which excludes 0, although Adam's seeds spread widely.
+- Surprise or difficulty: with an odd number of seeds every bootstrap median is one of the data
+  values, so the interval's ends are always actual results and do not change with the bootstrap
+  seed; my test had wrongly expected them to.
+- Open question: how many seeds does it take before the Adam interval is narrow enough to rank
+  optimizers that are closer together than SGD and Adam?
+
+### 2026-10-31 — Task 4.7b Compare-runs view (ADR-033)
+- Concept: a curve band, Q1 to Q3 of the seeds at every epoch around the median line, shows whether
+  a gap between two methods is bigger than the spread between seeds.
+- Key equation(s) in words: per epoch, median and quartiles across runs (4.7a); a diverged run is
+  infinity, which the server sends as null and the chart draws at the top edge.
+- What we observed: SGD and Adam on sine (5 seeds, 300 epochs) overlap until about epoch 30, then
+  Adam's median falls below SGD's while its band widens (one seed at 0.0012, one at 0.0094); the
+  view's table shows the same medians and IQRs that `nd sweep` printed.
+- Surprise or difficulty: a component called `Charts.tsx` next to `charts.ts` is the same file name
+  to Windows, so TypeScript refused it; it became `CompareChart.tsx`. The phone-width screenshot
+  showed a clipped tab switch that the tests could not see.
+- Open question: Adam's band is much wider than SGD's at the end; is Adam less reliable across
+  seeds, or just further along a curve that SGD has not reached yet (Study S3 can run longer)?
+- Follow-up (same day, after the user's screenshot): the hover text smeared on a large screen
+  because SVG text and its outline are stretched with the chart (about 1.9 times at 1917 px); the
+  read-out is now an HTML box. Validation loss only exists for runs that hold examples back, and no
+  shipped config did; `configs/toy_sine_val.yaml` does (final validation loss median 0.00677 over 5
+  seeds at 1000 epochs).
+
+### 2026-10-31 — Task 4.10 Environment view: mouse pan and zoom (added at the user's request)
+- Concept: the camera (a world point at the canvas centre and a scale in pixels per metre); zooming
+  around the cursor keeps the point under the mouse fixed; panning moves the centre against the drag.
+- Key equation(s) in words: new centre = point under the cursor minus the cursor's offset from the
+  canvas centre divided by the new scale; pan: centre minus drag divided by scale (y flipped).
+- What we observed: the worked example gives centre (12.5, 0) at scale 4 with 25 m still under the
+  cursor; in the browser the point under the cursor moved by less than a pixel; a click had to move
+  from pointer press to pointer release so that a press can still turn into a drag.
+- Surprise or difficulty: the browser tests caught a real bug (+ in free mode did not redraw because
+  the mode did not change), and three of my own test mistakes (reading the camera before the first
+  frame, and zooming the car off the canvas before clicking it).
+- Open question: should the free view be remembered per page, and should the drawer and the full view
+  share one camera?
+
+### 2026-10-31 — Task 4.8 Study S3: optimizers and learning rates
+- Concept: the learning rate decides stability (an edge above which training blows up); optimizers
+  decide how each weight's step is sized; a fair comparison tunes each method on some seeds and
+  reports on fresh ones; overfitting shows as validation loss turning up while training loss falls.
+- Key equation(s) in words: gradient descent is stable along a direction of curvature lambda while
+  learning rate times lambda is below 2; with momentum while it is below 2 times (1 + beta).
+- What we observed: SGD and Momentum on sine blow up between learning rates 0.1 and 0.3; RMSProp and
+  Adam never overflow, but RMSProp ends at a loss of 392 at rate 3; at their best rates on fresh seeds
+  Adam ends about 580 times lower than SGD, Momentum is fastest to 0.01; a big network on 48 noisy
+  points has its best validation loss near epoch 500 and ends 2.5 times worse, yet its best point beats
+  the small network's best.
+- Surprise or difficulty: Momentum's edge was not 10 times lower than SGD's, as I predicted, but the
+  same on the grid and in theory about twice as high; the only unsolved run spiked in its last 20
+  epochs; and the study exposed three bugs in the Compare-runs view (a crash on large runs, labels
+  that ran ahead of the data, identical truncated names).
+- Open question: would a learning-rate schedule (or keeping the best checkpoint) remove the late
+  spikes near the edge, and is RMSProp's best rate below the grid?
+
+### 2026-10-31 — Task 4.9 PyTorch reference cross-check
+- Concept: an independent reference (PyTorch's automatic differentiation and torch.optim) checks
+  our hand-written backprop and optimizers exactly, including conventions a finite-difference
+  check cannot see (the 1/M of MSE, the 1/2 in Huber, where epsilon sits); a negative control (a
+  deliberately wrong optimizer) proves the check can fail.
+- Key equation(s) in words: a number passes when the gap between ours and PyTorch's is at most
+  1e-12 plus 1e-10 times PyTorch's value; float64 rounding alone is about 1e-16.
+- What we observed: all 96 gradient cases, 8 optimizer cases and 8 training runs agree to
+  1e-14 or better; Adam without bias correction is off by 0.64 and RMSProp with epsilon inside the
+  square root by 0.03, so both are caught.
+- Surprise or difficulty: RMSProp training drifted 1e-6 to 1e-5 from PyTorch after about 40
+  epochs, yet our own RMSProp drifts as far from itself when only the rounding order changes. Its
+  steps become about lr times the sign of the gradient, so the last digit of a near-zero gradient
+  decides which way a step goes; rounding gets amplified, not the maths changed.
+- Open question: does that sensitivity matter for reproducibility across machines (different
+  BLAS libraries round differently), and would Phase 6 want Adam rather than RMSProp because of it?
+
+### 2026-11-01 — Phase 4 complete (tag `phase-4`)
+- What was built: in `learn/supervised`, seeded minibatching and train/validation splits; in
+  `core/optim`, a functional optimizer contract with SGD, Momentum (PyTorch style), RMSProp and
+  Adam and a registry; the toy learner with optimizers, minibatches and a validation loss; config
+  file v1 (nested, validated by Pydantic, resolved copies stored in run folders) with `nd train`;
+  `experiment/stats.py` (percentiles, curve bands, seeded bootstrap intervals) and `nd sweep`;
+  the "Compare runs" tab (`GET /api/runs/compare`, api v1.11) with median curves, IQR bands, a
+  run table and training or validation loss; mouse pan and zoom in the Environment view (task
+  4.10, added at the user's request); study S3 (220 runs) with the new toy task `noisy_sine`;
+  a PyTorch cross-check in `reference/` and a guard that keeps ML frameworks out of `src/`.
+  1,513 Python tests (plus 9 PyTorch tests run on demand), 143 web unit tests, 64 browser tests.
+- What was learned: an optimizer is a rule for turning a gradient into a step; momentum adds a
+  memory of past steps, RMSProp gives every weight its own step size, Adam combines both and
+  corrects their start-up bias; the learning rate sets an edge of stability (gradient descent
+  stays stable along a direction of curvature lambda while lr times lambda is below 2, with
+  momentum below 2 times (1 + beta)): on sine SGD and Momentum blow up between 0.1 and 0.3, while
+  RMSProp and Adam never overflow but stop improving; a fair comparison tunes each method on some
+  seeds and reports on fresh ones (Adam ended about 580 times lower than SGD, paired bootstrap
+  interval excluding 0); a big network on few noisy points overfits (validation loss lowest near
+  epoch 500, then 2.5 times worse), which is what early stopping is for; and our gradients and
+  optimizers agree with PyTorch to about 1e-14, while RMSProp amplifies rounding differences.
+- Decisions: ADR-032 (config v1, resolved configs in run folders, `nd train` replaces the toy
+  script, task 4.6 split), ADR-033 (sweeps as run folders with a `sweep` id, statistics in Python,
+  the Compare-runs tab, task 4.7 split). No learning-rate schedule (the user's choice in 4.5).
+- Fixed along the way: a Prettier run that re-wrapped working web files (undone; no formatter is
+  run on existing web files), blurry hover text in the compare chart (now an HTML box), and three
+  Compare-runs bugs found by study S3 (a stack overflow on large runs, labels ahead of the data,
+  clipped end labels).
+- Open questions: would a learning-rate schedule or keeping the best checkpoint remove the late
+  spikes near the edge? Is RMSProp's best rate below the grid? Which optimizer and rate should
+  imitation learning (Phase 6) start from, Adam at 0.01 as on sine? Does RMSProp's rounding
+  sensitivity matter across machines? Whether the user can predict too-high learning-rate
+  behaviour (this phase's last criterion) is for the user to confirm; the evidence is in S3.

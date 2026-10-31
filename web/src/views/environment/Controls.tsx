@@ -77,7 +77,7 @@ export function Controls({
   onZoomIn,
   onZoomOut,
 }: {
-  mode: "follow" | "fit";
+  mode: "follow" | "fit" | "free";
   onModeChange: (mode: "follow" | "fit") => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
@@ -258,11 +258,15 @@ export function Controls({
             Whole track
           </button>
         </div>
+        {mode === "free" && (
+          <span className="camera-note" data-testid="camera-free">
+            Free view
+          </span>
+        )}
         <button
           type="button"
           data-testid="zoom-out"
           aria-label="Zoom out"
-          disabled={mode !== "follow"}
           onClick={onZoomOut}
         >
           −
@@ -271,7 +275,6 @@ export function Controls({
           type="button"
           data-testid="zoom-in"
           aria-label="Zoom in"
-          disabled={mode !== "follow"}
           onClick={onZoomIn}
         >
           +

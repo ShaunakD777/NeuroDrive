@@ -129,13 +129,13 @@ These are created in Phase 0. If a task changes a command, update this section i
 | Start backend (port 8000) | `uv run python -m neurodrive serve` (or `uv run nd serve`; add `--runs-dir <folder>` to show other runs) |
 | Start web app (port 5173) | `cd web && npm install && npm run dev` |
 | Regenerate the track files in `tracks/` | `uv run python scripts/make_tracks.py` |
-| Train a toy task (line, sine, xor, two_spirals) into `runs/` (until `nd train`, task 4.6) | `uv run python scripts/train_toy.py --task xor` |
-| Train from a config | `uv run nd train --config configs/<name>.yaml` |
-| Run several seeds | `uv run nd sweep --config configs/<name>.yaml --seeds 0-4` |
+| Train from a config into `runs/` (toy configs: `configs/toy_line.yaml`, `toy_sine.yaml`, `toy_xor.yaml`, `toy_two_spirals.yaml`; options `--seed`, `--tag`, `--epochs`, `--runs-dir`) | `uv run python -m neurodrive train --config configs/toy_xor.yaml` (or `uv run nd train ...`) |
+| Run several seeds (one run folder per seed, tag `<tag>-s<seed>`, shared `sweep` id; prints median and IQR of the final loss) | `uv run python -m neurodrive sweep --config configs/toy_sine.yaml --seeds 0-4` (or `uv run nd sweep ...`) |
 | Driving Exam on a checkpoint | `uv run nd exam --run runs/<run_id> --unit <n>` |
 | Rebuild / check the SQLite mirror | `uv run nd db rebuild` / `uv run nd db check` |
 | Web unit tests / smoke test | `cd web && npm run test` / `npm run e2e` |
 | Regenerate TypeScript types from the Python message models | `cd web && npm run gen:types` |
+| PyTorch cross-check of our gradients and optimizers (PyTorch fetched for that run only; `reference/` is never imported by `src/`) | `uv run --with torch python reference/torch_check.py` (its tests: `uv run --with torch python -m pytest tests/reference`) |
 | Run all pre-commit hooks | `uv run python -m pre_commit run --all-files` |
 | Install the git hooks (once per clone) | `uv run python -m pre_commit install` |
 
@@ -149,8 +149,7 @@ the Python that uv downloads (seen on 2026-10-25), install Python 3.12 from pyth
 `runs/` (tag `e2e`) the first time.
 
 **Not available yet** (the command is listed so its final form is fixed; running it today gives
-"No such command"): `nd train` arrives in task 4.6, `nd sweep` in 4.7, `nd exam` in 5.4 and
-`nd db` in 5.5b.
+"No such command"): `nd exam` arrives in task 5.4 and `nd db` in 5.5b.
 
 ## 7. Project slash commands
 

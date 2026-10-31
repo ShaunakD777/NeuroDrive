@@ -1,0 +1,22 @@
+# Toy task "sine" with a validation set: a quarter of the 128 points (32) is held back and never
+# trained on, so every epoch also records the validation loss (task 4.7b follow-up).
+# Sweep:  uv run python -m neurodrive sweep --config configs/toy_sine_val.yaml --seeds 0-4
+# Then: Experiment -> Compare runs -> tick the sweep -> "validation loss".
+# Format: docs/ARCHITECTURE.md section 6.15 (config v1, ADR-032).
+method: toy
+task: sine
+seed: 0
+tag: val
+network:
+  layer_sizes: [1, 16, 1]
+  hidden_activation: tanh
+  output_activation: linear
+  init_scheme: xavier
+training:
+  epochs: 1000
+  loss: mse
+  batch_size: 16        # 96 training points in 6 minibatches per epoch
+  val_fraction: 0.25    # share of examples held back for validation
+optimizer:
+  name: adam
+  learning_rate: 0.01

@@ -2,7 +2,7 @@
 // no maths about networks here: every number comes from the Python server (ADR-012); this only maps
 // numbers to pixels and styles. See docs/ARCHITECTURE.md §8.
 
-import type { RunMetrics } from "../../api/generated";
+import type { RunMetrics, RunSummary } from "../../api/generated";
 
 export type Scale = (value: number) => number;
 
@@ -142,4 +142,137 @@ export function formatNumber(v: number): string {
   const a = Math.abs(v);
   if (a < 1e-3 || a >= 1e5) return v.toExponential(2);
   return Number(v.toPrecision(3)).toString();
+}
+
+/** What the toy lab's summary line shows about a run's config. */
+export interface ToyRunSummary {
+  task: string;
+  layerSizes: number[];
+  hiddenActivation: string;
+  outputActivation: string;
+  optimizer: string;
+  learningRate: number;
+}
+
+/**
+ * Read a run's stored config (`GET /api/runs/{id}`) for the summary line. Run folders hold either
+ * the config file format of task 4.6b (`network`, `training` and `optimizer` sections, ADR-032)
+ * or the flat dictionary of Phase 3 toy runs (always plain SGD). Only reads; computes nothing.
+ */
+export function toyRunSummary(config: Record<string, unknown>): ToyRunSummary {
+  const network = config.network as Record<string, unknown> | undefined;
+  const optimizer = config.optimizer as Record<string, unknown> | undefined;
+  if (network && optimizer) {
+    return {
+      task: String(config.task),
+      layerSizes: network.layer_sizes as number[],
+      hiddenActivation: String(network.hidden_activation),
+      outputActivation: String(network.output_activation),
+      optimizer: String(optimizer.name),
+      learningRate: Number(optimizer.learning_rate),
+    };
+  }
+  return {
+    task: String(config.task),
+    layerSizes: config.layer_sizes as number[],
+    hiddenActivation: String(config.hidden_activation),
+    outputActivation: String(config.output_activation),
+    optimizer: String(config.optimizer ?? "sgd"),
+    learningRate: Number(config.learning_rate),
+  };
+}
+
+// ---- Compare runs (task 4.7b, ADR-033) ----
+
+/** How many groups can be compared at once: one per categorical colour slot, never recycled. */
+export const MAX_GROUPS = 8;
+
+/**
+ * Give each group a colour slot (0 to MAX_GROUPS - 1). A group keeps the slot it had before (the
+ * colour follows the group, not its position), new groups take the smallest free slot. Returns
+ * null when there are more groups than slots.
+ */
+export function colorSlots(
+  groupIds: readonly string[],
+  previous: Readonly<Record<string, number>>,
+): Record<string, number> | null {
+  if (groupIds.length > MAX_GROUPS) return null;
+  const slots: Record<string, number> = {};
+  const used = new Set<number>();
+  for (const id of groupIds) {
+    const slot = previous[id];
+    if (slot !== undefined && !used.has(slot)) {
+      slots[id] = slot;
+      used.add(slot);
+    }
+  }
+  for (const id of groupIds) {
+    if (slots[id] !== undefined) continue;
+    let slot = 0;
+    while (used.has(slot)) slot += 1;
+    slots[id] = slot;
+    used.add(slot);
+  }
+  return slots;
+}
+
+/**
+ * The outline of a band between a lower and an upper line through the same x positions (already
+ * in pixels): along the upper line left to right, then back along the lower line, closed.
+ */
+export function bandPath(
+  xs: readonly number[],
+  lower: readonly number[],
+  upper: readonly number[],
+): string {
+  if (xs.length === 0) return "";
+  const top = xs.map((x, i) => `${x.toFixed(1)},${upper[i].toFixed(1)}`);
+  const bottom = xs
+    .map((x, i) => `${x.toFixed(1)},${lower[i].toFixed(1)}`)
+    .reverse();
+  return `M${top.join("L")}L${bottom.join("L")}Z`;
+}
+
+/** A run-list entry: a sweep with its runs, or a single run (sweep null). */
+export interface RunGroup {
+  groupId: string;
+  sweep: string | null;
+  runs: RunSummary[];
+}
+
+/**
+ * Group the run list (newest first) by sweep: every sweep becomes one entry holding its runs in
+ * seed order, at the place of its newest run; a run without a sweep is an entry of its own.
+ */
+export function groupRuns(runs: readonly RunSummary[]): RunGroup[] {
+  const groups: RunGroup[] = [];
+  const bySweep = new Map<string, RunGroup>();
+  for (const run of runs) {
+    const sweep = run.sweep ?? null;
+    if (sweep === null) {
+      groups.push({ groupId: run.run_id, sweep: null, runs: [run] });
+      continue;
+    }
+    let group = bySweep.get(sweep);
+    if (!group) {
+      group = { groupId: sweep, sweep, runs: [] };
+      bySweep.set(sweep, group);
+      groups.push(group);
+    }
+    group.runs.push(run);
+  }
+  for (const g of groups)
+    g.runs.sort((a, b) => (sweepSeed(a) ?? 0) - (sweepSeed(b) ?? 0));
+  return groups;
+}
+
+/** The seed of a sweep run, read from its tag `<tag>-s<seed>` (null if the tag has no suffix). */
+export function sweepSeed(run: RunSummary): number | null {
+  const match = /-s(\d+)$/.exec(run.tag);
+  return match ? Number(match[1]) : null;
+}
+
+/** A short name for a run or sweep id: without the leading `YYYYMMDD-HHMMSS-` time stamp. */
+export function shortName(id: string): string {
+  return id.replace(/^\d{8}-\d{6}-/, "");
 }

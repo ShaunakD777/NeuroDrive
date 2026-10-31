@@ -1,0 +1,24 @@
+# Toy task "noisy_sine": 64 points of y = sin(x) + noise (std 0.2), a quarter held back for
+# validation, fitted by a big network [1, 64, 64, 1] with Adam: the overfitting set-up of
+# Study S3 (task 4.8, docs/studies/S3.md). The training loss keeps falling below the noise level
+# (0.04) while the validation loss turns up after a few hundred epochs.
+# Sweep:  uv run python -m neurodrive sweep --config configs/toy_noisy_sine.yaml --seeds 0-4
+# Then: Experiment -> Compare runs -> tick the sweep -> "training loss" / "validation loss".
+# Format: docs/ARCHITECTURE.md section 6.15 (config v1, ADR-032).
+method: toy
+task: noisy_sine
+seed: 0
+tag: default
+network:
+  layer_sizes: [1, 64, 64, 1]
+  hidden_activation: tanh
+  output_activation: linear
+  init_scheme: xavier
+training:
+  epochs: 5000
+  loss: mse
+  batch_size: null      # null = full batch (all 48 training points in one step)
+  val_fraction: 0.25    # 16 of the 64 points held back for validation
+optimizer:
+  name: adam
+  learning_rate: 0.01

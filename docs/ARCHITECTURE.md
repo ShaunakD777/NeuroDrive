@@ -41,7 +41,7 @@ Status: v1 (planning). Changes to §6 contracts require an ADR in `DECISIONS.md`
 | Web state | Zustand | Library |
 | Track drawing | HTML Canvas 2D | Our drawing code |
 | Network diagram | SVG (every neuron/edge clickable) | Our drawing code |
-| Charts | uPlot | Library |
+| Charts | SVG with our own helpers (`web/src/views/experiment/charts.ts`, ADR-033) | Our drawing code |
 | Web→Python type sharing | Pydantic JSON Schema → `json-schema-to-typescript` | Generated |
 | Web tests | Vitest (logic), Playwright (smoke) | Library |
 | Optional cross-checks | PyTorch in `reference/` only | Library, never imported by `src/` |
@@ -120,7 +120,7 @@ neurodrive/
 │  │  ├─ rl/                     returns.py, gaussian_policy.py, reinforce.py, actor_critic.py, ppo.py
 │  │  └─ hybrid/                 distill.py, pretrain_finetune.py
 │  ├─ experiment/
-│  │  ├─ config.py               Pydantic models for every config file
+│  │  ├─ config.py               Pydantic models for every config file (toy: config v1, §6.15)
 │  │  ├─ runner.py               training loop orchestration, checkpoint & exam schedules
 │  │  ├─ store.py                run folder read/write
 │  │  ├─ toy_view.py             toy lab numbers for one checkpoint: predictions, loss, gradients, glow
@@ -312,7 +312,8 @@ stop conditions (max env steps, max wall-clock, max units).
 ```
 runs/<YYYYMMDD-HHMMSS>-<method>-<tag>/
   config.yaml        fully resolved config, including seed
-  meta.json          git commit + dirty flag, Python/NumPy versions, start/end, status
+  meta.json          git commit + dirty flag, Python/NumPy versions, start/end, status,
+                     sweep (only for runs made by `nd sweep`: the sweep id, ADR-033)
   metrics.jsonl      one JSON object per unit: unit, env_steps_total, demo_frames_total,
                      wall_clock_s, native metrics (loss / fitness stats / return ...)
   checkpoints/       unit_<n>.npz (+ index.json listing units and what each holds)
@@ -328,7 +329,40 @@ Exam spec version, list of tracks, per-episode metrics (track, start index, prog
 crashed, lap times, mean speed, smoothness, time to crash), and aggregates per track and overall
 (median, IQR, completion rate). See `EXPERIMENT_PROTOCOL.md`.
 
-## 7. Server API (api v1.10, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031)
+### 6.15 Config file (toy: config v1, ADR-032)
+A YAML file; `method` picks the model in `experiment/config.py` (only `toy` so far; later methods
+add their own model). Unknown fields, wrong types, unknown names and out-of-range numbers are
+refused, every problem listed as `field.path: message`. A toy config:
+
+```yaml
+method: toy
+task: sine                 # line | sine | xor | two_spirals
+seed: 0                    # whole number >= 0 (default 0)
+tag: default               # letters, digits, _ or - (default "default")
+network:
+  layer_sizes: [1, 16, 1]  # inputs first, outputs last; must fit the task
+  hidden_activation: tanh  # default tanh
+  output_activation: linear  # default linear
+  init_scheme: xavier      # xavier | uniform | zeros (default xavier)
+training:
+  epochs: 3000             # required, >= 1
+  loss: mse                # mse | huber (default mse)
+  batch_size: null         # null = full batch (default), else >= 1
+  val_fraction: 0.0        # in [0, 1) (default 0)
+optimizer:                 # required; name and learning_rate (> 0) are required
+  name: sgd                # sgd | momentum (beta) | rmsprop (rho, eps) | adam (beta1, beta2, eps)
+  learning_rate: 0.05
+```
+
+Only the named optimizer's own settings are allowed; their defaults are those of `core/optim`
+(momentum β 0.9; RMSProp ρ 0.9, ε 1e-8; Adam β₁ 0.9, β₂ 0.999, ε 1e-8). A run folder's
+`config.yaml` holds the *resolved* config (this format, every default written out), so
+`nd train --config runs/<id>/config.yaml` re-creates the run. Toy run folders written before task
+4.6b hold the learner's flat `ToyConfig` dictionary; they are still read (converted on load).
+`nd train --config FILE [--seed S] [--tag T] [--epochs E] [--runs-dir D]` overrides `seed`, `tag`
+and `training.epochs`; an invalid config exits with status 2 and creates no run folder.
+
+## 7. Server API (api v1.11, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033)
 
 REST (`/api/...`):
 - `GET health` → `{status: "ok", version}` (`version` is the NeuroDrive package version)
@@ -349,6 +383,15 @@ REST (`/api/...`):
   bias_gradients, glow, max_gradient}`, glow = |dL/dW| / max|dL/dW| per checkpoint. Read-only;
   run ids must look like folder names (no path escape); unknown → 404, toy view of a non-toy run
   → 400. `nd serve --runs-dir` chooses the folder (default `<repo>/runs`).
+  *Added in api v1.11 (task 4.7b, ADR-033):* each `GET runs` entry has `sweep` (the sweep id of a
+  run made by `nd sweep`, else null). `GET runs/compare?ids=a,b,...&metric=loss|val_loss` →
+  `{metric, groups, runs, skipped}`: the runs grouped by sweep (a run without one is its own group)
+  in request order; per group `{group_id, run_ids, unit, median, q1, q3, n_present, n_finite,
+  final_median, final_q1, final_q3, n_diverged}` computed by `experiment/stats.py` (a diverged run
+  counts as +infinity, sent as null); per run `{run_id, group_id, seed, status, diverged, unit,
+  values, final}` (`loss` from epoch 0 = the loss before training, `val_loss` from epoch 1);
+  `skipped` = runs without the metric. Unknown or malformed id → 404; no ids, more than 64 or an
+  unknown metric → 422. Shown in the Experiment page's "Compare runs" tab.
 - `GET runs/{id}/checkpoints/{unit}/diff?from={unit}`: per-weight change
 - `POST runs` (launch from a config), `POST runs/{id}/stop`
 - `POST replay` {run, unit, track, seed, focus_cars} → Episode Recording

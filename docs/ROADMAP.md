@@ -349,15 +349,28 @@ step on f(w) = (w − 3)² from w = 0 with lr 0.1 gives w = 0.6.
 **4.3 Momentum:** `core/optim/momentum.py`, tests. Verify: first two steps match hand values.
 **4.4 RMSProp:** `core/optim/rmsprop.py`, tests. Verify: hand values.
 **4.5 Adam:** `core/optim/adam.py`, tests, including bias correction. Verify: hand values for 3 steps.
-**4.6 Config system and `nd train`:** `experiment/config.py` (Pydantic), `configs/toy_*.yaml`,
-`cli.py`. Verify: invalid configs give clear errors; a toy run is created from YAML.
-**4.7 Sweeps and overlays:** `nd sweep`, `experiment/stats.py` (median, IQR, bootstrap CI),
-`web/src/views/experiment/RunList.tsx` + `Charts.tsx` (overlaid curves with bands). Verify: stats
-unit tests; 5-seed sweep displayed.
+**4.6a Toy learner on the optimizers (split from 4.6, ADR-032):** `learn/supervised/train_toy.py`
+uses an optimizer chosen by name (`core/optim`), minibatches and an optional validation split
+(`learn/supervised/datasets.py`) and reports `val_loss`. Verify: the defaults reproduce Phase 3
+runs bit for bit; every optimizer lowers the sine loss; an epoch takes ceil(N / B) steps.
+**4.6b Config system and `nd train` (ADR-032):** `experiment/config.py` (Pydantic), `configs/toy_*.yaml`,
+`cli.py`; `scripts/train_toy.py` removed. Verify: invalid configs give clear errors; a toy run is
+created from YAML.
+**4.7a Statistics and `nd sweep` (split from 4.7, ADR-033):** `experiment/stats.py` (median, IQR,
+bootstrap CI), `nd sweep` (one run folder per seed, `sweep` id in `meta.json`). Verify: stats unit
+tests; a 5-seed sweep gives 5 run folders identical to single `nd train` runs.
+**4.7b Compare-runs view (ADR-033):** `GET runs/compare` (api v1.11),
+`web/src/views/experiment/RunList.tsx` + `CompareChart.tsx` (overlaid curves with bands; named so to
+not clash with `charts.ts` on case-insensitive file systems) in a
+"Compare runs" tab. Verify: 5-seed sweep displayed.
 **4.8 Study S3:** learning-rate sweep; optimizer comparison on sine across 5 seeds; overfitting
 demo with a validation curve. Study report.
 **4.9 (opt) Reference cross-check:** `reference/torch_check.py` compares our gradients and Adam
 steps with PyTorch.
+**4.10 Environment view: mouse pan and zoom (added 2026-10-31 at the user's request):** wheel zoom
+around the cursor, drag to pan, a free camera mode, in the full view and the compact drawer
+(`web/src/views/environment/`). Verify: the point under the cursor stays put while zooming; a plain
+click still selects; Follow car / Whole track / double-click return.
 
 ---
 

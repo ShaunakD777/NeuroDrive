@@ -1,6 +1,7 @@
 import type {
   ActivationCurves,
   CheckpointList,
+  CompareResponse,
   RunDetail,
   RunListResponse,
   RunMetrics,
@@ -31,7 +32,7 @@ export async function fetchActivations(): Promise<ActivationCurves> {
   return getJson<ActivationCurves>("/api/activations");
 }
 
-// Run folders (api v1.10, ADR-031). Run ids are folder names; they are encoded for the URL anyway.
+// Run folders (api v1.11, ADR-031, ADR-033). Run ids are folder names; they are encoded for the URL anyway.
 const runPath = (runId: string) => `/api/runs/${encodeURIComponent(runId)}`;
 
 /** Every run folder, newest first (`GET /api/runs`). */
@@ -57,4 +58,13 @@ export async function fetchCheckpoints(runId: string): Promise<CheckpointList> {
 /** The toy lab's view of one checkpoint (`GET /api/runs/{id}/checkpoints/{unit}/toy`). */
 export async function fetchToyCheckpoint(runId: string, unit: number): Promise<ToyCheckpointResponse> {
   return getJson<ToyCheckpointResponse>(`${runPath(runId)}/checkpoints/${unit}/toy`);
+}
+
+/**
+ * Loss curves of several runs grouped by sweep, with median and IQR per epoch, computed by the
+ * server (`GET /api/runs/compare`, ADR-033). A null median or quartile means +infinity (diverged).
+ */
+export async function fetchCompare(runIds: readonly string[], metric: "loss" | "val_loss"): Promise<CompareResponse> {
+  const ids = runIds.map(encodeURIComponent).join(",");
+  return getJson<CompareResponse>(`/api/runs/compare?ids=${ids}&metric=${metric}`);
 }

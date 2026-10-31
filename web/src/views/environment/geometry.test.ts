@@ -8,9 +8,13 @@ import {
   MAX_SCALE,
   MIN_SCALE,
   nearestCar,
+  panBy,
   rayEnd,
+  scaleLimits,
   screenToWorld,
+  wheelFactor,
   worldToScreen,
+  zoomAt,
 } from "./geometry";
 
 const size = { w: 200, h: 100 };
@@ -103,5 +107,47 @@ describe("picking a car", () => {
     expect(nearestCar(cam, big, xs, ys, 251, 200, 10)).toBe(1);
     expect(nearestCar(cam, big, xs, ys, 300, 300, 10)).toBeNull();
     expect(nearestCar(cam, big, [], [], 200, 200, 10)).toBeNull();
+  });
+});
+
+describe("mouse pan and zoom (task 4.10)", () => {
+  const square = { w: 200, h: 200 };
+  const limits = { min: 0.5, max: 40 };
+
+  it("zooms around the cursor: the Brief's worked example", () => {
+    const cam = zoomAt({ cx: 0, cy: 0, scale: 2 }, square, 150, 100, 2, limits);
+    expect(cam).toEqual({ cx: 12.5, cy: 0, scale: 4 });
+    expect(worldToScreen(cam, square, 25, 0)).toEqual([150, 100]); // still under the cursor
+  });
+
+  it("keeps the point under the cursor for any factor and position", () => {
+    const start = { cx: 3, cy: -7, scale: 5 };
+    for (const [px, py, f] of [[10, 190, 0.86], [123, 45, 1.16], [200, 0, 3]]) {
+      const before = screenToWorld(start, square, px, py);
+      const cam = zoomAt(start, square, px, py, f, limits);
+      const [sx, sy] = worldToScreen(cam, square, before[0], before[1]);
+      expect(sx).toBeCloseTo(px, 9);
+      expect(sy).toBeCloseTo(py, 9);
+    }
+  });
+
+  it("stops at the limits", () => {
+    expect(zoomAt({ cx: 0, cy: 0, scale: 30 }, square, 100, 100, 10, limits).scale).toBe(40);
+    expect(zoomAt({ cx: 0, cy: 0, scale: 1 }, square, 100, 100, 0.01, limits).scale).toBe(0.5);
+  });
+
+  it("pans with the mouse: the Brief's example", () => {
+    expect(panBy({ cx: 0, cy: 0, scale: 4 }, 40, -20)).toEqual({ cx: -10, cy: -5, scale: 4 });
+  });
+
+  it("turns wheel steps into zoom factors", () => {
+    expect(wheelFactor(-100)).toBeCloseTo(1.1618, 4);
+    expect(wheelFactor(100)).toBeCloseTo(0.8607, 4);
+    expect(wheelFactor(0)).toBe(1);
+  });
+
+  it("lowers the zoom-out limit when the whole track needs a smaller scale", () => {
+    expect(scaleLimits(2)).toEqual({ min: MIN_SCALE, max: MAX_SCALE });
+    expect(scaleLimits(0.3)).toEqual({ min: 0.15, max: MAX_SCALE });
   });
 });

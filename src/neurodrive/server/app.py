@@ -7,9 +7,10 @@ open, so the server can push messages without being asked each time, which live 
 import asyncio
 import time
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 
 from neurodrive import __version__
 from neurodrive.core.activations import ACTIVATIONS
@@ -19,6 +20,7 @@ from neurodrive.server.schemas import (
     ActivationCurves,
     CheckpointList,
     CheckpointNetwork,
+    CompareResponse,
     HealthResponse,
     HelloMessage,
     RunDetail,
@@ -32,6 +34,7 @@ from neurodrive.server.schemas import (
 
 DEFAULT_TRACKS_DIR = Path(__file__).resolve().parents[3] / "tracks"  # <repository>/tracks
 DEFAULT_RUNS_DIR = Path(__file__).resolve().parents[3] / "runs"  # <repository>/runs (git-ignored)
+MAX_COMPARE_RUNS = 64  # runs per comparison request (8 groups of 8 seeds)
 TICK_SECONDS = 1.0 / 120.0  # timer period; Windows rounds it up to about 15 ms, which is still fine
 
 
@@ -66,13 +69,31 @@ def create_app(tracks_dir: Path | None = None, runs_dir: Path | None = None) -> 
         except KeyError:
             raise HTTPException(status_code=404, detail=f"unknown track {name!r}") from None
 
-    # Run folders (api v1.10, ADR-031). Read-only; an unknown run or checkpoint is a 404.
+    # Run folders (api v1.11, ADR-031, ADR-033). Read-only; an unknown run or checkpoint is a 404.
     def missing(what: str) -> HTTPException:
         return HTTPException(status_code=404, detail=f"unknown {what}")
 
     @app.get("/api/runs")
     def list_runs() -> RunListResponse:
         return runs.list()
+
+    # Declared before /api/runs/{run_id}, so that "compare" is not taken for a run id.
+    @app.get("/api/runs/compare")
+    def compare_runs(
+        ids: str = Query(..., description="Comma-separated run ids."),
+        metric: Literal["loss", "val_loss"] = "loss",
+    ) -> CompareResponse:
+        run_ids = [i for i in ids.split(",") if i]
+        if not run_ids:
+            raise HTTPException(status_code=422, detail="ids must name at least one run")
+        if len(run_ids) > MAX_COMPARE_RUNS:
+            raise HTTPException(
+                status_code=422, detail=f"compare at most {MAX_COMPARE_RUNS} runs at once"
+            )
+        try:
+            return runs.compare(run_ids, metric)
+        except KeyError as error:
+            raise missing(f"run {error.args[0]!r}") from None
 
     @app.get("/api/runs/{run_id}")
     def run_detail(run_id: str) -> RunDetail:

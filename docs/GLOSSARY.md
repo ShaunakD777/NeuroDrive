@@ -193,3 +193,41 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Negative control | A run deliberately set up to fail (zero weights, flipped signs) to show that the success was caused by the thing being tested. |
 | Driving Exam (preview) | The fixed set of starts and limits every controller is judged on: 10 starts, 2 laps, 90 s. Built properly in Phase 5. |
 | Interquartile range (IQR) | The spread of the middle half of the results (25th to 75th percentile); reported with the median instead of a single best run. |
+| Validation set | Examples set aside that the network never learns from; its loss shows whether the network learned the pattern or only memorised the training examples. |
+| Train/validation split | Randomly dividing a dataset into the training part (used for learning) and the validation part (used only for checking). |
+| Batch size | The number of examples B in one minibatch; one epoch of N examples has ceil(N / B) learning steps. |
+| Shuffling | Putting the training examples in a new random order each epoch, so every minibatch is a fair sample and the order never becomes a pattern to learn. |
+| Optimizer | The rule that turns gradients into new parameter values. Backprop says which way is downhill; the optimizer decides how far to step. |
+| SGD (stochastic gradient descent) | The simplest optimizer: every parameter moves by the learning rate times its gradient, against the gradient. "Stochastic" because the gradient comes from a random minibatch. |
+| Momentum | An optimizer that keeps a running "velocity" of past gradients: consistent directions add up and speed the parameters along, zig-zags partly cancel. |
+| Velocity | In momentum, the remembered, decaying sum of past gradients for one parameter; the step is the learning rate times the velocity. |
+| Momentum coefficient (β) | The fraction of the old velocity kept at each step, between 0 and 1 (usually 0.9). β = 0 is plain SGD. |
+| Optimizer state | The memory an optimizer carries between steps (momentum's velocities; later RMSProp's and Adam's averages). SGD has none. |
+| RMSProp | An optimizer that divides each parameter's gradient by the typical size of its recent gradients (a running root mean square), so every parameter moves at a similar pace. |
+| Exponential moving average | A running average that keeps a fraction ρ of the old value and mixes in (1 − ρ) of the new one at each step, so recent values count most and old ones fade away. |
+| Adaptive learning rate | A step size that differs per parameter and adjusts itself during training, as in RMSProp and Adam. |
+| Epsilon (ε) in optimizers | A tiny number (such as 1e-8) added to a denominator so it can never be zero; it only matters when gradients are themselves tiny. |
+| Adam | Adaptive Moment Estimation: an optimizer that combines momentum's running average of the gradient with RMSProp's running average of the squared gradient, plus bias correction. The default optimizer in much of deep learning. |
+| First moment (m) | In Adam, the running average of the gradient: its smoothed direction. |
+| Second moment (v) | In Adam, the running average of the squared gradient: its typical size. |
+| Bias correction | Dividing Adam's moments by 1 − βᵗ (t = step number) to undo the fact that they start at 0 and are too small for the first steps. Fades away as t grows. |
+| Validation loss | The loss measured on the validation set after each epoch. Falling training loss with rising validation loss is the signature of overfitting. |
+| Stochastic gradient | The gradient of the loss on one minibatch: an estimate of the full-data gradient, noisy because the batch is a random sample. |
+| Config file | The complete recipe of an experiment written as data (YAML): task, network, training settings, optimizer and seed. Same config + same code = same run. |
+| Config validation | Checking a config before anything runs: unknown fields, wrong types, unknown names and impossible numbers are refused with a message naming the field. |
+| Resolved config | A config with every default written out, as stored in a run folder, so re-running it never depends on defaults that might change later. |
+| Percentile | The value below which a given share of the sorted results lie (the 25th percentile has a quarter below it); computed here by linear interpolation. |
+| Quartiles (Q1, Q3) | The 25th and 75th percentiles; the IQR is Q3 − Q1. |
+| Bootstrap confidence interval | How sure a median is: re-draw the results many times with replacement, take each draw's median, and report the middle 95 % of those medians. |
+| Sweep | One config trained several times, once per seed (later also once per setting), so results can be summarised across runs. |
+| Curve band | The shaded area between Q1 and Q3 of several runs' learning curves at every epoch, drawn around the median curve. |
+| Zoom around the cursor | Changing the scale and then shifting the camera centre so that the world point under the mouse stays under it, as map apps do. |
+| Pan | Moving the view by dragging: the camera centre moves against the drag, by the drag distance divided by the scale (pixels to metres). |
+| Edge of stability | The learning rate above which training blows up instead of settling: every step overshoots along the steepest direction by more than it corrects. |
+| Curvature (λ) | How fast the slope itself changes along a direction (the second derivative). Gradient descent is stable there while η·λ < 2; with momentum while η·λ < 2(1 + β). |
+| Selection bias (tuning) | A setting picked as best on some seeds looks better on those seeds than it really is; so settings are tuned on one set of seeds and reported on fresh ones. |
+| Early stopping | Ending training (or keeping the checkpoint) where the validation loss is lowest, before the network starts fitting the noise in its training data. |
+| Overfitting ratio | Final validation loss divided by the lowest validation loss of a run; 1 means no overfitting. |
+| Automatic differentiation (autograd) | A library records every operation of the forward pass and applies the chain rule itself to get the gradients (PyTorch does this). NeuroDrive writes the same chain rule out by hand in `core/nn/backward.py`. |
+| Machine epsilon | The gap between 1 and the next number a computer can store: about 2.2e-16 for float64. Two correct programs that do the same sum in a different order can differ by a few of these in the last digits (rounding error). |
+| Reference implementation | An independent, trusted implementation used only to check our own results; here PyTorch, kept in `reference/` and never imported by `src/`. |

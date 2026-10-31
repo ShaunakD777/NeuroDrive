@@ -54,6 +54,101 @@ export interface CheckpointNetwork {
 }
 
 /**
+ * One group (a sweep, or a single run) in ``GET /api/runs/compare``.
+ *
+ * ``unit``, ``median``, ``q1``, ``q3``, ``n_present``, ``n_finite``: per epoch, across the group's
+ * runs (``experiment/stats.curve_bands``; a diverged run counts as +infinity from its divergence
+ * on, sent as **null** because JSON has no infinity). ``final_*``: the median and quartiles of
+ * the runs' final values (a diverged run counts as +infinity, null), ``n_diverged`` how many
+ * diverged.
+ */
+export interface CompareGroup {
+  final_median: number | null;
+  final_q1: number | null;
+  final_q3: number | null;
+  group_id: string;
+  median: (number | null)[];
+  n_diverged: number;
+  n_finite: number[];
+  n_present: number[];
+  q1: (number | null)[];
+  q3: (number | null)[];
+  run_ids: string[];
+  unit: number[];
+}
+
+/**
+ * Answer to ``GET /api/runs/compare?ids=a,b,...&metric=loss|val_loss`` (api v1.11, ADR-033).
+ *
+ * Groups in the order their first run was asked for. ``skipped`` lists the runs that have no
+ * values for ``metric`` (for example ``val_loss`` of a run without a validation set).
+ */
+export interface CompareResponse {
+  groups: CompareGroup[];
+  metric: "loss" | "val_loss";
+  runs: CompareRun[];
+  skipped: string[];
+}
+/**
+ * One group (a sweep, or a single run) in ``GET /api/runs/compare``.
+ *
+ * ``unit``, ``median``, ``q1``, ``q3``, ``n_present``, ``n_finite``: per epoch, across the group's
+ * runs (``experiment/stats.curve_bands``; a diverged run counts as +infinity from its divergence
+ * on, sent as **null** because JSON has no infinity). ``final_*``: the median and quartiles of
+ * the runs' final values (a diverged run counts as +infinity, null), ``n_diverged`` how many
+ * diverged.
+ */
+export interface CompareGroup {
+  final_median: number | null;
+  final_q1: number | null;
+  final_q3: number | null;
+  group_id: string;
+  median: (number | null)[];
+  n_diverged: number;
+  n_finite: number[];
+  n_present: number[];
+  q1: (number | null)[];
+  q3: (number | null)[];
+  run_ids: string[];
+  unit: number[];
+}
+/**
+ * One run's curve in ``GET /api/runs/compare`` (api v1.11, ADR-033).
+ *
+ * ``unit[i]`` is the epoch of ``values[i]`` (from 0 for ``loss``: the loss before training;
+ * from 1 for ``val_loss``). A value is null where the run diverged. ``final`` is the last
+ * finite value (null if there is none); ``seed`` comes from the run's config.
+ */
+export interface CompareRun {
+  diverged: boolean;
+  final: number | null;
+  group_id: string;
+  run_id: string;
+  seed: number | null;
+  status: string;
+  unit: number[];
+  values: (number | null)[];
+}
+
+/**
+ * One run's curve in ``GET /api/runs/compare`` (api v1.11, ADR-033).
+ *
+ * ``unit[i]`` is the epoch of ``values[i]`` (from 0 for ``loss``: the loss before training;
+ * from 1 for ``val_loss``). A value is null where the run diverged. ``final`` is the last
+ * finite value (null if there is none); ``seed`` comes from the run's config.
+ */
+export interface CompareRun {
+  diverged: boolean;
+  final: number | null;
+  group_id: string;
+  run_id: string;
+  seed: number | null;
+  status: string;
+  unit: number[];
+  values: (number | null)[];
+}
+
+/**
  * Sent once when every car has stopped; the session then pauses.
  *
  * ``status`` has one name per car: crashed, finished, stalled or timeout.
@@ -546,11 +641,12 @@ export interface RunListResponse {
   runs: RunSummary[];
 }
 /**
- * One entry of ``GET /api/runs`` (api v1.10, ADR-031): a run folder's identity and state.
+ * One entry of ``GET /api/runs`` (api v1.11, ADR-031, ADR-033): a run folder, its state.
  *
  * ``run_id`` is the folder name (``<YYYYMMDD-HHMMSS>-<method>-<tag>``), ``status`` one of
  * running, completed, diverged, failed. ``checkpoints`` is how many checkpoints it holds and
- * ``last_unit`` the latest one (null when there are none).
+ * ``last_unit`` the latest one (null when there are none). ``sweep`` is the sweep id of a run
+ * made by ``nd sweep`` (null otherwise).
  */
 export interface RunSummary {
   checkpoints: number;
@@ -560,6 +656,7 @@ export interface RunSummary {
   run_id: string;
   started_at: string;
   status: "running" | "completed" | "diverged" | "failed";
+  sweep: string | null;
   tag: string;
 }
 
@@ -581,11 +678,12 @@ export interface RunMetrics {
 }
 
 /**
- * One entry of ``GET /api/runs`` (api v1.10, ADR-031): a run folder's identity and state.
+ * One entry of ``GET /api/runs`` (api v1.11, ADR-031, ADR-033): a run folder, its state.
  *
  * ``run_id`` is the folder name (``<YYYYMMDD-HHMMSS>-<method>-<tag>``), ``status`` one of
  * running, completed, diverged, failed. ``checkpoints`` is how many checkpoints it holds and
- * ``last_unit`` the latest one (null when there are none).
+ * ``last_unit`` the latest one (null when there are none). ``sweep`` is the sweep id of a run
+ * made by ``nd sweep`` (null otherwise).
  */
 export interface RunSummary {
   checkpoints: number;
@@ -595,6 +693,7 @@ export interface RunSummary {
   run_id: string;
   started_at: string;
   status: "running" | "completed" | "diverged" | "failed";
+  sweep: string | null;
   tag: string;
 }
 

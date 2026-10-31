@@ -9,6 +9,9 @@ Each task is a set of inputs ``x`` (shape (N, n_inputs)) with targets ``y`` (sha
   single neuron can separate it (no straight line splits the 1s from the 0s); one hidden layer can.
 * ``two_spirals``: two interleaved spirals, labelled 0 and 1. A classic hard case for small
   networks; provided as data, solving it is optional.
+* ``noisy_sine``: 64 points of y = sin(x) + noise (Gaussian, standard deviation 0.2), x uniform in
+  [-pi, pi]. Few, noisy points: a big network can fit the noise itself, which is overfitting
+  (Study S3, task 4.8). A perfect sine curve has a loss of about 0.2² = 0.04 on these points.
 
 Random draws come from the generator passed in, so the same seed always gives the same data.
 """
@@ -81,7 +84,26 @@ def two_spirals(rng: Rng, n_per_class: int = 100, noise: float = 0.02) -> ToyDat
     return ToyDataset("two_spirals", x, y, "two interleaved spirals, labels 0 and 1")
 
 
-TOY_TASKS = {"line": line, "sine": sine, "xor": xor, "two_spirals": two_spirals}
+NOISY_SINE_NOISE = 0.2
+
+
+def noisy_sine(rng: Rng, n: int = 64, noise: float = NOISY_SINE_NOISE) -> ToyDataset:
+    """``n`` points of y = sin(x) + noise: x uniform in [-pi, pi], Gaussian noise of std ``noise``.
+
+    The inputs are drawn first, then the noise, both from ``rng``.
+    """
+    x = rng.uniform(-np.pi, np.pi, size=(n, 1))
+    y = np.sin(x) + noise * rng.standard_normal((n, 1))
+    return ToyDataset("noisy_sine", x, y, f"y = sin(x) + noise (std {noise}) on [-pi, pi]")
+
+
+TOY_TASKS = {
+    "line": line,
+    "sine": sine,
+    "xor": xor,
+    "two_spirals": two_spirals,
+    "noisy_sine": noisy_sine,
+}
 
 
 def make_toy_dataset(name: str, rng: Rng) -> ToyDataset:

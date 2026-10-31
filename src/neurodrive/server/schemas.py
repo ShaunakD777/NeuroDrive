@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
-API_VERSION = "v1.10"
+API_VERSION = "v1.11"
 
 
 class WireModel(BaseModel):
@@ -467,11 +467,12 @@ class ErrorMessage(WireModel):
 # Every model the browser sends or receives. `npm run gen:types` turns each one into a TypeScript
 # type, so a new message shape is added here and nowhere else.
 class RunSummary(WireModel):
-    """One entry of ``GET /api/runs`` (api v1.10, ADR-031): a run folder's identity and state.
+    """One entry of ``GET /api/runs`` (api v1.11, ADR-031, ADR-033): a run folder, its state.
 
     ``run_id`` is the folder name (``<YYYYMMDD-HHMMSS>-<method>-<tag>``), ``status`` one of
     running, completed, diverged, failed. ``checkpoints`` is how many checkpoints it holds and
-    ``last_unit`` the latest one (null when there are none).
+    ``last_unit`` the latest one (null when there are none). ``sweep`` is the sweep id of a run
+    made by ``nd sweep`` (null otherwise).
     """
 
     run_id: str
@@ -482,6 +483,7 @@ class RunSummary(WireModel):
     ended_at: str | None
     checkpoints: int
     last_unit: int | None
+    sweep: str | None = None
 
 
 class RunListResponse(WireModel):
@@ -566,6 +568,61 @@ class ToyCheckpointResponse(WireModel):
     max_gradient: float
 
 
+class CompareRun(WireModel):
+    """One run's curve in ``GET /api/runs/compare`` (api v1.11, ADR-033).
+
+    ``unit[i]`` is the epoch of ``values[i]`` (from 0 for ``loss``: the loss before training;
+    from 1 for ``val_loss``). A value is null where the run diverged. ``final`` is the last
+    finite value (null if there is none); ``seed`` comes from the run's config.
+    """
+
+    run_id: str
+    group_id: str
+    seed: int | None
+    status: str
+    diverged: bool
+    unit: list[int]
+    values: list[float | None]
+    final: float | None
+
+
+class CompareGroup(WireModel):
+    """One group (a sweep, or a single run) in ``GET /api/runs/compare``.
+
+    ``unit``, ``median``, ``q1``, ``q3``, ``n_present``, ``n_finite``: per epoch, across the group's
+    runs (``experiment/stats.curve_bands``; a diverged run counts as +infinity from its divergence
+    on, sent as **null** because JSON has no infinity). ``final_*``: the median and quartiles of
+    the runs' final values (a diverged run counts as +infinity, null), ``n_diverged`` how many
+    diverged.
+    """
+
+    group_id: str
+    run_ids: list[str]
+    unit: list[int]
+    median: list[float | None]
+    q1: list[float | None]
+    q3: list[float | None]
+    n_present: list[int]
+    n_finite: list[int]
+    final_median: float | None
+    final_q1: float | None
+    final_q3: float | None
+    n_diverged: int
+
+
+class CompareResponse(WireModel):
+    """Answer to ``GET /api/runs/compare?ids=a,b,...&metric=loss|val_loss`` (api v1.11, ADR-033).
+
+    Groups in the order their first run was asked for. ``skipped`` lists the runs that have no
+    values for ``metric`` (for example ``val_loss`` of a run without a validation set).
+    """
+
+    metric: Literal["loss", "val_loss"]
+    groups: list[CompareGroup]
+    runs: list[CompareRun]
+    skipped: list[str]
+
+
 WIRE_MODELS: tuple[type[WireModel], ...] = (
     HealthResponse,
     HelloMessage,
@@ -603,6 +660,9 @@ WIRE_MODELS: tuple[type[WireModel], ...] = (
     RunListResponse,
     RunDetail,
     RunMetrics,
+    CompareRun,
+    CompareGroup,
+    CompareResponse,
     CheckpointList,
     CheckpointNetwork,
     ToyCheckpointResponse,

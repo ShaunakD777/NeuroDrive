@@ -1,0 +1,21 @@
+# Toy task "line": fit y = 2x - 0.5 with one linear neuron (task 3.7 defaults).
+# Train:  uv run python -m neurodrive train --config configs/toy_line.yaml
+# Success: the weight ends near 2 and the bias near -0.5.
+# Format: docs/ARCHITECTURE.md section 6.15 (config v1, ADR-032).
+method: toy
+task: line
+seed: 0
+tag: default
+network:
+  layer_sizes: [1, 1]
+  hidden_activation: linear
+  output_activation: linear
+  init_scheme: xavier
+training:
+  epochs: 200
+  loss: mse
+  batch_size: null      # null = full batch (all examples in one step)
+  val_fraction: 0.0     # share of examples held back for validation
+optimizer:
+  name: sgd             # sgd, momentum, rmsprop or adam
+  learning_rate: 0.5

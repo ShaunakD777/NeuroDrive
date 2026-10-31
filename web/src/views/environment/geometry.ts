@@ -61,6 +61,54 @@ export function fitCamera(points: number[][], size: Size, margin = 24): Camera {
   return { cx: (minX + maxX) / 2, cy: (minY + maxY) / 2, scale: clampScale(scale) };
 }
 
+// ---- Mouse pan and zoom (task 4.10) ----
+
+/** Smallest and largest scale (pixels per metre) the mouse may zoom to. */
+export interface ScaleLimits {
+  min: number;
+  max: number;
+}
+
+/**
+ * The zoom limits: MIN_SCALE to MAX_SCALE, but the lower limit drops to half the "whole track"
+ * scale `fitScale` when that is smaller, so a small canvas can always zoom out to the whole track.
+ */
+export function scaleLimits(fitScale: number): ScaleLimits {
+  return { min: Math.min(MIN_SCALE, fitScale / 2), max: MAX_SCALE };
+}
+
+/** One wheel event's zoom factor f = e^(-0.0015 Δ): a mouse notch (Δ = ±100) gives 0.86 or 1.16. */
+export function wheelFactor(deltaY: number): number {
+  return Math.exp(-0.0015 * deltaY);
+}
+
+/**
+ * Zoom by `factor` around the screen point (px, py): the world point w under it stays under it.
+ * w = screenToWorld(p); s' = s · factor (within `limits`); cx' = wx − (px − W/2)/s',
+ * cy' = wy + (py − H/2)/s'. Example: 200 × 200 canvas, centre (0, 0), s = 2, cursor (150, 100),
+ * factor 2 → s' = 4, centre (12.5, 0).
+ */
+export function zoomAt(
+  cam: Camera,
+  size: Size,
+  px: number,
+  py: number,
+  factor: number,
+  limits: ScaleLimits,
+): Camera {
+  const [wx, wy] = screenToWorld(cam, size, px, py);
+  const scale = Math.min(limits.max, Math.max(limits.min, cam.scale * factor));
+  return { cx: wx - (px - size.w / 2) / scale, cy: wy + (py - size.h / 2) / scale, scale };
+}
+
+/**
+ * Move the view with a drag of (dx, dy) screen pixels: the track follows the mouse, so the centre
+ * moves the other way, cx' = cx − dx/s and cy' = cy + dy/s (screen y points down).
+ */
+export function panBy(cam: Camera, dx: number, dy: number): Camera {
+  return { cx: cam.cx - dx / cam.scale, cy: cam.cy + dy / cam.scale, scale: cam.scale };
+}
+
 /** The end point (world metres) of a ray of length `distance` at angle `rel` from the heading. */
 export function rayEnd(
   x: number,
