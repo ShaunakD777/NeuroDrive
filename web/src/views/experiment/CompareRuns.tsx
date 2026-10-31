@@ -35,6 +35,7 @@ export function CompareRuns({ headerExtra }: { headerExtra?: ReactNode }) {
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [metric, setMetric] = useState<Metric>("loss");
   const [data, setData] = useState<CompareResponse | null>(null);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const slotMemory = useRef<Record<string, number>>({});
@@ -87,24 +88,31 @@ export function CompareRuns({ headerExtra }: { headerExtra?: ReactNode }) {
     const ids = [...selected];
     if (ids.length === 0) {
       setData(null);
+      setLoading(false);
       return;
     }
     let live = true;
+    setLoading(true);
     fetchCompare(ids, metric)
       .then((answer) => {
         if (!live) return;
         setData(answer);
         setError(null);
+        setLoading(false);
       })
       .catch((e: Error) => {
-        if (live) setError(e.message);
+        if (!live) return;
+        setError(e.message);
+        setLoading(false);
       });
     return () => {
       live = false;
     };
   }, [selected, metric]);
 
-  const metricLabel = METRICS.find((m) => m.id === metric)!.label;
+  // Label what is drawn, which is the metric of the last answer: right after a switch the old
+  // answer is still on screen until the new one arrives (Study S3 found it mislabelled).
+  const metricLabel = METRICS.find((m) => m.id === (data?.metric ?? metric))!.label;
   const show = (v: number | null) =>
     v === null ? "∞ (diverged)" : formatNumber(v);
 
@@ -135,6 +143,11 @@ export function CompareRuns({ headerExtra }: { headerExtra?: ReactNode }) {
           <button type="button" onClick={() => setSelected(new Set())}>
             Clear
           </button>
+        )}
+        {loading && (
+          <span className="camera-note" data-testid="compare-loading">
+            Loading…
+          </span>
         )}
       </div>
 

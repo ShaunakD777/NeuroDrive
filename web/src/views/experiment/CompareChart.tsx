@@ -3,6 +3,7 @@ import { useMemo, useState, type CSSProperties, type MouseEvent } from "react";
 import type { CompareResponse } from "../../api/generated";
 import {
   bandPath,
+  extent,
   formatNumber,
   formatPowerOfTen,
   linePath,
@@ -17,6 +18,9 @@ const W = 640;
 const H = 300;
 const M = { left: 58, right: 120, top: 14, bottom: 40 };
 const LABEL_GAP = 14; // minimum vertical distance between two end-of-line labels, in px
+
+/** An end-of-line label: long names keep their end, where sweeps of one task differ. */
+const endLabel = (name: string) => (name.length > 16 ? `…${name.slice(-15)}` : name);
 
 /** Position of epoch u on a log axis: u + 1, so epoch 0 sits at the left edge. */
 const shift = (u: number) => u + 1;
@@ -50,16 +54,16 @@ export function CompareChart({
         for (const v of series) if (v !== null && v > 0) finite.push(v);
     for (const r of data.runs)
       for (const v of r.values) if (v !== null && v > 0) finite.push(v);
-    const lo = finite.length ? Math.min(...finite) : 1e-3;
-    const hi = finite.length ? Math.max(...finite) : 1;
+    // A loop, not Math.min(...finite): spreading ~100 000 values (20 runs of 5000 epochs, Study
+    // S3) into one call overflows the call stack.
+    const [lo, hi] = finite.length ? extent(finite) : [1e-3, 1];
     let yTicks = logTicks(lo, hi);
     const yTop = yTicks[yTicks.length - 1];
     const y = logScale(yTicks[0], yTop, H - M.bottom, M.top);
     if (yTicks.length > 7)
       yTicks = yTicks.filter((_, i) => i % Math.ceil(yTicks.length / 6) === 0);
     const units = data.groups.flatMap((g) => g.unit);
-    const first = units.length ? Math.min(...units) : 0;
-    const last = units.length ? Math.max(...units) : 1;
+    const [first, last] = units.length ? extent(units) : [0, 1];
     const x = logScale(
       shift(first),
       shift(Math.max(last, first + 1)),
@@ -244,7 +248,7 @@ export function CompareChart({
               x={g.end.x + 18}
               y={labelY[g.group.group_id] + 4}
             >
-              {shortName(g.group.group_id).slice(0, 16)}
+              {endLabel(shortName(g.group.group_id))}
             </text>
           </g>
         ))}

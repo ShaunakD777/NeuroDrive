@@ -253,3 +253,10 @@ describe("compare runs helpers", () => {
     expect(sweepSeed(run("x", "default", null))).toBeNull();
   });
 });
+
+describe("extent on long inputs", () => {
+  it("handles 200 000 values (Math.min(...values) would overflow the call stack)", () => {
+    const values = Array.from({ length: 200_000 }, (_, i) => (i === 123_456 ? 1e-7 : 1 + (i % 7)));
+    expect(extent(values)).toEqual([1e-7, 7]);
+  });
+});

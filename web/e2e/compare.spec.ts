@@ -33,7 +33,9 @@ async function openCompare(page: Page) {
   await page.goto("/#/experiment");
   await page.getByTestId("experiment-tab-compare").click();
   await expect(page.getByTestId("compare")).toBeVisible();
-  await expect(page.getByTestId("runlist-group").first()).toBeVisible();
+  // The list arrives after one request (about 0.05 s), but the first page of each parallel test
+  // worker can wait several seconds for the dev server to compile changed modules.
+  await expect(page.getByTestId("runlist-group").first()).toBeVisible({ timeout: 15_000 });
 }
 
 test("compare runs: a 5-seed sweep shows one band, one median line and five run lines", async ({
@@ -113,6 +115,8 @@ test("compare runs: the hover box and the validation curves of the validation ex
   // These runs held back a validation set, so their validation curves are drawn (from epoch 1).
   await page.getByRole("button", { name: "validation loss" }).click();
   await expect(page.getByTestId("compare-chart")).toContainText("validation loss after each epoch");
+  await expect(page.getByTestId("compare-loading")).toHaveCount(0);
+  await expect(page.getByTestId("compare-table")).toContainText("Final validation loss per group");
   await expect(page.getByTestId("compare-run-line")).toHaveCount(5);
   await expect(page.getByTestId("compare-skipped")).toHaveCount(0);
 });

@@ -1043,3 +1043,21 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   frame, and zooming the car off the canvas before clicking it).
 - Open question: should the free view be remembered per page, and should the drawer and the full view
   share one camera?
+
+### 2026-10-31 — Task 4.8 Study S3: optimizers and learning rates
+- Concept: the learning rate decides stability (an edge above which training blows up); optimizers
+  decide how each weight's step is sized; a fair comparison tunes each method on some seeds and
+  reports on fresh ones; overfitting shows as validation loss turning up while training loss falls.
+- Key equation(s) in words: gradient descent is stable along a direction of curvature lambda while
+  learning rate times lambda is below 2; with momentum while it is below 2 times (1 + beta).
+- What we observed: SGD and Momentum on sine blow up between learning rates 0.1 and 0.3; RMSProp and
+  Adam never overflow, but RMSProp ends at a loss of 392 at rate 3; at their best rates on fresh seeds
+  Adam ends about 580 times lower than SGD, Momentum is fastest to 0.01; a big network on 48 noisy
+  points has its best validation loss near epoch 500 and ends 2.5 times worse, yet its best point beats
+  the small network's best.
+- Surprise or difficulty: Momentum's edge was not 10 times lower than SGD's, as I predicted, but the
+  same on the grid and in theory about twice as high; the only unsolved run spiked in its last 20
+  epochs; and the study exposed three bugs in the Compare-runs view (a crash on large runs, labels
+  that ran ahead of the data, identical truncated names).
+- Open question: would a learning-rate schedule (or keeping the best checkpoint) remove the late
+  spikes near the edge, and is RMSProp's best rate below the grid?

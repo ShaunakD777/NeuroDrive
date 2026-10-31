@@ -130,6 +130,18 @@ DEFAULTS = {
     "two_spirals": ToyConfig(
         "two_spirals", (2, 16, 16, 1), "tanh", "sigmoid", learning_rate=0.5, epochs=5000
     ),
+    # The overfitting set-up of Study S3 (task 4.8): a big network on 48 noisy training points.
+    "noisy_sine": ToyConfig(
+        "noisy_sine",
+        (1, 64, 64, 1),
+        "tanh",
+        "linear",
+        learning_rate=0.01,
+        epochs=5000,
+        optimizer="adam",
+        optimizer_settings={"beta1": 0.9, "beta2": 0.999, "eps": 1e-8},
+        val_fraction=0.25,
+    ),
 }
 
 

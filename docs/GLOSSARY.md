@@ -223,3 +223,8 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Curve band | The shaded area between Q1 and Q3 of several runs' learning curves at every epoch, drawn around the median curve. |
 | Zoom around the cursor | Changing the scale and then shifting the camera centre so that the world point under the mouse stays under it, as map apps do. |
 | Pan | Moving the view by dragging: the camera centre moves against the drag, by the drag distance divided by the scale (pixels to metres). |
+| Edge of stability | The learning rate above which training blows up instead of settling: every step overshoots along the steepest direction by more than it corrects. |
+| Curvature (λ) | How fast the slope itself changes along a direction (the second derivative). Gradient descent is stable there while η·λ < 2; with momentum while η·λ < 2(1 + β). |
+| Selection bias (tuning) | A setting picked as best on some seeds looks better on those seeds than it really is; so settings are tuned on one set of seeds and reported on fresh ones. |
+| Early stopping | Ending training (or keeping the checkpoint) where the validation loss is lowest, before the network starts fitting the noise in its training data. |
+| Overfitting ratio | Final validation loss divided by the lowest validation loss of a run; 1 means no overfitting. |

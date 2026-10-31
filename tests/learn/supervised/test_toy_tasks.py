@@ -10,6 +10,7 @@ from neurodrive.learn.supervised.toy_tasks import (
     TOY_TASKS,
     line,
     make_toy_dataset,
+    noisy_sine,
     sine,
     two_spirals,
     xor,
@@ -32,7 +33,7 @@ def test_same_seed_same_data(name):
     np.testing.assert_array_equal(a.y, b.y)
 
 
-@pytest.mark.parametrize("name", ["line", "sine", "two_spirals"])
+@pytest.mark.parametrize("name", ["line", "sine", "two_spirals", "noisy_sine"])
 def test_different_seed_different_data(name):
     a, b = make_toy_dataset(name, make_rng(0)), make_toy_dataset(name, make_rng(1))
     assert not np.array_equal(a.x, b.x)
@@ -71,3 +72,15 @@ def test_two_spirals_balanced_and_mirrored():
 def test_unknown_task_lists_valid_names():
     with pytest.raises(ValueError, match="unknown toy task 'circle'.*line.*sine"):
         make_toy_dataset("circle", make_rng(0))
+
+
+def test_noisy_sine_is_sine_plus_noise_of_the_stated_size():
+    d = noisy_sine(make_rng(3), n=4000)
+    assert d.x.shape == (4000, 1) and d.y.shape == (4000, 1)
+    assert np.all(np.abs(d.x) <= np.pi)
+    residual = d.y - np.sin(d.x)
+    assert abs(float(residual.mean())) < 0.02
+    assert float(residual.std()) == pytest.approx(0.2, rel=0.05)
+    clean = noisy_sine(make_rng(3), n=10, noise=0.0)
+    np.testing.assert_allclose(clean.y, np.sin(clean.x))
+    assert noisy_sine(make_rng(0)).x.shape == (64, 1)  # the default size
