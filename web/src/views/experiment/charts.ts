@@ -2,29 +2,19 @@
 // no maths about networks here: every number comes from the Python server (ADR-012); this only maps
 // numbers to pixels and styles. See docs/ARCHITECTURE.md §8.
 
-import type { RunMetrics } from "../../api/generated";
+import type { RunMetrics, RunSummary } from "../../api/generated";
 
 export type Scale = (value: number) => number;
 
 /** Straight-line map from [d0, d1] to [r0, r1] (a zero-width domain maps to the middle). */
-export function linearScale(
-  d0: number,
-  d1: number,
-  r0: number,
-  r1: number,
-): Scale {
+export function linearScale(d0: number, d1: number, r0: number, r1: number): Scale {
   if (d1 === d0) return () => (r0 + r1) / 2;
   const k = (r1 - r0) / (d1 - d0);
   return (v) => r0 + (v - d0) * k;
 }
 
 /** Map on a base-10 log scale: equal pixel steps for each factor of 10. Needs d0, d1 > 0. */
-export function logScale(
-  d0: number,
-  d1: number,
-  r0: number,
-  r1: number,
-): Scale {
+export function logScale(d0: number, d1: number, r0: number, r1: number): Scale {
   const inner = linearScale(Math.log10(d0), Math.log10(d1), r0, r1);
   return (v) => inner(Math.log10(Math.max(v, Number.MIN_VALUE)));
 }
@@ -58,8 +48,7 @@ export function niceTicks(lo: number, hi: number, count = 5): number[] {
   if (!(hi > lo)) return [lo];
   const raw = (hi - lo) / count;
   const power = 10 ** Math.floor(Math.log10(raw));
-  const step =
-    [1, 2, 5, 10].map((m) => m * power).find((s) => s >= raw) ?? 10 * power;
+  const step = [1, 2, 5, 10].map((m) => m * power).find((s) => s >= raw) ?? 10 * power;
   const ticks: number[] = [];
   for (let t = Math.ceil(lo / step) * step; t <= hi + step * 1e-9; t += step) {
     ticks.push(Number(t.toPrecision(12)));
@@ -90,9 +79,7 @@ export function lossCurve(m: RunMetrics): { unit: number[]; loss: number[] } {
 
 /** An SVG path through the points (x[i], y[i]): "M x0 y0 L x1 y1 ...". */
 export function linePath(xs: readonly number[], ys: readonly number[]): string {
-  return xs
-    .map((x, i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)} ${ys[i].toFixed(1)}`)
-    .join(" ");
+  return xs.map((x, i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)} ${ys[i].toFixed(1)}`).join(" ");
 }
 
 /** Index of the entry of ascending `sorted` closest to `value`. */
@@ -115,20 +102,13 @@ export type Pole = "pos" | "neg" | "mid";
  * hue. `percent` (0..100) is how much of the hue to mix into the neutral; values beyond the ends
  * are clamped.
  */
-export function divergingMix(
-  value: number,
-  lo: number,
-  hi: number,
-): { pole: Pole; percent: number } {
+export function divergingMix(value: number, lo: number, hi: number): { pole: Pole; percent: number } {
   const mid = (lo + hi) / 2;
   const half = (hi - lo) / 2;
   if (half <= 0) return { pole: "mid", percent: 0 };
   const t = Math.max(-1, Math.min(1, (value - mid) / half));
   if (Math.abs(t) < 1e-9) return { pole: "mid", percent: 0 };
-  return {
-    pole: t > 0 ? "pos" : "neg",
-    percent: Math.round(Math.abs(t) * 100),
-  };
+  return { pole: t > 0 ? "pos" : "neg", percent: Math.round(Math.abs(t) * 100) };
 }
 
 /**
@@ -200,4 +180,99 @@ export function toyRunSummary(config: Record<string, unknown>): ToyRunSummary {
     optimizer: String(config.optimizer ?? "sgd"),
     learningRate: Number(config.learning_rate),
   };
+}
+
+// ---- Compare runs (task 4.7b, ADR-033) ----
+
+/** How many groups can be compared at once: one per categorical colour slot, never recycled. */
+export const MAX_GROUPS = 8;
+
+/**
+ * Give each group a colour slot (0 to MAX_GROUPS - 1). A group keeps the slot it had before (the
+ * colour follows the group, not its position), new groups take the smallest free slot. Returns
+ * null when there are more groups than slots.
+ */
+export function colorSlots(
+  groupIds: readonly string[],
+  previous: Readonly<Record<string, number>>,
+): Record<string, number> | null {
+  if (groupIds.length > MAX_GROUPS) return null;
+  const slots: Record<string, number> = {};
+  const used = new Set<number>();
+  for (const id of groupIds) {
+    const slot = previous[id];
+    if (slot !== undefined && !used.has(slot)) {
+      slots[id] = slot;
+      used.add(slot);
+    }
+  }
+  for (const id of groupIds) {
+    if (slots[id] !== undefined) continue;
+    let slot = 0;
+    while (used.has(slot)) slot += 1;
+    slots[id] = slot;
+    used.add(slot);
+  }
+  return slots;
+}
+
+/**
+ * The outline of a band between a lower and an upper line through the same x positions (already
+ * in pixels): along the upper line left to right, then back along the lower line, closed.
+ */
+export function bandPath(
+  xs: readonly number[],
+  lower: readonly number[],
+  upper: readonly number[],
+): string {
+  if (xs.length === 0) return "";
+  const top = xs.map((x, i) => `${x.toFixed(1)},${upper[i].toFixed(1)}`);
+  const bottom = xs
+    .map((x, i) => `${x.toFixed(1)},${lower[i].toFixed(1)}`)
+    .reverse();
+  return `M${top.join("L")}L${bottom.join("L")}Z`;
+}
+
+/** A run-list entry: a sweep with its runs, or a single run (sweep null). */
+export interface RunGroup {
+  groupId: string;
+  sweep: string | null;
+  runs: RunSummary[];
+}
+
+/**
+ * Group the run list (newest first) by sweep: every sweep becomes one entry holding its runs in
+ * seed order, at the place of its newest run; a run without a sweep is an entry of its own.
+ */
+export function groupRuns(runs: readonly RunSummary[]): RunGroup[] {
+  const groups: RunGroup[] = [];
+  const bySweep = new Map<string, RunGroup>();
+  for (const run of runs) {
+    const sweep = run.sweep ?? null;
+    if (sweep === null) {
+      groups.push({ groupId: run.run_id, sweep: null, runs: [run] });
+      continue;
+    }
+    let group = bySweep.get(sweep);
+    if (!group) {
+      group = { groupId: sweep, sweep, runs: [] };
+      bySweep.set(sweep, group);
+      groups.push(group);
+    }
+    group.runs.push(run);
+  }
+  for (const g of groups)
+    g.runs.sort((a, b) => (sweepSeed(a) ?? 0) - (sweepSeed(b) ?? 0));
+  return groups;
+}
+
+/** The seed of a sweep run, read from its tag `<tag>-s<seed>` (null if the tag has no suffix). */
+export function sweepSeed(run: RunSummary): number | null {
+  const match = /-s(\d+)$/.exec(run.tag);
+  return match ? Number(match[1]) : null;
+}
+
+/** A short name for a run or sweep id: without the leading `YYYYMMDD-HHMMSS-` time stamp. */
+export function shortName(id: string): string {
+  return id.replace(/^\d{8}-\d{6}-/, "");
 }

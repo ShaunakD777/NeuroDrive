@@ -360,7 +360,8 @@ created from YAML.
 bootstrap CI), `nd sweep` (one run folder per seed, `sweep` id in `meta.json`). Verify: stats unit
 tests; a 5-seed sweep gives 5 run folders identical to single `nd train` runs.
 **4.7b Compare-runs view (ADR-033):** `GET runs/compare` (api v1.11),
-`web/src/views/experiment/RunList.tsx` + `Charts.tsx` (overlaid curves with bands) in a
+`web/src/views/experiment/RunList.tsx` + `CompareChart.tsx` (overlaid curves with bands; named so to
+not clash with `charts.ts` on case-insensitive file systems) in a
 "Compare runs" tab. Verify: 5-seed sweep displayed.
 **4.8 Study S3:** learning-rate sweep; optimizer comparison on sine across 5 seeds; overfitting
 demo with a validation curve. Study report.

@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import type { RunMetrics } from "../../api/generated";
+import type { RunMetrics, RunSummary } from "../../api/generated";
 import {
+  MAX_GROUPS,
+  bandPath,
+  colorSlots,
   divergingMix,
   extent,
   formatNumber,
   formatPowerOfTen,
+  groupRuns,
   glowStroke,
   linePath,
   linearScale,
@@ -13,9 +17,11 @@ import {
   logTicks,
   lossCurve,
   nearestIndex,
-  toyRunSummary,
+  shortName,
+  sweepSeed,
   niceTicks,
   stepDirection,
+  toyRunSummary,
 } from "./charts";
 
 const metrics = (over: Partial<RunMetrics> = {}): RunMetrics => ({
@@ -64,25 +70,16 @@ describe("scales", () => {
 
 describe("loss curve", () => {
   it("starts at unit 0 with the untrained loss, then each unit's loss", () => {
-    expect(lossCurve(metrics())).toEqual({
-      unit: [0, 1, 2, 3],
-      loss: [1.0, 0.5, 0.2, 0.1],
-    });
+    expect(lossCurve(metrics())).toEqual({ unit: [0, 1, 2, 3], loss: [1.0, 0.5, 0.2, 0.1] });
   });
 
   it("leaves out diverged units", () => {
-    const m = metrics({
-      loss: [0.5, 9.0, null],
-      loss_before: [1.0, 0.5, 9.0],
-      diverged: [false, false, true],
-    });
+    const m = metrics({ loss: [0.5, 9.0, null], loss_before: [1.0, 0.5, 9.0], diverged: [false, false, true] });
     expect(lossCurve(m)).toEqual({ unit: [0, 1, 2], loss: [1.0, 0.5, 9.0] });
   });
 
   it("is empty for a run without metrics", () => {
-    expect(
-      lossCurve(metrics({ unit: [], loss: [], loss_before: [], diverged: [] })),
-    ).toEqual({
+    expect(lossCurve(metrics({ unit: [], loss: [], loss_before: [], diverged: [] }))).toEqual({
       unit: [],
       loss: [],
     });
@@ -91,9 +88,7 @@ describe("loss curve", () => {
 
 describe("paths and lookups", () => {
   it("draws a path through the points", () => {
-    expect(linePath([0, 10, 20], [5, 6, 7.25])).toBe(
-      "M0.0 5.0 L10.0 6.0 L20.0 7.3",
-    );
+    expect(linePath([0, 10, 20], [5, 6, 7.25])).toBe("M0.0 5.0 L10.0 6.0 L20.0 7.3");
   });
 
   it("finds the nearest checkpoint", () => {
@@ -193,5 +188,68 @@ describe("toyRunSummary", () => {
       optimizer: "sgd",
       learningRate: 1,
     });
+  });
+});
+
+function run(run_id: string, tag: string, sweep: string | null): RunSummary {
+  return {
+    run_id,
+    method: "toy_sine",
+    tag,
+    status: "completed",
+    started_at: "",
+    ended_at: null,
+    checkpoints: 1,
+    last_unit: 1,
+    sweep,
+  };
+}
+
+describe("compare runs helpers", () => {
+  it("colorSlots keeps a group's colour when others come and go", () => {
+    const first = colorSlots(["a", "b", "c"], {})!;
+    expect(first).toEqual({ a: 0, b: 1, c: 2 });
+    const second = colorSlots(["a", "c", "d"], first)!; // b removed, d added
+    expect(second).toEqual({ a: 0, c: 2, d: 1 }); // c keeps 2, d takes the free slot 1
+  });
+
+  it("colorSlots refuses more groups than colours instead of recycling", () => {
+    const ids = Array.from({ length: MAX_GROUPS + 1 }, (_, i) => `g${i}`);
+    expect(colorSlots(ids.slice(0, MAX_GROUPS), {})).not.toBeNull();
+    expect(colorSlots(ids, {})).toBeNull();
+  });
+
+  it("bandPath goes along the upper line and back along the lower one", () => {
+    expect(bandPath([0, 10, 20], [5, 6, 7], [1, 2, 3])).toBe(
+      "M0.0,1.0L10.0,2.0L20.0,3.0L20.0,7.0L10.0,6.0L0.0,5.0Z",
+    );
+    expect(bandPath([], [], [])).toBe("");
+  });
+
+  it("groupRuns puts a sweep's seeds together, in seed order, at its newest run", () => {
+    const sweep = "20261031-120000-toy_sine-adam";
+    const runs = [
+      run("20261031-120005-toy_sine-adam-s10", "adam-s10", sweep),
+      run("20261031-120004-toy_sine-one", "one", null),
+      run("20261031-120002-toy_sine-adam-s2", "adam-s2", sweep),
+      run("20261031-120001-toy_sine-adam-s0", "adam-s0", sweep),
+    ];
+    const groups = groupRuns(runs);
+    expect(groups.map((g) => g.groupId)).toEqual([
+      sweep,
+      "20261031-120004-toy_sine-one",
+    ]);
+    expect(groups[0].runs.map((r) => r.tag)).toEqual([
+      "adam-s0",
+      "adam-s2",
+      "adam-s10",
+    ]);
+    expect(groups[1].sweep).toBeNull();
+  });
+
+  it("shortName drops the time stamp and sweepSeed reads the tag", () => {
+    expect(shortName("20261031-120000-toy_sine-adam")).toBe("toy_sine-adam");
+    expect(sweepSeed(run("x", "adam-s3", "s"))).toBe(3);
+    expect(sweepSeed(run("x", "default", null))).toBeNull();
   });
 });

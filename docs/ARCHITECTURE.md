@@ -362,7 +362,7 @@ Only the named optimizer's own settings are allowed; their defaults are those of
 `nd train --config FILE [--seed S] [--tag T] [--epochs E] [--runs-dir D]` overrides `seed`, `tag`
 and `training.epochs`; an invalid config exits with status 2 and creates no run folder.
 
-## 7. Server API (api v1.10, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031)
+## 7. Server API (api v1.11, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033)
 
 REST (`/api/...`):
 - `GET health` → `{status: "ok", version}` (`version` is the NeuroDrive package version)
@@ -383,6 +383,15 @@ REST (`/api/...`):
   bias_gradients, glow, max_gradient}`, glow = |dL/dW| / max|dL/dW| per checkpoint. Read-only;
   run ids must look like folder names (no path escape); unknown → 404, toy view of a non-toy run
   → 400. `nd serve --runs-dir` chooses the folder (default `<repo>/runs`).
+  *Added in api v1.11 (task 4.7b, ADR-033):* each `GET runs` entry has `sweep` (the sweep id of a
+  run made by `nd sweep`, else null). `GET runs/compare?ids=a,b,...&metric=loss|val_loss` →
+  `{metric, groups, runs, skipped}`: the runs grouped by sweep (a run without one is its own group)
+  in request order; per group `{group_id, run_ids, unit, median, q1, q3, n_present, n_finite,
+  final_median, final_q1, final_q3, n_diverged}` computed by `experiment/stats.py` (a diverged run
+  counts as +infinity, sent as null); per run `{run_id, group_id, seed, status, diverged, unit,
+  values, final}` (`loss` from epoch 0 = the loss before training, `val_loss` from epoch 1);
+  `skipped` = runs without the metric. Unknown or malformed id → 404; no ids, more than 64 or an
+  unknown metric → 422. Shown in the Experiment page's "Compare runs" tab.
 - `GET runs/{id}/checkpoints/{unit}/diff?from={unit}`: per-weight change
 - `POST runs` (launch from a config), `POST runs/{id}/stop`
 - `POST replay` {run, unit, track, seed, focus_cars} → Episode Recording

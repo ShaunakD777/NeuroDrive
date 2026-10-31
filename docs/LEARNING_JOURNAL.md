@@ -1010,3 +1010,17 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   seed; my test had wrongly expected them to.
 - Open question: how many seeds does it take before the Adam interval is narrow enough to rank
   optimizers that are closer together than SGD and Adam?
+
+### 2026-10-31 — Task 4.7b Compare-runs view (ADR-033)
+- Concept: a curve band, Q1 to Q3 of the seeds at every epoch around the median line, shows whether
+  a gap between two methods is bigger than the spread between seeds.
+- Key equation(s) in words: per epoch, median and quartiles across runs (4.7a); a diverged run is
+  infinity, which the server sends as null and the chart draws at the top edge.
+- What we observed: SGD and Adam on sine (5 seeds, 300 epochs) overlap until about epoch 30, then
+  Adam's median falls below SGD's while its band widens (one seed at 0.0012, one at 0.0094); the
+  view's table shows the same medians and IQRs that `nd sweep` printed.
+- Surprise or difficulty: a component called `Charts.tsx` next to `charts.ts` is the same file name
+  to Windows, so TypeScript refused it; it became `CompareChart.tsx`. The phone-width screenshot
+  showed a clipped tab switch that the tests could not see.
+- Open question: Adam's band is much wider than SGD's at the end; is Adam less reliable across
+  seeds, or just further along a curve that SGD has not reached yet (Study S3 can run longer)?
