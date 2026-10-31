@@ -952,3 +952,18 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   shrink as the gradient does.
 - Open question: does Adam's bias correction remove the oversized first steps, and does its
   momentum part reduce the hovering?
+
+### 2026-10-31 — Task 4.5 Adam
+- Concept: Adam keeps a running average of the gradient (direction, like momentum) and of the
+  squared gradient (size, like RMSProp), steps by their ratio, and corrects both for starting at 0.
+- Key equation(s) in words: m = beta1 m + (1 - beta1) g; v = beta2 v + (1 - beta2) g squared;
+  m-hat = m / (1 - beta1^t), v-hat = v / (1 - beta2^t); new parameter = old minus learning rate
+  times m-hat over (square root of v-hat plus eps).
+- What we observed: the bowl walk is 0.1, 0.19990, 0.29962, about one learning rate per step from
+  the very first; without the correction step 1 would be 3.16 times too long. In the narrow valley
+  after 100 steps: SGD 0.405, Momentum 0.0012, RMSProp 0.124, Adam (0.01) 0.317, Adam (0.05) 0.006.
+- Surprise or difficulty: Adam with the same learning rate was slower than RMSProp in the valley,
+  because its learning rate is almost literally its step length; comparing optimizers at one shared
+  learning rate is unfair, so each needs its own tuned value.
+- Open question: on the sine task, which optimizer wins when each gets its best learning rate, and
+  how wide is each one's range of learning rates that work (Study S3)?

@@ -207,3 +207,7 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Exponential moving average | A running average that keeps a fraction ρ of the old value and mixes in (1 − ρ) of the new one at each step, so recent values count most and old ones fade away. |
 | Adaptive learning rate | A step size that differs per parameter and adjusts itself during training, as in RMSProp and Adam. |
 | Epsilon (ε) in optimizers | A tiny number (such as 1e-8) added to a denominator so it can never be zero; it only matters when gradients are themselves tiny. |
+| Adam | Adaptive Moment Estimation: an optimizer that combines momentum's running average of the gradient with RMSProp's running average of the squared gradient, plus bias correction. The default optimizer in much of deep learning. |
+| First moment (m) | In Adam, the running average of the gradient: its smoothed direction. |
+| Second moment (v) | In Adam, the running average of the squared gradient: its typical size. |
+| Bias correction | Dividing Adam's moments by 1 − βᵗ (t = step number) to undo the fact that they start at 0 and are too small for the first steps. Fades away as t grows. |
