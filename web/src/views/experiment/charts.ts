@@ -7,14 +7,24 @@ import type { RunMetrics } from "../../api/generated";
 export type Scale = (value: number) => number;
 
 /** Straight-line map from [d0, d1] to [r0, r1] (a zero-width domain maps to the middle). */
-export function linearScale(d0: number, d1: number, r0: number, r1: number): Scale {
+export function linearScale(
+  d0: number,
+  d1: number,
+  r0: number,
+  r1: number,
+): Scale {
   if (d1 === d0) return () => (r0 + r1) / 2;
   const k = (r1 - r0) / (d1 - d0);
   return (v) => r0 + (v - d0) * k;
 }
 
 /** Map on a base-10 log scale: equal pixel steps for each factor of 10. Needs d0, d1 > 0. */
-export function logScale(d0: number, d1: number, r0: number, r1: number): Scale {
+export function logScale(
+  d0: number,
+  d1: number,
+  r0: number,
+  r1: number,
+): Scale {
   const inner = linearScale(Math.log10(d0), Math.log10(d1), r0, r1);
   return (v) => inner(Math.log10(Math.max(v, Number.MIN_VALUE)));
 }
@@ -48,7 +58,8 @@ export function niceTicks(lo: number, hi: number, count = 5): number[] {
   if (!(hi > lo)) return [lo];
   const raw = (hi - lo) / count;
   const power = 10 ** Math.floor(Math.log10(raw));
-  const step = [1, 2, 5, 10].map((m) => m * power).find((s) => s >= raw) ?? 10 * power;
+  const step =
+    [1, 2, 5, 10].map((m) => m * power).find((s) => s >= raw) ?? 10 * power;
   const ticks: number[] = [];
   for (let t = Math.ceil(lo / step) * step; t <= hi + step * 1e-9; t += step) {
     ticks.push(Number(t.toPrecision(12)));
@@ -79,7 +90,9 @@ export function lossCurve(m: RunMetrics): { unit: number[]; loss: number[] } {
 
 /** An SVG path through the points (x[i], y[i]): "M x0 y0 L x1 y1 ...". */
 export function linePath(xs: readonly number[], ys: readonly number[]): string {
-  return xs.map((x, i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)} ${ys[i].toFixed(1)}`).join(" ");
+  return xs
+    .map((x, i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)} ${ys[i].toFixed(1)}`)
+    .join(" ");
 }
 
 /** Index of the entry of ascending `sorted` closest to `value`. */
@@ -102,13 +115,20 @@ export type Pole = "pos" | "neg" | "mid";
  * hue. `percent` (0..100) is how much of the hue to mix into the neutral; values beyond the ends
  * are clamped.
  */
-export function divergingMix(value: number, lo: number, hi: number): { pole: Pole; percent: number } {
+export function divergingMix(
+  value: number,
+  lo: number,
+  hi: number,
+): { pole: Pole; percent: number } {
   const mid = (lo + hi) / 2;
   const half = (hi - lo) / 2;
   if (half <= 0) return { pole: "mid", percent: 0 };
   const t = Math.max(-1, Math.min(1, (value - mid) / half));
   if (Math.abs(t) < 1e-9) return { pole: "mid", percent: 0 };
-  return { pole: t > 0 ? "pos" : "neg", percent: Math.round(Math.abs(t) * 100) };
+  return {
+    pole: t > 0 ? "pos" : "neg",
+    percent: Math.round(Math.abs(t) * 100),
+  };
 }
 
 /**
@@ -142,4 +162,42 @@ export function formatNumber(v: number): string {
   const a = Math.abs(v);
   if (a < 1e-3 || a >= 1e5) return v.toExponential(2);
   return Number(v.toPrecision(3)).toString();
+}
+
+/** What the toy lab's summary line shows about a run's config. */
+export interface ToyRunSummary {
+  task: string;
+  layerSizes: number[];
+  hiddenActivation: string;
+  outputActivation: string;
+  optimizer: string;
+  learningRate: number;
+}
+
+/**
+ * Read a run's stored config (`GET /api/runs/{id}`) for the summary line. Run folders hold either
+ * the config file format of task 4.6b (`network`, `training` and `optimizer` sections, ADR-032)
+ * or the flat dictionary of Phase 3 toy runs (always plain SGD). Only reads; computes nothing.
+ */
+export function toyRunSummary(config: Record<string, unknown>): ToyRunSummary {
+  const network = config.network as Record<string, unknown> | undefined;
+  const optimizer = config.optimizer as Record<string, unknown> | undefined;
+  if (network && optimizer) {
+    return {
+      task: String(config.task),
+      layerSizes: network.layer_sizes as number[],
+      hiddenActivation: String(network.hidden_activation),
+      outputActivation: String(network.output_activation),
+      optimizer: String(optimizer.name),
+      learningRate: Number(optimizer.learning_rate),
+    };
+  }
+  return {
+    task: String(config.task),
+    layerSizes: config.layer_sizes as number[],
+    hiddenActivation: String(config.hidden_activation),
+    outputActivation: String(config.output_activation),
+    optimizer: String(config.optimizer ?? "sgd"),
+    learningRate: Number(config.learning_rate),
+  };
 }

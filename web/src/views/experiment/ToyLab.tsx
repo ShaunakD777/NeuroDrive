@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import type { RunDetail, RunMetrics, RunSummary, ToyCheckpointResponse } from "../../api/generated";
+import type {
+  RunDetail,
+  RunMetrics,
+  RunSummary,
+  ToyCheckpointResponse,
+} from "../../api/generated";
 import {
   fetchCheckpoints,
   fetchRunDetail,
@@ -8,7 +13,7 @@ import {
   fetchRuns,
   fetchToyCheckpoint,
 } from "../../api/rest";
-import { formatNumber, lossCurve } from "./charts";
+import { formatNumber, lossCurve, toyRunSummary } from "./charts";
 import { LossChart } from "./LossChart";
 import { PredictionPlot } from "./PredictionPlot";
 import { ToyNetwork } from "./ToyNetwork";
@@ -23,7 +28,8 @@ interface RunData {
 /**
  * The toy lab (task 3.8): pick a toy run, see its loss curve, and step through its checkpoints to
  * watch the predictions and the gradient glow change. Runs are made with
- * `uv run python scripts/train_toy.py --task <line|sine|xor|two_spirals>`. Everything shown is
+ * `uv run python -m neurodrive train --config configs/toy_<line|sine|xor|two_spirals>.yaml`
+ * (task 4.6b). Everything shown is
  * computed by the Python server; this page only fetches and draws.
  */
 export function ToyLab({ headerExtra }: { headerExtra?: ReactNode }) {
@@ -40,7 +46,11 @@ export function ToyLab({ headerExtra }: { headerExtra?: ReactNode }) {
       .then((r) => {
         const toys = r.runs.filter((s) => s.method.startsWith("toy_"));
         setRuns(toys);
-        setRunId((current) => (current && toys.some((s) => s.run_id === current) ? current : (toys[0]?.run_id ?? null)));
+        setRunId((current) =>
+          current && toys.some((s) => s.run_id === current)
+            ? current
+            : (toys[0]?.run_id ?? null),
+        );
       })
       .catch((e: Error) => setError(e.message));
   }
@@ -52,7 +62,11 @@ export function ToyLab({ headerExtra }: { headerExtra?: ReactNode }) {
     setRun(null);
     if (runId === null) return;
     let live = true;
-    Promise.all([fetchRunDetail(runId), fetchRunMetrics(runId), fetchCheckpoints(runId)])
+    Promise.all([
+      fetchRunDetail(runId),
+      fetchRunMetrics(runId),
+      fetchCheckpoints(runId),
+    ])
       .then(([detail, metrics, list]) => {
         if (!live) return;
         setRun({ runId, detail, metrics, units: list.units });
@@ -66,7 +80,10 @@ export function ToyLab({ headerExtra }: { headerExtra?: ReactNode }) {
   }, [runId]);
 
   // The selected checkpoint's toy view (kept while the next one loads, so nothing flickers).
-  const unit = run && run.units.length ? run.units[Math.min(index, run.units.length - 1)] : null;
+  const unit =
+    run && run.units.length
+      ? run.units[Math.min(index, run.units.length - 1)]
+      : null;
   useEffect(() => {
     if (run === null || unit === null) return;
     const key = `${run.runId}/${unit}`;
@@ -87,10 +104,16 @@ export function ToyLab({ headerExtra }: { headerExtra?: ReactNode }) {
     };
   }, [run, unit]);
 
-  const curve = useMemo(() => (run ? lossCurve(run.metrics) : { unit: [], loss: [] }), [run]);
-  const config = run?.detail.config as Record<string, unknown> | undefined;
+  const curve = useMemo(
+    () => (run ? lossCurve(run.metrics) : { unit: [], loss: [] }),
+    [run],
+  );
+  const config = run
+    ? toyRunSummary(run.detail.config as Record<string, unknown>)
+    : undefined;
   const status = run?.detail.meta.status as string | undefined;
-  const shown = toy !== null && run !== null && toy.run_id === run.runId ? toy : null;
+  const shown =
+    toy !== null && run !== null && toy.run_id === run.runId ? toy : null;
 
   return (
     <section className="view toylab" data-testid="toylab">
@@ -123,18 +146,27 @@ export function ToyLab({ headerExtra }: { headerExtra?: ReactNode }) {
       {error && <p className="toylab-error">Could not load: {error}</p>}
       {runs !== null && runs.length === 0 && (
         <p className="hint" data-testid="toylab-empty">
-          No toy runs yet. Train one with <code>uv run python scripts/train_toy.py --task xor</code>{" "}
+          No toy runs yet. Train one with{" "}
+          <code>
+            uv run python -m neurodrive train --config configs/toy_xor.yaml
+          </code>{" "}
           and press Refresh list.
         </p>
       )}
 
       {run && config && (
-        <p className="toylab-summary" data-testid="toylab-summary" data-run-id={run.runId}>
-          Task <strong>{String(config.task)}</strong> · network{" "}
-          {(config.layer_sizes as number[]).join("-")} ({String(config.hidden_activation)} hidden,{" "}
-          {String(config.output_activation)} output) · learning rate {String(config.learning_rate)} ·{" "}
-          {run.metrics.unit.length} epochs · {status}
-          {status === "diverged" && " (the curve stops at the last finite loss)"}
+        <p
+          className="toylab-summary"
+          data-testid="toylab-summary"
+          data-run-id={run.runId}
+        >
+          Task <strong>{config.task}</strong> · network{" "}
+          {config.layerSizes.join("-")} ({config.hiddenActivation} hidden,{" "}
+          {config.outputActivation} output) · optimizer {config.optimizer},
+          learning rate {config.learningRate} · {run.metrics.unit.length} epochs
+          · {status}
+          {status === "diverged" &&
+            " (the curve stops at the last finite loss)"}
         </p>
       )}
 
@@ -153,7 +185,9 @@ export function ToyLab({ headerExtra }: { headerExtra?: ReactNode }) {
           />
           <span data-testid="checkpoint-label">
             epoch {unit}
-            {shown && shown.unit === unit ? ` · loss ${formatNumber(shown.loss)}` : " · loading…"}
+            {shown && shown.unit === unit
+              ? ` · loss ${formatNumber(shown.loss)}`
+              : " · loading…"}
           </span>
         </div>
       )}

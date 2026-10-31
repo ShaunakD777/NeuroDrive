@@ -1,0 +1,21 @@
+# Toy task "two_spirals": two interleaved spirals labelled 0 and 1; two hidden layers of 16 tanh
+# neurons and a sigmoid output (task 3.7 defaults). A hard case; solving it is optional.
+# Train:  uv run python -m neurodrive train --config configs/toy_two_spirals.yaml
+# Format: docs/ARCHITECTURE.md section 6.15 (config v1, ADR-032).
+method: toy
+task: two_spirals
+seed: 0
+tag: default
+network:
+  layer_sizes: [2, 16, 16, 1]
+  hidden_activation: tanh
+  output_activation: sigmoid
+  init_scheme: xavier
+training:
+  epochs: 5000
+  loss: mse
+  batch_size: null      # null = full batch (all examples in one step)
+  val_fraction: 0.0     # share of examples held back for validation
+optimizer:
+  name: sgd             # sgd, momentum, rmsprop or adam
+  learning_rate: 0.5

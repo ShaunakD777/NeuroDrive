@@ -21,8 +21,9 @@ import numpy as np
 from neurodrive.core.nn.backward import backward
 from neurodrive.core.nn.forward import forward, predict
 from neurodrive.core.nn.network import Network
+from neurodrive.experiment.config import toy_config_from_run
 from neurodrive.experiment.store import RunStore
-from neurodrive.learn.supervised.train_toy import LOSSES, ToyConfig
+from neurodrive.learn.supervised.train_toy import LOSSES
 
 Array = np.ndarray
 
@@ -63,7 +64,7 @@ def toy_checkpoint_view(store: RunStore, unit: int) -> ToyCheckpointView:
     Raises ``KeyError`` for a missing checkpoint and ``ValueError`` if the run is not a toy run
     with a stored dataset and a single output.
     """
-    config = ToyConfig.from_dict(store.read_config())
+    config = toy_config_from_run(store.read_config())
     network = store.load_checkpoint(unit)
     data = store.load_extra("dataset")
     x, y = np.asarray(data["x"], dtype=np.float64), np.asarray(data["y"], dtype=np.float64)

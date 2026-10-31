@@ -1,0 +1,21 @@
+# Toy task "xor": the four XOR examples, 2 inputs, 4 tanh hidden neurons, a sigmoid output
+# (task 3.7 defaults). Train:  uv run python -m neurodrive train --config configs/toy_xor.yaml
+# Success: loss below 0.01 and every output rounds to its label.
+# Format: docs/ARCHITECTURE.md section 6.15 (config v1, ADR-032).
+method: toy
+task: xor
+seed: 0
+tag: default
+network:
+  layer_sizes: [2, 4, 1]
+  hidden_activation: tanh
+  output_activation: sigmoid
+  init_scheme: xavier
+training:
+  epochs: 3000
+  loss: mse
+  batch_size: null      # null = full batch (all examples in one step)
+  val_fraction: 0.0     # share of examples held back for validation
+optimizer:
+  name: sgd             # sgd, momentum, rmsprop or adam
+  learning_rate: 1.0

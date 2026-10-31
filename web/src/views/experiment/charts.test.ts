@@ -13,6 +13,7 @@ import {
   logTicks,
   lossCurve,
   nearestIndex,
+  toyRunSummary,
   niceTicks,
   stepDirection,
 } from "./charts";
@@ -63,16 +64,25 @@ describe("scales", () => {
 
 describe("loss curve", () => {
   it("starts at unit 0 with the untrained loss, then each unit's loss", () => {
-    expect(lossCurve(metrics())).toEqual({ unit: [0, 1, 2, 3], loss: [1.0, 0.5, 0.2, 0.1] });
+    expect(lossCurve(metrics())).toEqual({
+      unit: [0, 1, 2, 3],
+      loss: [1.0, 0.5, 0.2, 0.1],
+    });
   });
 
   it("leaves out diverged units", () => {
-    const m = metrics({ loss: [0.5, 9.0, null], loss_before: [1.0, 0.5, 9.0], diverged: [false, false, true] });
+    const m = metrics({
+      loss: [0.5, 9.0, null],
+      loss_before: [1.0, 0.5, 9.0],
+      diverged: [false, false, true],
+    });
     expect(lossCurve(m)).toEqual({ unit: [0, 1, 2], loss: [1.0, 0.5, 9.0] });
   });
 
   it("is empty for a run without metrics", () => {
-    expect(lossCurve(metrics({ unit: [], loss: [], loss_before: [], diverged: [] }))).toEqual({
+    expect(
+      lossCurve(metrics({ unit: [], loss: [], loss_before: [], diverged: [] })),
+    ).toEqual({
       unit: [],
       loss: [],
     });
@@ -81,7 +91,9 @@ describe("loss curve", () => {
 
 describe("paths and lookups", () => {
   it("draws a path through the points", () => {
-    expect(linePath([0, 10, 20], [5, 6, 7.25])).toBe("M0.0 5.0 L10.0 6.0 L20.0 7.3");
+    expect(linePath([0, 10, 20], [5, 6, 7.25])).toBe(
+      "M0.0 5.0 L10.0 6.0 L20.0 7.3",
+    );
   });
 
   it("finds the nearest checkpoint", () => {
@@ -127,5 +139,59 @@ describe("colour strengths", () => {
     expect(formatNumber(0.263384)).toBe("0.263");
     expect(formatNumber(1.4575)).toBe("1.46");
     expect(formatNumber(0)).toBe("0");
+  });
+});
+
+describe("toyRunSummary", () => {
+  it("reads the config file format of task 4.6b", () => {
+    const config = {
+      method: "toy",
+      task: "sine",
+      seed: 0,
+      tag: "default",
+      network: {
+        layer_sizes: [1, 16, 1],
+        hidden_activation: "tanh",
+        output_activation: "linear",
+      },
+      training: {
+        epochs: 3000,
+        loss: "mse",
+        batch_size: null,
+        val_fraction: 0,
+      },
+      optimizer: {
+        name: "adam",
+        learning_rate: 0.01,
+        beta1: 0.9,
+        beta2: 0.999,
+        eps: 1e-8,
+      },
+    };
+    expect(toyRunSummary(config)).toEqual({
+      task: "sine",
+      layerSizes: [1, 16, 1],
+      hiddenActivation: "tanh",
+      outputActivation: "linear",
+      optimizer: "adam",
+      learningRate: 0.01,
+    });
+  });
+
+  it("reads the flat config of Phase 3 toy runs as plain SGD", () => {
+    const config = {
+      task: "xor",
+      layer_sizes: [2, 4, 1],
+      hidden_activation: "tanh",
+      output_activation: "sigmoid",
+      learning_rate: 1.0,
+      epochs: 3000,
+    };
+    expect(toyRunSummary(config)).toMatchObject({
+      task: "xor",
+      layerSizes: [2, 4, 1],
+      optimizer: "sgd",
+      learningRate: 1,
+    });
   });
 });

@@ -981,3 +981,17 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   because adding the same numbers in another order changes the last bits of a floating-point sum.
 - Open question: what does an overfitting run look like on these tasks (a big network, few points),
   and how early does validation loss turn upward?
+
+### 2026-10-31 — Task 4.6b Config system and `nd train` (ADR-032)
+- Concept: a config file is the written recipe of a run; validation refuses a bad recipe before
+  any work starts; the run folder keeps the resolved recipe, every default written out.
+- Key equation(s) in words: none, plumbing task.
+- What we observed: `nd train --config configs/toy_sine.yaml` took sine from 1.888 to 0.00341 in
+  3000 epochs; changing two lines to Adam with learning rate 0.01 reached 0.0000042, about 800
+  times lower; a file with `learning_rat` and `tahn` was refused with three named problems and no
+  run folder. The browser tests now train their runs with `nd train` too.
+- Surprise or difficulty: storing the nested form in run folders would have crashed the toy lab's
+  summary line, which read the old flat fields; caught while checking what reads `config.yaml`,
+  fixed with a display helper that reads both forms.
+- Open question: which settings deserve a command-line override (today seed, tag, epochs), and
+  which should always be changed in a copied file so the change is recorded?

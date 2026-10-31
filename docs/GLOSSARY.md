@@ -213,3 +213,6 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Bias correction | Dividing Adam's moments by 1 − βᵗ (t = step number) to undo the fact that they start at 0 and are too small for the first steps. Fades away as t grows. |
 | Validation loss | The loss measured on the validation set after each epoch. Falling training loss with rising validation loss is the signature of overfitting. |
 | Stochastic gradient | The gradient of the loss on one minibatch: an estimate of the full-data gradient, noisy because the batch is a random sample. |
+| Config file | The complete recipe of an experiment written as data (YAML): task, network, training settings, optimizer and seed. Same config + same code = same run. |
+| Config validation | Checking a config before anything runs: unknown fields, wrong types, unknown names and impossible numbers are refused with a message naming the field. |
+| Resolved config | A config with every default written out, as stored in a run folder, so re-running it never depends on defaults that might change later. |

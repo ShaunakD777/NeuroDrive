@@ -120,7 +120,7 @@ neurodrive/
 │  │  ├─ rl/                     returns.py, gaussian_policy.py, reinforce.py, actor_critic.py, ppo.py
 │  │  └─ hybrid/                 distill.py, pretrain_finetune.py
 │  ├─ experiment/
-│  │  ├─ config.py               Pydantic models for every config file
+│  │  ├─ config.py               Pydantic models for every config file (toy: config v1, §6.15)
 │  │  ├─ runner.py               training loop orchestration, checkpoint & exam schedules
 │  │  ├─ store.py                run folder read/write
 │  │  ├─ toy_view.py             toy lab numbers for one checkpoint: predictions, loss, gradients, glow
@@ -327,6 +327,39 @@ rebuilt from them with `nd db rebuild`. All of `runs/` is git-ignored.
 Exam spec version, list of tracks, per-episode metrics (track, start index, progress, laps,
 crashed, lap times, mean speed, smoothness, time to crash), and aggregates per track and overall
 (median, IQR, completion rate). See `EXPERIMENT_PROTOCOL.md`.
+
+### 6.15 Config file (toy: config v1, ADR-032)
+A YAML file; `method` picks the model in `experiment/config.py` (only `toy` so far; later methods
+add their own model). Unknown fields, wrong types, unknown names and out-of-range numbers are
+refused, every problem listed as `field.path: message`. A toy config:
+
+```yaml
+method: toy
+task: sine                 # line | sine | xor | two_spirals
+seed: 0                    # whole number >= 0 (default 0)
+tag: default               # letters, digits, _ or - (default "default")
+network:
+  layer_sizes: [1, 16, 1]  # inputs first, outputs last; must fit the task
+  hidden_activation: tanh  # default tanh
+  output_activation: linear  # default linear
+  init_scheme: xavier      # xavier | uniform | zeros (default xavier)
+training:
+  epochs: 3000             # required, >= 1
+  loss: mse                # mse | huber (default mse)
+  batch_size: null         # null = full batch (default), else >= 1
+  val_fraction: 0.0        # in [0, 1) (default 0)
+optimizer:                 # required; name and learning_rate (> 0) are required
+  name: sgd                # sgd | momentum (beta) | rmsprop (rho, eps) | adam (beta1, beta2, eps)
+  learning_rate: 0.05
+```
+
+Only the named optimizer's own settings are allowed; their defaults are those of `core/optim`
+(momentum β 0.9; RMSProp ρ 0.9, ε 1e-8; Adam β₁ 0.9, β₂ 0.999, ε 1e-8). A run folder's
+`config.yaml` holds the *resolved* config (this format, every default written out), so
+`nd train --config runs/<id>/config.yaml` re-creates the run. Toy run folders written before task
+4.6b hold the learner's flat `ToyConfig` dictionary; they are still read (converted on load).
+`nd train --config FILE [--seed S] [--tag T] [--epochs E] [--runs-dir D]` overrides `seed`, `tag`
+and `training.epochs`; an invalid config exits with status 2 and creates no run folder.
 
 ## 7. Server API (api v1.10, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031)
 

@@ -4,8 +4,9 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Before the browser tests: make sure the toy lab has runs to show (task 3.8). Two small toy runs
-// tagged "e2e" are trained into the repository's runs/ folder (git-ignored) unless completed ones
-// are already there; training is seeded, so an existing run holds exactly the same numbers.
+// tagged "e2e" are trained with `nd train` (task 4.6b) into the repository's runs/ folder
+// (git-ignored) unless completed ones are already there; training is seeded, so an existing run
+// holds exactly the same numbers.
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const runsDir = join(repoRoot, "runs");
@@ -21,7 +22,10 @@ function hasCompletedRun(task: string): boolean {
     .filter((name) => name.endsWith(`-toy_${task}-e2e`))
     .some((name) => {
       const meta = join(runsDir, name, "meta.json");
-      return existsSync(meta) && JSON.parse(readFileSync(meta, "utf8")).status === "completed";
+      return (
+        existsSync(meta) &&
+        JSON.parse(readFileSync(meta, "utf8")).status === "completed"
+      );
     });
 }
 
@@ -30,7 +34,18 @@ export default function globalSetup(): void {
     if (hasCompletedRun(task)) continue;
     execFileSync(
       "uv",
-      ["run", "python", "scripts/train_toy.py", "--task", task, "--tag", "e2e", ...args],
+      [
+        "run",
+        "python",
+        "-m",
+        "neurodrive",
+        "train",
+        "--config",
+        `configs/toy_${task}.yaml`,
+        "--tag",
+        "e2e",
+        ...args,
+      ],
       { cwd: repoRoot, stdio: "inherit" },
     );
   }

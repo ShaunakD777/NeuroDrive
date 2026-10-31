@@ -11,12 +11,19 @@ to stop* (docs/ARCHITECTURE.md §6.12). Steps:
 4. mark the run completed, diverged, or failed (on an exception, which is then re-raised).
 
 Version 1 (task 5.5) adds stop conditions on budgets and time, exam schedules and resuming.
+
+``train_toy_run`` starts a whole toy run from a validated config (``nd train``, task 4.6b).
 """
 
 import time
+from dataclasses import dataclass
+from pathlib import Path
 
+from neurodrive.core.rng import make_rng
+from neurodrive.experiment.config import ToyRunConfig, resolved, to_toy_config
 from neurodrive.experiment.store import RunStore
 from neurodrive.learn.base import Learner
+from neurodrive.learn.supervised.train_toy import ToyLearner
 
 
 def checkpoint_schedule(units: int) -> list[int]:
@@ -69,3 +76,32 @@ def run(learner: Learner, store: RunStore, units: int) -> str:
         raise
     store.finish(status)
     return status
+
+
+@dataclass(frozen=True)
+class ToyRunResult:
+    """What ``train_toy_run`` reports: the run folder, its final status, the first and last loss."""
+
+    store: RunStore
+    status: str
+    epochs_done: int
+    start_loss: float
+    end_loss: float | None  # the last finite loss; None if the first epoch already diverged
+
+
+def train_toy_run(config: ToyRunConfig, runs_dir: str | Path) -> ToyRunResult:
+    """Train one toy run described by ``config`` and write its run folder under ``runs_dir``.
+
+    Steps: convert the config to the learner's ``ToyConfig``; build the learner from
+    ``make_rng(seed)``; create the run folder with the *resolved* config (every default written
+    out, ADR-032) and the dataset; then :func:`run` for ``training.epochs`` units.
+    """
+    toy = to_toy_config(config)
+    learner = ToyLearner(toy, make_rng(toy.seed))
+    store = RunStore.create(runs_dir, learner.name, toy.tag, resolved(config))
+    store.save_extra("dataset", x=learner.dataset.x, y=learner.dataset.y)
+    start_loss = learner.loss()
+    status = run(learner, store, toy.epochs)
+    metrics = store.read_metrics()
+    finite = [m["loss"] for m in metrics if m["loss"] is not None]
+    return ToyRunResult(store, status, len(metrics), start_loss, finite[-1] if finite else None)
