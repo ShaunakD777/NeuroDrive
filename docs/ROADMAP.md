@@ -367,6 +367,10 @@ not clash with `charts.ts` on case-insensitive file systems) in a
 demo with a validation curve. Study report.
 **4.9 (opt) Reference cross-check:** `reference/torch_check.py` compares our gradients and Adam
 steps with PyTorch.
+**4.10 Environment view: mouse pan and zoom (added 2026-10-31 at the user's request):** wheel zoom
+around the cursor, drag to pan, a free camera mode, in the full view and the compact drawer
+(`web/src/views/environment/`). Verify: the point under the cursor stays put while zooming; a plain
+click still selects; Follow car / Whole track / double-click return.
 
 ---
 

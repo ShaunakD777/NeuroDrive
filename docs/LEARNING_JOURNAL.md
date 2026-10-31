@@ -1029,3 +1029,17 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   read-out is now an HTML box. Validation loss only exists for runs that hold examples back, and no
   shipped config did; `configs/toy_sine_val.yaml` does (final validation loss median 0.00677 over 5
   seeds at 1000 epochs).
+
+### 2026-10-31 — Task 4.10 Environment view: mouse pan and zoom (added at the user's request)
+- Concept: the camera (a world point at the canvas centre and a scale in pixels per metre); zooming
+  around the cursor keeps the point under the mouse fixed; panning moves the centre against the drag.
+- Key equation(s) in words: new centre = point under the cursor minus the cursor's offset from the
+  canvas centre divided by the new scale; pan: centre minus drag divided by scale (y flipped).
+- What we observed: the worked example gives centre (12.5, 0) at scale 4 with 25 m still under the
+  cursor; in the browser the point under the cursor moved by less than a pixel; a click had to move
+  from pointer press to pointer release so that a press can still turn into a drag.
+- Surprise or difficulty: the browser tests caught a real bug (+ in free mode did not redraw because
+  the mode did not change), and three of my own test mistakes (reading the camera before the first
+  frame, and zooming the car off the canvas before clicking it).
+- Open question: should the free view be remembered per page, and should the drawer and the full view
+  share one camera?

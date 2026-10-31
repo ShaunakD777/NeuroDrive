@@ -221,3 +221,5 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Bootstrap confidence interval | How sure a median is: re-draw the results many times with replacement, take each draw's median, and report the middle 95 % of those medians. |
 | Sweep | One config trained several times, once per seed (later also once per setting), so results can be summarised across runs. |
 | Curve band | The shaded area between Q1 and Q3 of several runs' learning curves at every epoch, drawn around the median curve. |
+| Zoom around the cursor | Changing the scale and then shifting the camera centre so that the world point under the mouse stays under it, as map apps do. |
+| Pan | Moving the view by dragging: the camera centre moves against the drag, by the drag distance divided by the scale (pixels to metres). |
