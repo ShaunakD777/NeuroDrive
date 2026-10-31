@@ -216,3 +216,8 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Config file | The complete recipe of an experiment written as data (YAML): task, network, training settings, optimizer and seed. Same config + same code = same run. |
 | Config validation | Checking a config before anything runs: unknown fields, wrong types, unknown names and impossible numbers are refused with a message naming the field. |
 | Resolved config | A config with every default written out, as stored in a run folder, so re-running it never depends on defaults that might change later. |
+| Percentile | The value below which a given share of the sorted results lie (the 25th percentile has a quarter below it); computed here by linear interpolation. |
+| Quartiles (Q1, Q3) | The 25th and 75th percentiles; the IQR is Q3 − Q1. |
+| Bootstrap confidence interval | How sure a median is: re-draw the results many times with replacement, take each draw's median, and report the middle 95 % of those medians. |
+| Sweep | One config trained several times, once per seed (later also once per setting), so results can be summarised across runs. |
+| Curve band | The shaded area between Q1 and Q3 of several runs' learning curves at every epoch, drawn around the median curve. |

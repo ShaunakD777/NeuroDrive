@@ -6,7 +6,8 @@ A run folder is the master record of a run (ADR-007). Version 0 is a strict subs
     runs/<YYYYMMDD-HHMMSS>-<method>-<tag>/
       config.yaml        the fully resolved config, including the seed
       meta.json          run_version, status, start/end time (UTC), git commit + dirty flag,
-                         Python / NumPy / NeuroDrive versions
+                         Python / NumPy / NeuroDrive versions, and ``sweep`` (the sweep id)
+                         for runs made by ``nd sweep``
       metrics.jsonl      one JSON object per unit (unit, budget totals, wall_clock_s, the
                          learner's native metrics)
       checkpoints/       unit_<n>.npz (network files, core/nn/io.py) + index.json {"units": [...]}
@@ -80,11 +81,13 @@ class RunStore:
         tag: str,
         config: dict[str, Any],
         when: datetime | None = None,
+        extra_meta: dict[str, Any] | None = None,
     ) -> "RunStore":
         """Make ``<runs_dir>/<YYYYMMDD-HHMMSS>-<method>-<tag>/`` and write config and meta.
 
         ``when`` (default: now, UTC) sets the timestamp in the name. If that folder already
         exists, ``-2``, ``-3``, ... is appended. The run starts with status "running".
+        ``extra_meta`` adds fields to ``meta.json``, e.g. ``{"sweep": <sweep id>}`` (ADR-033).
         """
         _check_name("method", method)
         _check_name("tag", tag)
@@ -111,6 +114,7 @@ class RunStore:
             "python_version": platform.python_version(),
             "numpy_version": np.__version__,
             "neurodrive_version": neurodrive.__version__,
+            **(extra_meta or {}),
         }
         store._write_json("meta.json", meta)
         store._write_json("checkpoints/index.json", {"units": []})

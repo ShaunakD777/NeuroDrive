@@ -41,7 +41,7 @@ Status: v1 (planning). Changes to §6 contracts require an ADR in `DECISIONS.md`
 | Web state | Zustand | Library |
 | Track drawing | HTML Canvas 2D | Our drawing code |
 | Network diagram | SVG (every neuron/edge clickable) | Our drawing code |
-| Charts | uPlot | Library |
+| Charts | SVG with our own helpers (`web/src/views/experiment/charts.ts`, ADR-033) | Our drawing code |
 | Web→Python type sharing | Pydantic JSON Schema → `json-schema-to-typescript` | Generated |
 | Web tests | Vitest (logic), Playwright (smoke) | Library |
 | Optional cross-checks | PyTorch in `reference/` only | Library, never imported by `src/` |
@@ -312,7 +312,8 @@ stop conditions (max env steps, max wall-clock, max units).
 ```
 runs/<YYYYMMDD-HHMMSS>-<method>-<tag>/
   config.yaml        fully resolved config, including seed
-  meta.json          git commit + dirty flag, Python/NumPy versions, start/end, status
+  meta.json          git commit + dirty flag, Python/NumPy versions, start/end, status,
+                     sweep (only for runs made by `nd sweep`: the sweep id, ADR-033)
   metrics.jsonl      one JSON object per unit: unit, env_steps_total, demo_frames_total,
                      wall_clock_s, native metrics (loss / fitness stats / return ...)
   checkpoints/       unit_<n>.npz (+ index.json listing units and what each holds)

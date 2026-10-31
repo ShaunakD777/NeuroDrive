@@ -356,9 +356,12 @@ runs bit for bit; every optimizer lowers the sine loss; an epoch takes ceil(N / 
 **4.6b Config system and `nd train` (ADR-032):** `experiment/config.py` (Pydantic), `configs/toy_*.yaml`,
 `cli.py`; `scripts/train_toy.py` removed. Verify: invalid configs give clear errors; a toy run is
 created from YAML.
-**4.7 Sweeps and overlays:** `nd sweep`, `experiment/stats.py` (median, IQR, bootstrap CI),
-`web/src/views/experiment/RunList.tsx` + `Charts.tsx` (overlaid curves with bands). Verify: stats
-unit tests; 5-seed sweep displayed.
+**4.7a Statistics and `nd sweep` (split from 4.7, ADR-033):** `experiment/stats.py` (median, IQR,
+bootstrap CI), `nd sweep` (one run folder per seed, `sweep` id in `meta.json`). Verify: stats unit
+tests; a 5-seed sweep gives 5 run folders identical to single `nd train` runs.
+**4.7b Compare-runs view (ADR-033):** `GET runs/compare` (api v1.11),
+`web/src/views/experiment/RunList.tsx` + `Charts.tsx` (overlaid curves with bands) in a
+"Compare runs" tab. Verify: 5-seed sweep displayed.
 **4.8 Study S3:** learning-rate sweep; optimizer comparison on sine across 5 seeds; overfitting
 demo with a validation curve. Study report.
 **4.9 (opt) Reference cross-check:** `reference/torch_check.py` compares our gradients and Adam

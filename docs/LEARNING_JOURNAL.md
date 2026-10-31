@@ -995,3 +995,18 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   fixed with a display helper that reads both forms.
 - Open question: which settings deserve a command-line override (today seed, tag, epochs), and
   which should always be changed in a copied file so the change is recorded?
+
+### 2026-10-31 — Task 4.7a Statistics and `nd sweep` (split from 4.7, ADR-033)
+- Concept: one run is one roll of the dice, so results are summarised over seeds: the median (not
+  dragged by one wild seed), the IQR (spread of the middle half) and a bootstrap interval (how much
+  the median moves when the seeds are re-drawn with replacement).
+- Key equation(s) in words: percentile position = (n - 1) times p / 100, interpolating between
+  neighbours; a diverged run counts as infinity.
+- What we observed: SGD on sine, 300 epochs, seeds 0-4: median final loss 0.00996 [IQR 0.00974 to
+  0.01222]; Adam (0.01): 0.00508 [0.00264 to 0.00861]; paired bootstrap of the difference 0.0049
+  with 95 % interval [0.0011, 0.0110], which excludes 0, although Adam's seeds spread widely.
+- Surprise or difficulty: with an odd number of seeds every bootstrap median is one of the data
+  values, so the interval's ends are always actual results and do not change with the bootstrap
+  seed; my test had wrongly expected them to.
+- Open question: how many seeds does it take before the Adam interval is narrow enough to rank
+  optimizers that are closer together than SGD and Adam?
