@@ -228,3 +228,6 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Selection bias (tuning) | A setting picked as best on some seeds looks better on those seeds than it really is; so settings are tuned on one set of seeds and reported on fresh ones. |
 | Early stopping | Ending training (or keeping the checkpoint) where the validation loss is lowest, before the network starts fitting the noise in its training data. |
 | Overfitting ratio | Final validation loss divided by the lowest validation loss of a run; 1 means no overfitting. |
+| Automatic differentiation (autograd) | A library records every operation of the forward pass and applies the chain rule itself to get the gradients (PyTorch does this). NeuroDrive writes the same chain rule out by hand in `core/nn/backward.py`. |
+| Machine epsilon | The gap between 1 and the next number a computer can store: about 2.2e-16 for float64. Two correct programs that do the same sum in a different order can differ by a few of these in the last digits (rounding error). |
+| Reference implementation | An independent, trusted implementation used only to check our own results; here PyTorch, kept in `reference/` and never imported by `src/`. |

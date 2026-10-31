@@ -135,6 +135,7 @@ These are created in Phase 0. If a task changes a command, update this section i
 | Rebuild / check the SQLite mirror | `uv run nd db rebuild` / `uv run nd db check` |
 | Web unit tests / smoke test | `cd web && npm run test` / `npm run e2e` |
 | Regenerate TypeScript types from the Python message models | `cd web && npm run gen:types` |
+| PyTorch cross-check of our gradients and optimizers (PyTorch fetched for that run only; `reference/` is never imported by `src/`) | `uv run --with torch python reference/torch_check.py` (its tests: `uv run --with torch python -m pytest tests/reference`) |
 | Run all pre-commit hooks | `uv run python -m pre_commit run --all-files` |
 | Install the git hooks (once per clone) | `uv run python -m pre_commit install` |
 

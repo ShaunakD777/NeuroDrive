@@ -1061,3 +1061,20 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   that ran ahead of the data, identical truncated names).
 - Open question: would a learning-rate schedule (or keeping the best checkpoint) remove the late
   spikes near the edge, and is RMSProp's best rate below the grid?
+
+### 2026-10-31 — Task 4.9 PyTorch reference cross-check
+- Concept: an independent reference (PyTorch's automatic differentiation and torch.optim) checks
+  our hand-written backprop and optimizers exactly, including conventions a finite-difference
+  check cannot see (the 1/M of MSE, the 1/2 in Huber, where epsilon sits); a negative control (a
+  deliberately wrong optimizer) proves the check can fail.
+- Key equation(s) in words: a number passes when the gap between ours and PyTorch's is at most
+  1e-12 plus 1e-10 times PyTorch's value; float64 rounding alone is about 1e-16.
+- What we observed: all 96 gradient cases, 8 optimizer cases and 8 training runs agree to
+  1e-14 or better; Adam without bias correction is off by 0.64 and RMSProp with epsilon inside the
+  square root by 0.03, so both are caught.
+- Surprise or difficulty: RMSProp training drifted 1e-6 to 1e-5 from PyTorch after about 40
+  epochs, yet our own RMSProp drifts as far from itself when only the rounding order changes. Its
+  steps become about lr times the sign of the gradient, so the last digit of a near-zero gradient
+  decides which way a step goes; rounding gets amplified, not the maths changed.
+- Open question: does that sensitivity matter for reproducibility across machines (different
+  BLAS libraries round differently), and would Phase 6 want Adam rather than RMSProp because of it?
