@@ -76,7 +76,7 @@ def test_cli_sweep_prints_runs_and_summary(tmp_path):
     assert result.exit_code == 0, result.output
     assert "(5 runs)" in result.stdout
     assert "final loss: median" in result.stdout and "over 5 seeds" in result.stdout
-    folders = sorted(p.name for p in tmp_path.iterdir())
+    folders = sorted(p.name for p in tmp_path.iterdir() if p.is_dir())  # not neurodrive.db
     assert [f.rsplit("-", 1)[1] for f in folders] == ["s0", "s1", "s2", "s3", "s4"]
     sweeps = {RunStore(tmp_path / f).read_meta()["sweep"] for f in folders}
     assert len(sweeps) == 1

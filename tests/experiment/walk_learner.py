@@ -7,8 +7,9 @@ steps per unit, so budgets can be tested. Its state is the weights, the target a
 generator: everything it needs to continue exactly.
 
 ``main`` is run in a separate Python process by the kill tests: it trains a 12-unit run with
-exams and ends the process with ``os._exit`` at a chosen point. ``os._exit`` stops at once,
-without ``finally`` blocks or any clean-up, like pulling the plug.
+exams and ends the process with ``os._exit`` at a chosen point (``KILLS``; "before_mirror",
+between the folder and the database, since task 5.5b). ``os._exit`` stops at once, without
+``finally`` blocks or any clean-up, like pulling the plug.
 """
 
 import os
@@ -23,6 +24,7 @@ from neurodrive.core.nn.init import init_network
 from neurodrive.core.nn.network import Network
 from neurodrive.core.nn.spec import NetworkSpec
 from neurodrive.core.rng import make_rng
+from neurodrive.experiment.db import Mirror
 from neurodrive.experiment.runner import Budget, run
 from neurodrive.experiment.store import RunStore
 from neurodrive.learn.base import LearnerState, UnitResult, generator_state, set_generator_state
@@ -35,6 +37,7 @@ KILLS = {  # name -> (unit, where in that unit)
     "before_state": (7, "state"),  # after the metrics line, checkpoint and exam; before its state
     "mid_state_write": (7, "half_state"),  # a half-written temporary state file is left behind
     "first_unit": (1, "train"),  # before any state was ever saved
+    "before_mirror": (7, "mirror"),  # unit 7 complete in the folder, not yet in the database
 }
 
 
@@ -101,7 +104,15 @@ def main(runs_dir: str, kill: str) -> None:
             os._exit(KILLED)
         original(self, state, runner)
 
+    original_add = Mirror.add_unit
+
+    def add_unit(self, store, record, checkpoints, exams):
+        if record is not None and record["unit"] == unit and where == "mirror":
+            os._exit(KILLED)
+        original_add(self, store, record, checkpoints, exams)
+
     RunStore.save_state = save_state
+    Mirror.add_unit = add_unit
     run(learner, store, Budget(units=UNITS), exams=True)
 
 

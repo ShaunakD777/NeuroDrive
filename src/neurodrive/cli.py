@@ -1,7 +1,8 @@
 """The ``nd`` command-line tool.
 
 Each subcommand is one thing you can ask NeuroDrive to do from a terminal. ``version``,
-``serve``, ``train``, ``sweep`` and ``exam`` exist so far; others are added by later tasks.
+``serve``, ``train``, ``sweep``, ``exam`` and ``db rebuild`` / ``db check`` exist so far; others
+are added by later tasks.
 """
 
 from pathlib import Path
@@ -120,6 +121,7 @@ def exam(
 ) -> None:
     """Take the Driving Exam with a checkpoint: write exams/unit_<n>.json and print the card."""
     from neurodrive.env.policies import MLPPolicy
+    from neurodrive.experiment.db import DB_NAME, Mirror
     from neurodrive.experiment.exam import format_card, run_exam
     from neurodrive.experiment.store import RunStore
 
@@ -137,5 +139,53 @@ def exam(
     ref = {"kind": "checkpoint", "run": store.path.name, "unit": unit}
     result = run_exam(lambda world: MLPPolicy(network), ref)
     path = result.save(store.path / "exams" / f"unit_{unit}.json")
+    mirror = Mirror(store.path.parent / DB_NAME)  # copy the run again, new card included
+    mirror.sync_run(store)
+    mirror.close()
     typer.echo(format_card(result))
     typer.echo(f"exam card: {path.as_posix()}")
+
+
+db_app = typer.Typer(
+    help="The SQLite mirror of the run folders (runs/neurodrive.db).", no_args_is_help=True
+)
+app.add_typer(db_app, name="db")
+
+
+@db_app.command("rebuild")
+def db_rebuild(
+    runs_dir: str = typer.Option("runs", help="Folder of run folders (the database lives in it)."),
+) -> None:
+    """Empty the database and copy every run folder into it again."""
+    from neurodrive.experiment.db import DB_NAME, rebuild
+
+    if not Path(runs_dir).is_dir():
+        typer.echo(f"no such folder: {runs_dir}", err=True)
+        raise typer.Exit(code=2)
+    summary = rebuild(runs_dir)
+    rows = summary.rows
+    typer.echo(f"rebuilt {(Path(runs_dir) / DB_NAME).as_posix()} from {rows['runs']} run folders")
+    for table in ("metrics", "checkpoints", "exams", "exam_episodes"):
+        typer.echo(f"  {table}: {rows[table]:,} rows")
+    for name, reason in summary.skipped:
+        typer.echo(f"  skipped {name}: {reason}")
+
+
+@db_app.command("check")
+def db_check(
+    runs_dir: str = typer.Option("runs", help="Folder of run folders (the database lives in it)."),
+) -> None:
+    """Compare the database with the run folders; exit code 1 if they differ."""
+    from neurodrive.experiment.db import check, run_folders
+
+    problems = check(runs_dir)
+    if not problems:
+        typer.echo(f"the database matches the folders ({len(run_folders(runs_dir))} runs)")
+        return
+    for line in problems:
+        typer.echo(line)
+    typer.echo(
+        f"{len(problems)} difference(s). The folders are the master copy: nd db rebuild "
+        "makes the database match them."
+    )
+    raise typer.Exit(code=1)

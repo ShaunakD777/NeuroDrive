@@ -401,7 +401,8 @@ Verify: a dummy learner produces a valid run folder; killing and resuming contin
 `tests/experiment/test_db.py`. Concept: relational tables, and why one store is the master copy and
 the other a mirror. Verify: a database rebuilt from folders equals the incremental one; deleting
 and rebuilding loses nothing; one example query (median exam score across seeds) gives the same
-answer as computing it from the folders.
+answer as computing it from the folders. (ADR-038: the `studies` table of ADR-007 arrives in 5.10, with a
+`study` field in meta.json; `runs` has a `sweep` column meanwhile.)
 **5.6 Baselines:** random network, hand-wired neuron, scripted expert — each examined and stored
 as a baseline run. Verify: exam cards exist.
 **5.7 Random search learner:** `learn/evolution/random_search.py`, `configs/random_search.yaml`.
@@ -413,7 +414,8 @@ process spawning. Verify: launching from the UI creates a run; charts grow live.
 **5.9 Replay endpoint and run timeline:** `POST replay`, `checkpoints/{unit}/diff`,
 `web/src/views/experiment/Timeline.tsx`, Network-view diff colouring. Verify: scrubbing changes all
 three views consistently (Playwright test).
-**5.10 Study S4:** random search vs baselines (5 seeds). Study report.
+**5.10 Study S4:** random search vs baselines (5 seeds). Study report. Also the mirror's `studies` table and a
+`study` field in meta.json for runs made by a study (ADR-038).
 
 ---
 

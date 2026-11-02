@@ -132,7 +132,7 @@ These are created in Phase 0. If a task changes a command, update this section i
 | Train from a config into `runs/` (toy configs: `configs/toy_line.yaml`, `toy_sine.yaml`, `toy_xor.yaml`, `toy_two_spirals.yaml`; options `--seed`, `--tag`, `--epochs`, `--runs-dir`) | `uv run python -m neurodrive train --config configs/toy_xor.yaml` (or `uv run nd train ...`) |
 | Run several seeds (one run folder per seed, tag `<tag>-s<seed>`, shared `sweep` id; prints median and IQR of the final loss) | `uv run python -m neurodrive sweep --config configs/toy_sine.yaml --seeds 0-4` (or `uv run nd sweep ...`) |
 | Driving Exam on a checkpoint (writes `exams/unit_<n>.json` in the run folder, prints the card; needs a 7-input, 2-output network) | `uv run python -m neurodrive exam --run runs/<run_id> --unit <n>` (or `uv run nd exam ...`) |
-| Rebuild / check the SQLite mirror | `uv run nd db rebuild` / `uv run nd db check` |
+| Rebuild / check the SQLite mirror `runs/neurodrive.db` (the runner keeps it up to date by itself; check exits 1 if it differs from the folders; option `--runs-dir`) | `uv run python -m neurodrive db rebuild` / `uv run python -m neurodrive db check` (or `uv run nd db ...`) |
 | Web unit tests / smoke test | `cd web && npm run test` / `npm run e2e` |
 | Regenerate TypeScript types from the Python message models | `cd web && npm run gen:types` |
 | PyTorch cross-check of our gradients and optimizers (PyTorch fetched for that run only; `reference/` is never imported by `src/`) | `uv run --with torch python reference/torch_check.py` (its tests: `uv run --with torch python -m pytest tests/reference`) |
@@ -147,9 +147,6 @@ works wherever `uv run pytest` does not. If Smart App Control blocks Python's ow
 the Python that uv downloads (seen on 2026-10-25), install Python 3.12 from python.org and run
 `uv sync --python <path to its python.exe>`; the browser tests also train two small toy runs into
 `runs/` (tag `e2e`) the first time.
-
-**Not available yet** (the command is listed so its final form is fixed; running it today gives
-"No such command"): `nd db` arrives in task 5.5b.
 
 ## 7. Project slash commands
 

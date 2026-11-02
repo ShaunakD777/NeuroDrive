@@ -10,19 +10,24 @@ to stop* (docs/ARCHITECTURE.md §6.12). Each unit, in this order:
 3. if the unit is on the checkpoint schedule (0, 1, 2, 5, 10, 20, 50, ...): save a checkpoint
    and, when exams are on and the network drives (7 inputs, 2 outputs), take the Driving Exam
    and save the card;
-4. save the learner's state (a :class:`~neurodrive.learn.base.Resumable` learner), last;
-5. stop as soon as any :class:`Budget` limit is reached. A unit is never cut in half, so a run
+4. save the learner's state (a :class:`~neurodrive.learn.base.Resumable` learner), last in
+   the folder;
+5. copy the unit into the database mirror ``<runs dir>/neurodrive.db`` (task 5.5b, ADR-038):
+   one transaction with its metrics rows and any checkpoint and exam card just saved. The
+   folder is written first and is the master copy; a mirror that cannot be written only warns;
+6. stop as soon as any :class:`Budget` limit is reached. A unit is never cut in half, so a run
    can overshoot by at most one unit: 300 steps per unit and a 1,000-step limit stop after
    unit 4, at 1,200 steps.
 
-The last completed unit always gets a checkpoint (and an exam). Exam time is measured
-separately and kept out of the training clock and the budget.
+The last completed unit always gets a checkpoint (and an exam). Exam time and the mirror's
+time are measured separately and kept out of the training clock and the budget.
 
 **Resuming** (:func:`resume`): the saved state says which unit U it belongs to; everything later
 (metrics lines, checkpoints, exam cards) is cut away, the learner is restored, random generators
 included, and the loop continues with unit U + 1. Because the state is saved last, a kill at any
 point loses at most the unit in progress, and that unit is recomputed with the same random
 numbers: the run continues exactly as if it had never stopped, except for wall-clock times.
+The mirror's rows of that run are then copied again from the cut-back folder.
 
 ``train_toy_run`` starts a whole toy run from a validated config (``nd train``, task 4.6b);
 ``sweep_seeds`` runs one config once per seed (``nd sweep``, task 4.7a, ADR-033).
@@ -41,7 +46,8 @@ from neurodrive.env.car import ACTION_SIZE
 from neurodrive.env.policies import MLPPolicy
 from neurodrive.env.sensors import OBSERVATION_SIZE
 from neurodrive.experiment.config import ToyRunConfig, parse_config, resolved, to_toy_config
-from neurodrive.experiment.exam import DEFAULT_TRACKS_DIR, run_exam
+from neurodrive.experiment.db import DB_NAME, Mirror
+from neurodrive.experiment.exam import DEFAULT_TRACKS_DIR, ExamResult, run_exam
 from neurodrive.experiment.store import RunStore
 from neurodrive.learn.base import Learner, Resumable
 from neurodrive.learn.supervised.train_toy import ToyLearner
@@ -111,28 +117,44 @@ def run(
     budget: Budget | int,
     exams: bool = True,
     tracks_dir: str | Path = DEFAULT_TRACKS_DIR,
+    mirror: bool = True,
 ) -> str:
     """Train ``learner`` until ``budget`` is used up, writing everything to ``store``.
 
     ``budget`` may be a plain number of units. ``exams`` turns the Driving Exam at checkpoints on
-    or off (it only ever runs for networks that drive). Returns the final status: "completed", or
-    "diverged" when a unit reports divergence (the last finite network is then checkpointed at
-    the last completed unit).
+    or off (it only ever runs for networks that drive). ``mirror`` keeps the database
+    ``<runs dir>/neurodrive.db`` up to date as the run goes (ADR-038). Returns the final status:
+    "completed", or "diverged" when a unit reports divergence (the last finite network is then
+    checkpointed at the last completed unit).
     """
     budget = Budget(units=budget) if isinstance(budget, int) else budget
     store.update_meta(
         budget=budget.to_dict(), exams=exams, stop_reason=None, resumed_at=[], exam_wall_clock_s=0.0
     )
     totals = dict.fromkeys(_TOTALS, 0)
-    return _loop(learner, store, budget, exams, tracks_dir, 0, totals, 0.0, 0.0)
+    db = _mirror_of(store) if mirror else None
+    if db is not None:
+        db.sync_run(store)
+    return _loop(learner, store, budget, exams, tracks_dir, 0, totals, 0.0, 0.0, db)
 
 
-def resume(learner: Learner, store: RunStore, tracks_dir: str | Path = DEFAULT_TRACKS_DIR) -> str:
+def _mirror_of(store: RunStore) -> Mirror:
+    """The database mirror next to the run folder: ``<runs dir>/neurodrive.db``."""
+    return Mirror(store.path.parent / DB_NAME)
+
+
+def resume(
+    learner: Learner,
+    store: RunStore,
+    tracks_dir: str | Path = DEFAULT_TRACKS_DIR,
+    mirror: bool = True,
+) -> str:
     """Continue a killed (status "running") or failed run of ``store`` exactly where it stopped.
 
     ``learner`` must be built exactly as for the original run (same config and seed): with no
     saved state yet it *is* the unit-0 learner; otherwise its ``restore`` replaces its state with
-    the saved one. The budget and the exams setting come from ``meta.json``.
+    the saved one. The budget and the exams setting come from ``meta.json``. With ``mirror``,
+    the database's rows of this run are replaced by the cut-back folder's before continuing.
     """
     meta = store.read_meta()
     if meta.get("run_version", 0) < 1:
@@ -156,7 +178,12 @@ def resume(learner: Learner, store: RunStore, tracks_dir: str | Path = DEFAULT_T
         resumed_at=[*meta["resumed_at"], datetime.now(UTC).isoformat(timespec="seconds")],
     )
     budget = Budget(**meta["budget"])
-    return _loop(learner, store, budget, meta["exams"], tracks_dir, unit, totals, clock, exam_clock)
+    db = _mirror_of(store) if mirror else None
+    if db is not None:
+        db.sync_run(store)
+    return _loop(
+        learner, store, budget, meta["exams"], tracks_dir, unit, totals, clock, exam_clock, db
+    )
 
 
 def _loop(
@@ -169,22 +196,38 @@ def _loop(
     totals: dict[str, int],
     clock_offset: float,
     exam_clock: float,
+    db: Mirror | None,
 ) -> str:
     """The unit loop shared by :func:`run` (from unit 0) and :func:`resume` (from unit U)."""
     started = time.perf_counter()
     exam_here = 0.0  # exam seconds spent in this session (kept out of the training clock)
+    mirror_here = 0.0  # database seconds in this session (also kept out, ADR-038)
+    saved: list[int] = []  # checkpoints and exam cards saved since the mirror last copied
+    cards: list[tuple[int, ExamResult]] = []
+
+    def mirror(record: dict[str, Any] | None) -> None:
+        nonlocal mirror_here
+        if db is not None:
+            t0 = time.perf_counter()
+            db.add_unit(store, record, saved, cards)
+            mirror_here += time.perf_counter() - t0
+        saved.clear()
+        cards.clear()
 
     def wall_clock() -> float:
-        return clock_offset + time.perf_counter() - started - exam_here
+        return clock_offset + time.perf_counter() - started - exam_here - mirror_here
 
     def checkpoint(at: int) -> None:
         nonlocal exam_here
         network = learner.current_networks()[0]
         store.save_checkpoint(at, network)
+        saved.append(at)
         if exams and drives(network):
             t0 = time.perf_counter()
             ref = {"kind": "checkpoint", "run": store.path.name, "unit": at}
-            store.save_exam(at, run_exam(lambda world: MLPPolicy(network), ref, tracks_dir))
+            card = run_exam(lambda world: MLPPolicy(network), ref, tracks_dir)
+            store.save_exam(at, card)
+            cards.append((at, card))
             exam_here += time.perf_counter() - t0
 
     def save_state(at: int) -> None:
@@ -200,34 +243,49 @@ def _loop(
     status, reason = "completed", None
     last_done = unit
     last_saved = max((u for u in store.checkpoint_units() if u <= unit), default=-1)
+    # The stop rule reads the clock as recorded in the last metrics line, like the step totals,
+    # so whether a run stopped at the right unit can be checked from its folder alone.
+    recorded = clock_offset
     try:
         if unit == 0:
             checkpoint(0)  # the network before any learning (again, after a very early kill)
             last_saved = 0
-        while (reason := budget.reached(unit, totals, wall_clock())) is None:
+            mirror(None)
+        while (reason := budget.reached(unit, totals, recorded)) is None:
             unit += 1
             result = learner.train_unit()
             totals["env_steps_total"] += result.env_steps
             totals["demo_frames_total"] += result.demo_frames
             totals["teacher_queries_total"] += result.teacher_queries
-            record = {"unit": unit, **totals, "wall_clock_s": wall_clock()}
-            store.append_metrics({**record, **result.metrics, "diverged": result.diverged})
+            recorded = wall_clock()
+            record = {"unit": unit, **totals, "wall_clock_s": recorded}
+            record = {**record, **result.metrics, "diverged": result.diverged}
+            store.append_metrics(record)
             if result.diverged:
                 status, reason = "diverged", "diverged"
+                mirror(record)
                 break
             last_done = unit
             if on_checkpoint_schedule(unit):
                 checkpoint(unit)
                 last_saved = unit
             save_state(unit)
+            mirror(record)
         if last_saved != last_done:
             checkpoint(last_done)
+            mirror(None)
     except BaseException:
         store.update_meta(exam_wall_clock_s=exam_clock + exam_here)
         store.finish("failed", "error")
+        if db is not None:
+            db.update_run(store)
+            db.close()
         raise
     store.update_meta(exam_wall_clock_s=exam_clock + exam_here)
     store.finish(status, reason)
+    if db is not None:
+        db.update_run(store)
+        db.close()
     return status
 
 

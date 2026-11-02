@@ -1226,3 +1226,27 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   is all-or-nothing, so a state file is never seen half-written.
 - Open question: for real methods (random search in 5.7, GA in Phase 7) a unit can take minutes;
   is one saved state per unit still cheap when the state is a whole population?
+
+### 2026-11-02 — Task 5.5b SQLite mirror
+- Concept: relational tables and a mirror. The run folders stay the master copy; the database is
+  a copy in tables (one row per fact, picked out by a primary key) so that a question across many
+  runs is one SQL query. Because the folders are written first and the database can always be
+  rebuilt from them, a database problem never costs a training run.
+- Key equation(s) in words: the SQL median uses the same rule as `stats.percentile`: sort the n
+  values, h = (n − 1) × 0.5, median = v[floor h] + (h − floor h) × (v[ceil h] − v[floor h]);
+  0.02, 0.05, 0.03, 0.08 give 0.03 + 0.5 × 0.02 = 0.04, and five seeds' final held-out progress
+  gives exactly the value computed from the exam cards on disk.
+- What we observed: the database written unit by unit equals one rebuilt from the folders, also
+  after deleting the file and after runs killed at five moments and resumed. The fifth moment
+  (between a unit's folder writes and its database rows) was added because a planted bug, "no
+  re-copy on resume", passed the four older kill tests: with the database written after the
+  state it can only fall behind, never get ahead. A copy of the 84 Phase 3–4 folders rebuilt into
+  2.38 million metrics rows; one query then listed every sweep's final losses.
+- Surprise or difficulty: the existing tests found three things: toy metrics contain lists
+  (`grad_norm` per layer), checkpoint 0 is saved twice after a kill in unit 1, and the wall-clock
+  stop compared the limit with the clock after the unit's checkpoint and state writes instead of
+  the recorded time, so a run could stop "for wall_clock" after a line that was still below the
+  limit. The stop rule now reads the recorded time, like the step totals.
+- Open question: storing every metric value as its own row makes the database 2.5 times the size
+  of the folders and adds 0.45 ms per unit; for millisecond toy epochs that is a quarter of the
+  time. Should fast learners mirror every N units, or summary metrics only?

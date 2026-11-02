@@ -111,6 +111,11 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Generator state | The few numbers that fully describe where a random generator is in its sequence. Saving and restoring them makes the next "random" draws the same as they would have been. |
 | Atomic write | Writing a file so that a crash leaves either the old version or the new one, never half of one: write a temporary file, then rename it over the old one. |
 | Budget | The allowance a training run may spend: units, environment steps or wall-clock seconds. Methods are compared at equal budgets. |
+| Relational table | A grid with named columns in which each row states one fact, for example "run R, unit 3, fitness −28.4". A database is a set of such tables that refer to each other through shared columns (here `run_id`). |
+| Primary key | The columns that pick out exactly one row of a table, e.g. (run, unit, name) for a metric value. The database refuses a second row with the same key. |
+| SQL query | A question written in SQL, the language of relational databases, answered across whole tables at once, e.g. "the median held-out progress over all runs of a sweep". |
+| Mirror (database) | A copy of data kept for fast searching, rebuilt from the master copy (the run folders) whenever they disagree. The folders are always written first and always win. |
+| WAL (write-ahead log) | A SQLite mode in which changes are first appended to a separate log file, so readers keep seeing a consistent database while one writer adds to it. |
 | Package | A folder of Python files that can be imported by name (`import neurodrive`). |
 | Virtual environment (venv) | A private copy of Python and libraries for one project (`.venv/`), so projects cannot break each other. |
 | Dependency | A library our code needs; listed in `pyproject.toml`. |

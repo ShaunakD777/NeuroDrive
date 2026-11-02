@@ -102,6 +102,7 @@ def test_wall_clock_budget_stops_on_training_time(tmp_path):
     metrics = store.read_metrics()
     assert store.read_meta()["stop_reason"] == "wall_clock"
     assert 2 <= len(metrics) < 1000 and metrics[-1]["wall_clock_s"] >= 0.3
+    assert metrics[-2]["wall_clock_s"] < 0.3  # stopped after the first unit that reached it
 
 
 def test_budgets_need_a_limit_and_no_negatives():
