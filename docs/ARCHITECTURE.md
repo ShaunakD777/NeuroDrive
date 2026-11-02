@@ -341,6 +341,16 @@ crashed, lap times, mean speed, smoothness, time to crash; since task 5.2 also s
 position, steps and time: `experiment/metrics.py` `EpisodeMetrics`), and aggregates per track and
 overall (median, IQR, completion rate: `Aggregate`). See `EXPERIMENT_PROTOCOL.md`.
 
+*As built (task 5.4, `experiment/exam.py`):* `run_exam(policy_for, policy_ref)` → `ExamResult`,
+saved as JSON (`exams/unit_<n>.json` in a run folder, written by `nd exam`): `exam_version` 1,
+`spec` (tracks, start fractions, lateral offsets, target laps; `EXAM_V1`), `policy` (what was
+examined), `tracks` (per track: split, length, time limit, 10 episodes with `start_index`,
+`start_s0_m`, `start_lateral_m` and the `EpisodeMetrics` fields, and its aggregate), `training`
+and `heldout` (pooled) aggregates, `env_steps`, `extra`. `policy_for(world)` builds the policy
+for each track's world (the expert needs it). Each track's 10 starts are always driven as one
+batch in start order: a network's output differs by about 1e-16 between batch sizes, so a
+recording matches a card only when made the same way.
+
 ### 6.15 Config file (toy: config v1, ADR-032)
 A YAML file; `method` picks the model in `experiment/config.py` (only `toy` so far; later methods
 add their own model). Unknown fields, wrong types, unknown names and out-of-range numbers are

@@ -91,6 +91,8 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Pure pursuit | A steering rule: pick a point a little way ahead on the path (the look-ahead point) and steer along the circle that leaves the car in its current direction and passes through that point; its curvature is 2 sin α ÷ d. |
 | Look-ahead point | The point on the centreline the expert aims at, 8 m + 0.5 s × speed ahead: further when fast, so it steers smoothly; closer when slow, so it follows tight bends. |
 | Speed profile | The target speed at every metre of a track: as fast as grip allows in each bend (with a margin), lowered before each bend so the car can brake in time. |
+| Exam card | The result of one Driving Exam: every episode's metrics, each track's summary, the training track's summary and the pooled held-out summary, with the exam version and what was examined (`exams/unit_<n>.json`). |
+| Pooled | Put together into one group before summarising: the held-out summary pools the 40 held-out episodes instead of averaging four track summaries. |
 | Metric | A precise rule that turns a whole drive (or run) into one number, so different drivers can be compared fairly. The Driving Exam's metrics are defined in `experiment/metrics.py`. |
 | Linear interpolation | Estimating a value between two known points by assuming a straight line between them. Lap times use it: if progress was 90 m at one frame and 105 m at the next, 100 m was reached two thirds of the way between them. |
 | Completion rate | The fraction of episodes that reached the target laps (2 of 4 completed gives 0.5). The crash rate is the same for episodes that left the road. |

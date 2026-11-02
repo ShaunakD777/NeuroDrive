@@ -1182,3 +1182,23 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
 - Follow-up (2026-11-02, user request): the expert is now a live driver in the app (ADR-035, api
   v1.12). Discussed whether to give it a racing line: kept on the centreline for now, so that
   whether evolution or RL discovers corner cutting on its own stays an open, measurable question.
+
+### 2026-11-02 — Task 5.4 Driving Exam v1
+- Concept: a standardised test. Every driver takes the same fixed exam (5 tracks, 10 starts each,
+  2 laps, per-track time limits) and is marked on the same sheet; changing the exam means a new
+  version, so old and new cards are never mixed. A card is trustworthy because it is deterministic
+  and because every number on it can be recomputed from a recorded drive.
+- Key equation(s) in words: start i sits at fraction 0, 0.2, 0.4, 0.6 or 0.8 of the lap, centred
+  or 1.5 m to the left; the held-out summary pools all 40 held-out episodes, which weighs every
+  held-out track equally because each has 10 (completion 1, 0, 0.5, 1 pools to 25 / 40 = 0.625).
+- What we observed: the expert completes all 50 episodes (best laps 32.0 s on the loop, 114.1 s on
+  Monza; 11.9 s of computing for 172,809 car-steps); Study S1's neuron completes the loop and the
+  mirror but crashes on every hairpin, sweeper and Monza start (held-out completion 0.25, crash rate
+  0.75); a random network stalls on every start.
+- Surprise or difficulty: a network's output for the same car differs by about 2e-16 between a
+  batch of 10 and a batch of 1 (the matrix routines add in another order), so "the exam matches a
+  recording" holds only when the recording is made exactly as the exam drives: 10 cars, in start
+  order. The exam fixes that layout.
+- Open question: the exam cost about 12 s for the expert; with checkpoints examined on a schedule
+  (5.5), how often can a run afford it, and should early checkpoints of bad drivers (which end fast)
+  be examined more often than good ones?

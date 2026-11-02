@@ -40,7 +40,8 @@
   `sweeper_01` (a 70 m bend held for 240 m, 856 m, 107 s), `train_loop_01_mirror` (the training
   loop reflected left to right, 731 m, 92 s) and `monza_ccw` (half-size Monza driven
   counter-clockwise, 2,900 m, 363 s). `monza_cw` has split `train` and is not examined; studies may
-  train on it as a long road.
+  train on it as a long road. Exam v1 fixes this list (`experiment/exam.py: EXAM_V1`, task 5.4);
+  a test fails if a held-out track file is added, so a new track means a new exam version.
 - **Starts per track:** 5 positions at 0 %, 20 %, 40 %, 60 % and 80 % of the track length,
   centred and aligned with the tangent, plus the same 5 with a +1.5 m lateral offset → 10 episodes
   per track.
@@ -68,7 +69,9 @@
   - Added in task 5.2, before the exam was first implemented: `status` (finished, crashed,
     stalled, timeout), `end_s_m` (where on the lap the episode ended), plus `steps`, `time_s`
     and `laps`.
-- **Aggregates per track and overall:** completion rate, crash rate, median and IQR of
+- **Aggregates per track and overall** ("overall" = the training track on its own, plus all
+  held-out episodes pooled; each held-out track has 10 episodes, so each weighs the same):
+  completion rate, crash rate, median and IQR of
   `progress_frac`, median best lap time (completed episodes only), median smoothness.
 - The exam spec version is stored with every result. Changing the exam requires an ADR and a new
   version, and old results are not compared with new ones.

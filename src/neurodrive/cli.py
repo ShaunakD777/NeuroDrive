@@ -1,7 +1,7 @@
 """The ``nd`` command-line tool.
 
 Each subcommand is one thing you can ask NeuroDrive to do from a terminal. ``version``,
-``serve``, ``train`` and ``sweep`` exist so far; ``exam`` and others are added by later tasks.
+``serve``, ``train``, ``sweep`` and ``exam`` exist so far; others are added by later tasks.
 """
 
 from pathlib import Path
@@ -111,3 +111,31 @@ def sweep(
         f"final loss: median {s.median:.6g} [IQR {s.q1:.6g} to {s.q3:.6g}] over {s.n} seeds"
         " (a diverged run counts as inf)"
     )
+
+
+@app.command()
+def exam(
+    run: str = typer.Option(..., "--run", help="Run folder, e.g. runs/<run_id>."),
+    unit: int = typer.Option(..., "--unit", help="Checkpoint unit to examine."),
+) -> None:
+    """Take the Driving Exam with a checkpoint: write exams/unit_<n>.json and print the card."""
+    from neurodrive.env.policies import MLPPolicy
+    from neurodrive.experiment.exam import format_card, run_exam
+    from neurodrive.experiment.store import RunStore
+
+    try:
+        store = RunStore.open(run)
+        if unit not in store.checkpoint_units():
+            raise ValueError(
+                f"no checkpoint for unit {unit}; saved units: {store.checkpoint_units()}"
+            )
+        network = store.load_checkpoint(unit)
+        MLPPolicy(network)  # refuses a network that is not 7 inputs -> 2 outputs
+    except (FileNotFoundError, ValueError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=2) from None
+    ref = {"kind": "checkpoint", "run": store.path.name, "unit": unit}
+    result = run_exam(lambda world: MLPPolicy(network), ref)
+    path = result.save(store.path / "exams" / f"unit_{unit}.json")
+    typer.echo(format_card(result))
+    typer.echo(f"exam card: {path.as_posix()}")
