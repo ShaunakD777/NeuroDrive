@@ -305,6 +305,8 @@ rebuilds the same world. Replaying the actions reproduces every array bit for bi
 ### 6.12 Learner contract (learner v1)
 *Version 0 (task 3.7, ADR-030): `learn/base.py` without save/restore; wall-clock time measured by the runner; `experiment/runner.py` v0 owns a minimal loop.*
 
+*Version 1 (task 5.5, ADR-037):* save/restore is the optional `Resumable` protocol: `state()` → `LearnerState` (named NumPy arrays + a JSON-friendly `info` dict holding counters and every generator's state, `generator_state`), `restore(state)`. A learner without it trains but cannot resume. `experiment/runner.py` v1: `run(learner, store, budget, exams)` and `resume(learner, store)`; `Budget(units, env_steps, wall_clock_s)`, any limit stops the run after the unit that reaches it (overshoot ≤ 1 unit); checkpoint schedule 0, 1, 2, 5, 10, 20, 50, … plus the last unit; at every checkpoint the Driving Exam runs when exams are on and the network drives (7 → 2), its time kept out of the training clock (`exam_wall_clock_s`). Order within a unit: train → metrics line → checkpoint + exam → state (last). Resume cuts the folder back to the state's unit and continues; a killed run (status running) or a failed one can be resumed, identically except for wall-clock times.
+
 Every learning method provides:
 - `name` and `feedback_kind` ∈ {`labels`, `episode_score`, `step_reward`, `none`}
 - set-up from (config, seeded generator)
@@ -319,6 +321,8 @@ stop conditions (max env steps, max wall-clock, max units).
 
 ### 6.13 Run folder (run v1)
 *Version 0 (task 3.7, ADR-030): a strict subset (no `exams/`, `run_version: 0` in meta.json, `extra/dataset.npz` for toy runs), written by `experiment/store.py`.*
+
+*Version 1 (task 5.5, ADR-037), as built:* `run_version: 1`; `exams/unit_<n>.json` (exam cards); `state/latest.npz` (the learner's state after the latest unit plus the runner's unit, totals and clocks; replaced atomically: written as `latest.tmp.npz`, then renamed); meta.json adds `budget`, `exams`, `stop_reason` (units, env_steps, wall_clock, diverged, error), `resumed_at` (UTC times) and `exam_wall_clock_s`. Version-0 folders are still read.
 
 ```
 runs/<YYYYMMDD-HHMMSS>-<method>-<tag>/

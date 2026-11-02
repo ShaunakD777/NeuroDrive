@@ -107,6 +107,10 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Per-track time limit | The episode time limit set from the track's length: 2 laps at an average of 16 m/s, rounded up to a whole second (ADR-022). |
 | Median / IQR | The middle value / the range covering the middle half of results. |
 | Checkpoint | A saved snapshot of a network at a moment during training. |
+| Resume | Continue a stopped training run from its saved state. Done exactly, the resumed run gives the same numbers as one that never stopped: the weights, counters and random generators must all be restored. |
+| Generator state | The few numbers that fully describe where a random generator is in its sequence. Saving and restoring them makes the next "random" draws the same as they would have been. |
+| Atomic write | Writing a file so that a crash leaves either the old version or the new one, never half of one: write a temporary file, then rename it over the old one. |
+| Budget | The allowance a training run may spend: units, environment steps or wall-clock seconds. Methods are compared at equal budgets. |
 | Package | A folder of Python files that can be imported by name (`import neurodrive`). |
 | Virtual environment (venv) | A private copy of Python and libraries for one project (`.venv/`), so projects cannot break each other. |
 | Dependency | A library our code needs; listed in `pyproject.toml`. |

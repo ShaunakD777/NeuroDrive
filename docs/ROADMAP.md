@@ -405,7 +405,9 @@ answer as computing it from the folders.
 **5.6 Baselines:** random network, hand-wired neuron, scripted expert — each examined and stored
 as a baseline run. Verify: exam cards exist.
 **5.7 Random search learner:** `learn/evolution/random_search.py`, `configs/random_search.yaml`.
-Concept: the simplest gradient-free learner (try, keep the best). Verify: best-so-far fitness never decreases.
+Concept: the simplest gradient-free learner (try, keep the best). Also `nd resume --run <folder>` (it is the first
+resumable method; ADR-037 moved the command here from 5.5). Verify: best-so-far fitness never decreases; a killed
+random-search run resumed with `nd resume` equals an uninterrupted one.
 **5.8 Run launching and progress streaming:** `server/runs_watch.py`, `POST runs`, `/ws/runs`,
 process spawning. Verify: launching from the UI creates a run; charts grow live.
 **5.9 Replay endpoint and run timeline:** `POST replay`, `checkpoints/{unit}/diff`,

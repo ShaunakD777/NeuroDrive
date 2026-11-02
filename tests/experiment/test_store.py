@@ -40,7 +40,7 @@ def test_config_round_trips(tmp_path):
 def test_meta_contents_and_finish(tmp_path):
     store = new_store(tmp_path)
     meta = store.read_meta()
-    assert meta["run_version"] == RUN_VERSION == 0
+    assert meta["run_version"] == RUN_VERSION == 1  # run folder v1 since task 5.5 (ADR-037)
     assert meta["status"] == "running" and meta["ended_at"] is None
     assert meta["run_id"] == store.path.name and meta["method"] == "toy_xor"
     assert {"git_commit", "git_dirty", "python_version", "numpy_version"} <= set(meta)

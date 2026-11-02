@@ -1205,3 +1205,24 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
 - Follow-up (2026-11-02, user decision, ADR-036): the held-out summary no longer pools lap times;
   it lists each held-out track's median best lap, because lap times compare only within a track
   (the pooled 52.9 s sat between a 38 s and a 67 s track and described neither).
+
+### 2026-11-02 — Task 5.5 Learner contract v1 + Runner
+- Concept: checkpoint and resume. Continuing a run exactly needs the whole learner state, not
+  just the weights: counters and, above all, the random generator's state, or the "random" draws
+  after the restart differ and the run quietly becomes another experiment. Budgets (units,
+  environment steps, wall-clock seconds) decide when a run stops, so methods compare at equal cost.
+- Key equation(s) in words: a run stops after the first unit whose running total reaches a limit
+  (300 steps a unit and a 1,000-step limit stop after unit 4, at 1,200); within a unit the order
+  is train, metrics line, checkpoint and exam, state last, so on resume everything after the
+  state's unit is cut away and recomputed with the same random numbers.
+- What we observed: a 12-unit test run killed in another process at four different moments
+  (mid unit 7, after unit 7's metrics but before its state, in the middle of writing the state,
+  mid unit 1) and then resumed gave exactly the uninterrupted run's metrics, checkpoints, exam
+  cards and final generator state. Forgetting the generator broke 3 of the 4; forgetting the
+  cut-back broke the 2 that had written a line after the last state. For a trivial learner the
+  exams cost 2.2 s against 0.03 s of training, which is why exam time is kept off the clock.
+- Surprise or difficulty: the kill "in unit 1, before any state" resumes correctly with a fresh
+  learner, because a freshly built learner with the same seed is the unit-0 state; and a rename
+  is all-or-nothing, so a state file is never seen half-written.
+- Open question: for real methods (random search in 5.7, GA in Phase 7) a unit can take minutes;
+  is one saved state per unit still cheap when the state is a whole population?
