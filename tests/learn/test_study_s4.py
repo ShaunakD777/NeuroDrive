@@ -88,12 +88,10 @@ def lines_of(best_units: list[int], fitness: list[float]) -> list[dict]:
     ]
 
 
-@pytest.fixture(scope="module")
-def made(tmp_path_factory, study) -> dict:
+def make_study(runs: Path, study) -> None:
     """Seeds 0 and 1 overfit (their unit-3 best is 0.3 and 0.2 below their unit-1 best on
     held-out progress), seeds 2-4 improve. Final held-out progress: 0.3, 0.4, 0.5, 0.6, 0.7.
     Random networks score 0; the neuron 0.234 progress, 0.25 completion; the expert 1, 1."""
-    runs = tmp_path_factory.mktemp("s4")
     first = [0.6, 0.6, 0.1, 0.1, 0.1]
     final = [0.3, 0.4, 0.5, 0.6, 0.7]
     for seed in study.SEEDS:
@@ -103,6 +101,12 @@ def made(tmp_path_factory, study) -> dict:
         fake_run(runs, "random_network", seed, {0: card(0.0)}, tag="baseline")
     fake_run(runs, "hand_neuron", None, {0: card(0.234, 0.25, 0.75)}, tag="baseline")
     fake_run(runs, "scripted_expert", None, {0: card(1.0, 1.0, 0.0)}, tag="baseline")
+
+
+@pytest.fixture(scope="module")
+def made(tmp_path_factory, study) -> dict:
+    runs = tmp_path_factory.mktemp("s4")
+    make_study(runs, study)
     return study.analyse(runs)
 
 
@@ -128,6 +132,27 @@ def test_the_hypothesis_rules_on_the_hand_made_runs(made):
     c = made["comparisons"]["heldout_progress"]
     assert c["vs_scripted_expert"]["verdict"] == "random search clearly lower"
     assert c["minus_random_network_paired"]["verdict"] == "random search clearly higher"
+
+
+def test_an_added_seed_joins_only_when_asked_for(made, study, tmp_path, monkeypatch):
+    """A sixth S4 seed (final held-out progress 0.9) leaves the pre-registered 0-4 analysis
+    unchanged, though the database is still checked for every S4 folder, and joins the analysis
+    of seeds 0-5."""
+    make_study(tmp_path, study)
+    cards = {0: card(0.0), 1: card(0.2), 3: card(0.9, completion=0.1)}
+    fake_run(tmp_path, "random_search", 5, cards, lines_of([1, 1, 3], [0.2, 0.2, 0.5]))
+    checked: list[list[str]] = []  # hand-made cards cannot enter the database: record the call
+    monkeypatch.setattr(study, "database_check", lambda _dir, ids: checked.append(ids) or {})
+    five = study.analyse(tmp_path)
+    assert five["curves"] == made["curves"] and five["hypotheses"] == made["hypotheses"]
+    assert len(five["run_ids"]) == 17 and len(checked[0]) == 18
+    six = study.analyse(tmp_path, (0, 1, 2, 3, 4, 5))
+    assert six["curves"]["heldout_progress"][-1]["seeds"] == [0.3, 0.4, 0.5, 0.6, 0.7, 0.9]
+    assert six["curves"]["heldout_progress"][-1]["median"] == pytest.approx(0.55)
+    assert six["design"]["seeds"] == [0, 1, 2, 3, 4, 5] and len(six["run_ids"]) == 18
+    with pytest.raises(SystemExit, match="random_search runs for seeds"):
+        study.analyse(tmp_path, (0, 6))
+    assert study.seeds_label((0, 1, 2)) == "seeds0-2" and study.seeds_label((0, 2)) == "seeds0_2"
 
 
 def test_a_study_run_is_a_plain_random_search_run(study, tmp_path, monkeypatch):

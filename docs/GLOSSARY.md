@@ -137,6 +137,8 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Budget (comparison at equal budget) | How much a learner has spent, here counted in environment steps. Methods are compared at the same budget, not after the same number of their own units, because a unit costs different amounts in different methods. |
 | Budget-to-beat (B*) | The smallest budget at which a learner's median exam score (across seeds) is above a baseline's; "not within the budget" if it never is. |
 | Selection overfitting | Picking, among many candidates, the one that scores best on a fixed test, and so partly picking the one that happens to suit that test: its score there rises while its score elsewhere does not. |
+| Wall-clock time | Time as a clock on the wall measures it, in seconds. It depends on the machine and on what else runs on it, so studies count budget in environment steps and report wall-clock time only as a second currency. |
+| Throughput | Work done per second, here environment steps per second. Several runs side by side are each slower, but together can do more per second than one run alone. |
 | Package | A folder of Python files that can be imported by name (`import neurodrive`). |
 | Virtual environment (venv) | A private copy of Python and libraries for one project (`.venv/`), so projects cannot break each other. |
 | Dependency | A library our code needs; listed in `pyproject.toml`. |

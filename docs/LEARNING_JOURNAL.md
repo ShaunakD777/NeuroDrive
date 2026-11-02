@@ -1377,3 +1377,13 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
 - Open question: would a fitness that rewards margin (or is measured on more varied roads) keep
   the slow, general drivers? And does the GA, which builds on its best networks instead of
   starting afresh, fall into the same trap sooner? Study S6.
+- Follow-up 2026-11-03 (10 seeds, each timed alone): seeds 5-9 changed the answer. With 10 seeds
+  the median held-out progress beats the neuron only between 0.24 M and 0.95 M steps (peak 0.354,
+  not 0.813) and ends at 0.173, below the neuron's 0.234, so H2 no longer holds. The first five
+  seeds happened to include both of the two seeds (0 and 1) whose final network generalises: a
+  small sample flattered the method. Six of ten seeds end on finishers; two slow seeds (6, 8) are
+  slow but not safe (they fail on the mirror and Monza), so slowness alone is not the reason seeds
+  0 and 1 generalise. Timing: alone a seed trains at about 12,400 steps/s (6 minutes for 4.5 M
+  steps); five side by side ran at about 4,900 each, slower per seed but about twice the total
+  throughput. Every seed retrained alone gave identical files, so parallel running changes only
+  the clock, and the clock also moved with other load on the machine (seeds 5-8's first times).

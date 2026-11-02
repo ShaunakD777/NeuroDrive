@@ -2,9 +2,12 @@
 
 Run from the repository root:
 
-    uv run python scripts/study_s4.py --train                       # make the runs (~15 min)
+    uv run python scripts/study_s4.py --train                       # make the runs (~20 min)
     uv run python scripts/study_s4.py                               # analyse them (numbers)
     uv run --with matplotlib python scripts/study_s4.py --figures   # also draw the figures
+
+    uv run python scripts/study_s4.py --train-seeds 5-9             # more seeds, one at a time
+    uv run --with matplotlib python scripts/study_s4.py --seeds 0-9 --figures   # analyse 0-9
 
 Design and hypotheses: docs/studies/S4.md (written in the task 5.10 Brief, before any run).
 
@@ -24,6 +27,11 @@ experiment/stats.py (10 000 resamples, seed 2026). The runs are found by their m
 ``study`` field and cross-checked against the database's ``study`` column. Numbers go to
 docs/studies/S4_results.json (the same bytes on every analysis of the same runs); with --figures
 the pictures go to docs/studies/figures/ (matplotlib is needed only for that).
+
+The extension to 10 seeds (task 5.10 follow-up): ``--train-seeds`` trains the given seeds one
+after another, each alone on the machine, and prints each one's wall-clock time;
+``--seeds 0-9`` analyses those seeds instead of the pre-registered 0-4, into files named
+``..._seeds0-9`` so the pre-registered results stay as they are.
 """
 
 import argparse
@@ -31,6 +39,7 @@ import bisect
 import json
 import os
 import sqlite3
+import time
 from concurrent.futures import ProcessPoolExecutor
 from contextlib import closing
 from datetime import UTC, datetime
@@ -43,7 +52,7 @@ from neurodrive.core.rng import make_rng
 from neurodrive.experiment.baselines import make_baselines
 from neurodrive.experiment.config import load_config, parse_config, resolved
 from neurodrive.experiment.db import DB_NAME, connect, run_folders, runs_of_study
-from neurodrive.experiment.runner import train_random_search_run
+from neurodrive.experiment.runner import parse_seeds, train_random_search_run
 from neurodrive.experiment.stats import (
     bootstrap_median_ci,
     bootstrap_median_difference,
@@ -106,6 +115,19 @@ def train(runs_dir: Path, workers: int) -> list[str]:
         return [*seeds, *baselines.result()]
 
 
+def train_one_at_a_time(runs_dir: Path, seeds: list[int]) -> list[tuple[str, float]]:
+    """Train random-search seeds one after another (one sweep), so each has the machine to
+    itself: its wall-clock time is then that of a run alone. Returns (run folder, seconds)."""
+    sweep_id = f"{datetime.now(UTC):%Y%m%d-%H%M%S}-random_search-{TAG}"
+    done = []
+    for seed in seeds:
+        start = time.perf_counter()
+        name = _train_seed((seed, sweep_id, str(runs_dir)))
+        done.append((name, time.perf_counter() - start))
+        print(f"seed {seed}: {name}  {done[-1][1]:.0f} s", flush=True)
+    return done
+
+
 # ── reading the runs ────────────────────────────────────────────────────────────────────────
 
 
@@ -130,18 +152,22 @@ def measures(card: dict[str, Any]) -> dict[str, float]:
     return out
 
 
-def find_runs(runs_dir: Path) -> dict[str, Any]:
+def find_runs(runs_dir: Path, seeds: tuple[int, ...] = SEEDS) -> dict[str, Any]:
     """S4's run folders, found by the ``study`` field of their meta.json (the master copy).
 
     Returns {"random_search": {seed: path}, "random_network": {seed: path}, "hand_neuron": path,
-    "scripted_expert": path}. Stops with a message if a run is missing, unfinished or repeated.
+    "scripted_expert": path, "all": every S4 folder}; "random_search" holds only ``seeds`` (other
+    S4 seeds are left out of the analysis). Stops with a message if a run is missing, unfinished
+    or repeated.
     """
     found: dict[str, dict[int | None, list[Path]]] = {}
+    every: list[Path] = []
     for path in run_folders(runs_dir):
         store = RunStore.open(path)
         meta = store.read_meta()
         if meta.get("study") != STUDY:
             continue
+        every.append(path)
         if meta["status"] != "completed":
             raise SystemExit(f"{path.name} is {meta['status']}; finish it (nd resume) first")
         seed = store.read_config().get("seed")
@@ -151,17 +177,19 @@ def find_runs(runs_dir: Path) -> dict[str, Any]:
             if len(paths) > 1:
                 raise SystemExit(f"more than one S4 run of {method} seed {seed}: {paths}")
     expected = {
-        "random_search": set(SEEDS),
+        "random_search": set(seeds),
         "random_network": set(RANDOM_SEEDS),
         "hand_neuron": {None},
         "scripted_expert": {None},
     }
-    for method, seeds in expected.items():
-        if set(found.get(method, {})) != seeds:
-            raise SystemExit(f"S4 needs {method} runs for seeds {sorted(seeds, key=str)}")
-    runs = {m: {s: p[0] for s, p in found[m].items()} for m in ("random_search", "random_network")}
+    for method, wanted in expected.items():
+        have = set(found.get(method, {}))
+        if not wanted <= have or (method != "random_search" and have != wanted):
+            raise SystemExit(f"S4 needs {method} runs for seeds {sorted(wanted, key=str)}")
+    runs = {"random_search": {s: found["random_search"][s][0] for s in seeds},
+            "random_network": {s: found["random_network"][s][0] for s in RANDOM_SEEDS}}  # fmt: skip
     return {**runs, "hand_neuron": found["hand_neuron"][None][0],
-            "scripted_expert": found["scripted_expert"][None][0]}  # fmt: skip
+            "scripted_expert": found["scripted_expert"][None][0], "all": every}  # fmt: skip
 
 
 def best_unit_at(steps: list[int], best_units: list[int], budget: float) -> int:
@@ -256,7 +284,8 @@ def same_as_task_5_6(runs_dir: Path, paths: dict[str, Any]) -> dict[str, Any]:
 
 
 def database_check(runs_dir: Path, ids: list[str]) -> dict[str, Any]:
-    """The same runs through the database: its ``study`` column and its ``studies`` row."""
+    """Every S4 run folder (``ids``) through the database: its ``study`` column and its
+    ``studies`` row."""
     try:
         with closing(connect(runs_dir / DB_NAME)) as conn:
             listed = runs_of_study(conn, STUDY)
@@ -289,9 +318,9 @@ def _verdict(low: float, high: float, level: float) -> str:
     return "no clear difference"
 
 
-def analyse(runs_dir: Path) -> dict[str, Any]:
-    paths = find_runs(runs_dir)
-    records = [seed_record(paths["random_search"][s]) for s in SEEDS]
+def analyse(runs_dir: Path, seeds_used: tuple[int, ...] = SEEDS) -> dict[str, Any]:
+    paths = find_runs(runs_dir, seeds_used)
+    records = [seed_record(paths["random_search"][s]) for s in seeds_used]
     base = baseline_values(paths)
     names = sorted(records[0]["cards"][0])  # every measure, per-track ones included
     grid = budget_grid(records)
@@ -326,7 +355,7 @@ def analyse(runs_dir: Path) -> dict[str, Any]:
     for n in MAIN_MEASURES:
         paired = bootstrap_median_difference(
             final[n],
-            [base["random_network"][s][n] for s in SEEDS],
+            [base["random_network"][s][n] for s in seeds_used],
             make_rng(BOOTSTRAP_SEED),
             paired=True,
         )
@@ -350,7 +379,7 @@ def analyse(runs_dir: Path) -> dict[str, Any]:
         }
 
     seeds = []
-    for seed, r in zip(SEEDS, records, strict=True):
+    for seed, r in zip(seeds_used, records, strict=True):
         final_unit = best_unit_at(r["steps"], r["best_units"], final_budget)
         earlier = {u: c["heldout_progress"] for u, c in r["cards"].items() if u < final_unit}
         best_earlier_unit = max(earlier, key=lambda u: (earlier[u], -u))
@@ -427,22 +456,27 @@ def analyse(runs_dir: Path) -> dict[str, Any]:
     ids = [p.name for p in paths["random_search"].values()]
     ids += [p.name for p in paths["random_network"].values()]
     ids += [paths["hand_neuron"].name, paths["scripted_expert"].name]
-    sample = RunStore.open(paths["random_search"][0]).read_meta()
+    metas = [RunStore.open(p).read_meta() for p in paths["random_search"].values()]
+
+    def one_or_all(values: list[Any]) -> Any:
+        distinct = sorted(set(values), key=str)
+        return distinct[0] if len(distinct) == 1 else distinct
+
     return {
         "study": STUDY,
         "design": {
             "config": "configs/random_search.yaml",
-            "seeds": list(SEEDS),
+            "seeds": list(seeds_used),
             "units": UNITS,
             "random_network_seeds": list(RANDOM_SEEDS),
             "bootstrap": {"resamples": 10_000, "seed": BOOTSTRAP_SEED},
             # The short form: a full 40-digit hash looks like a secret to the secret scanners.
-            "git_commit": (sample["git_commit"] or "")[:7] or None,
-            "git_dirty": sample["git_dirty"],
-            "sweep": sample["sweep"],
+            "git_commit": one_or_all([(m["git_commit"] or "")[:7] or None for m in metas]),
+            "git_dirty": one_or_all([m["git_dirty"] for m in metas]),
+            "sweep": one_or_all([m["sweep"] for m in metas]),
         },
         "run_ids": sorted(ids),
-        "database": database_check(runs_dir, ids),
+        "database": database_check(runs_dir, [p.name for p in paths["all"]]),
         "baselines_equal_task_5_6": same_as_task_5_6(runs_dir, paths),
         "baselines": {
             "random_network": {"band": random_band, "seeds": base["random_network"]},
@@ -472,11 +506,19 @@ def _rounded(obj: Any) -> Any:
     return obj
 
 
+def seeds_label(seeds: list[int] | tuple[int, ...]) -> str:
+    """ "seeds0-9" for a range without gaps, else "seeds0_2_7"; used in file names and titles."""
+    if list(seeds) == list(range(seeds[0], seeds[-1] + 1)):
+        return f"seeds{seeds[0]}-{seeds[-1]}"
+    return "seeds" + "_".join(map(str, seeds))
+
+
 def print_tables(a: dict[str, Any]) -> None:
-    print(f"S4 runs: {len(a['run_ids'])}; database: {a['database']}")
+    print(f"S4 runs analysed: {len(a['run_ids'])}; database: {a['database']}")
     print(f"baseline cards equal to task 5.6: {a['baselines_equal_task_5_6']}")
     print(f"final (common) budget: {a['final_budget']:,} environment steps")
-    print("\nheld-out progress / completion by budget (median [IQR] over seeds 0-4):")
+    label = seeds_label(a["design"]["seeds"])[5:]
+    print(f"\nheld-out progress / completion by budget (median [IQR] over seeds {label}):")
     for i, b in enumerate(a["table_budgets"]):
         p, c = a["table"]["heldout_progress"][i], a["table"]["heldout_completion"][i]
         print(
@@ -513,8 +555,15 @@ def print_tables(a: dict[str, Any]) -> None:
 
 # ── figures ─────────────────────────────────────────────────────────────────────────────────
 
-# Categorical slots of the dataviz reference palette (light), as in the app and in S3.
+# Categorical slots of the dataviz reference palette (light), as in the app and in S3. Seeds 5-9
+# reuse them dashed (colour + line style): more than 8 hues cannot be told apart reliably.
 SEED_COLOURS = ("#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#8b5cf6")
+
+
+def seed_style(seed: int) -> dict[str, Any]:
+    return {"color": SEED_COLOURS[seed % 5], "ls": "-" if seed < 5 else "--"}
+
+
 BASELINE_STYLE = {
     "random_network": ("#888888", ":", "random networks (median of 10)"),
     "hand_neuron": ("#c2410c", "--", "hand-wired neuron"),
@@ -528,7 +577,7 @@ def _level(a: dict[str, Any], baseline: str, name: str) -> float:
     return a["baselines"][baseline][name]
 
 
-def figures(a: dict[str, Any]) -> None:
+def figures(a: dict[str, Any], suffix: str = "") -> None:
     import matplotlib
 
     matplotlib.use("Agg")
@@ -545,9 +594,9 @@ def figures(a: dict[str, Any]) -> None:
     ):
         c = a["curves"][name][1:]
         med, q1, q3 = (np.array([p[k] for p in c]) for k in ("median", "q1", "q3"))
-        for i in range(len(a["seeds"])):
+        for i, s in enumerate(a["seeds"]):
             seed_line = [p["seeds"][i] for p in c]
-            ax.step(grid, seed_line, where="post", color=SEED_COLOURS[i], lw=0.8, alpha=0.5)
+            ax.step(grid, seed_line, where="post", lw=0.8, alpha=0.5, **seed_style(s["seed"]))
         ax.fill_between(grid, q1, q3, step="post", color="#2a78d6", alpha=0.15, lw=0)
         ax.step(grid, med, where="post", color="#2a78d6", lw=2.4, label="random search (median)")
         for baseline, (colour, style, text) in BASELINE_STYLE.items():
@@ -561,24 +610,25 @@ def figures(a: dict[str, Any]) -> None:
     axes[0].legend(frameon=False, fontsize=8, loc="upper left", bbox_to_anchor=(0.0, 0.92))
     fig.suptitle(
         "S4: Driving Exam score of the best network found so far "
-        "(median, IQR band, thin = seeds 0-4)"
+        f"(median, IQR band, thin = seeds {seeds_label(a['design']['seeds'])[5:]})"
     )
     fig.tight_layout()
-    fig.savefig(FIGURES_DIR / "s4_budget.png", dpi=130)
+    fig.savefig(FIGURES_DIR / f"s4_budget{suffix}.png", dpi=130)
     plt.close(fig)
 
     # 2. Training fitness (top) and held-out progress (bottom) per seed: separate panels,
     #    because fitness is random search's own score and never shares the exam's axis.
     fig, (top, bottom) = plt.subplots(2, 1, figsize=(9, 7), sharex=True)
-    for i, s in enumerate(a["seeds"]):
+    for s in a["seeds"]:
+        style = seed_style(s["seed"])
         curve = np.array(s["fitness_curve"], dtype=float)
-        top.step(curve[:, 0], curve[:, 1], where="post", color=SEED_COLOURS[i], lw=1.6,
-                 label=f"seed {s['seed']}")  # fmt: skip
+        top.step(curve[:, 0], curve[:, 1], where="post", lw=1.6, label=f"seed {s['seed']}",
+                 **style)  # fmt: skip
         examined = sorted(s["examined"].items(), key=lambda kv: int(kv[0]))
         xs = [max(e["env_steps"], grid[0]) for _, e in examined]
         ys = [e["heldout_progress"] for _, e in examined]
-        bottom.step(xs + [curve[-1, 0]], ys + ys[-1:], where="post", color=SEED_COLOURS[i], lw=1.6)
-        bottom.plot(xs, ys, ls="none", marker="o", ms=3.5, color=SEED_COLOURS[i])
+        bottom.step(xs + [curve[-1, 0]], ys + ys[-1:], where="post", lw=1.6, **style)
+        bottom.plot(xs, ys, ls="none", marker="o", ms=3.5, color=style["color"])
     top.set_ylabel("best fitness so far\n(training track, 10 starts)")
     top.set_title("Random search's own score: best fitness so far (never falls)")
     top.legend(frameon=False, fontsize=8, ncol=5, loc="upper left")
@@ -589,7 +639,7 @@ def figures(a: dict[str, Any]) -> None:
     for ax in (top, bottom):
         ax.grid(True, which="major", color="#e5e5e5", lw=0.8)
     fig.tight_layout()
-    fig.savefig(FIGURES_DIR / "s4_fitness_vs_heldout.png", dpi=130)
+    fig.savefig(FIGURES_DIR / f"s4_fitness_vs_heldout{suffix}.png", dpi=130)
     plt.close(fig)
 
     # 3. Per held-out track at the final budget: random search (median, IQR) vs the baselines.
@@ -615,29 +665,41 @@ def figures(a: dict[str, Any]) -> None:
     ax.legend(frameon=False, fontsize=8, ncol=4, loc="upper center", bbox_to_anchor=(0.5, -0.1))
     ax.grid(True, axis="y", color="#e5e5e5", lw=0.8)
     fig.tight_layout()
-    fig.savefig(FIGURES_DIR / "s4_tracks.png", dpi=130)
+    fig.savefig(FIGURES_DIR / f"s4_tracks{suffix}.png", dpi=130)
     plt.close(fig)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--train", action="store_true", help="make S4's runs first (~15 min)")
+    parser.add_argument("--train", action="store_true", help="make S4's runs first (~20 min)")
     parser.add_argument("--figures", action="store_true", help="draw the figures (matplotlib)")
     parser.add_argument("--runs-dir", default=str(ROOT / "runs"), help="folder of run folders")
     parser.add_argument("--workers", type=int, default=min(len(SEEDS) + 1, os.cpu_count() or 2))
+    parser.add_argument(
+        "--train-seeds",
+        metavar="SEEDS",
+        help="only train these random-search seeds, one at a time (e.g. 5-9), then stop",
+    )
+    parser.add_argument("--seeds", default="0-4", help="the seeds to analyse (default 0-4)")
     args = parser.parse_args()
     runs_dir = Path(args.runs_dir)
 
+    if args.train_seeds:
+        train_one_at_a_time(runs_dir, parse_seeds(args.train_seeds))
+        return
     if args.train:
         for name in train(runs_dir, args.workers):
             print(f"run folder: {name}")
-    analysis = analyse(runs_dir)
+    seeds = tuple(parse_seeds(args.seeds))
+    suffix = "" if seeds == SEEDS else f"_{seeds_label(seeds)}"
+    analysis = analyse(runs_dir, seeds)
     print_tables(analysis)
     text = json.dumps(_rounded(analysis), indent=1, sort_keys=True) + "\n"
-    RESULTS_FILE.write_text(text, encoding="utf-8", newline="\n")
-    print(f"\nwrote {RESULTS_FILE.relative_to(ROOT).as_posix()}")
+    results = RESULTS_FILE.with_stem(RESULTS_FILE.stem + suffix)
+    results.write_text(text, encoding="utf-8", newline="\n")
+    print(f"\nwrote {results.relative_to(ROOT).as_posix()}")
     if args.figures:
-        figures(analysis)
+        figures(analysis, suffix)
         print(f"wrote figures to {FIGURES_DIR.relative_to(ROOT).as_posix()}")
 
 

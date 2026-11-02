@@ -5264,8 +5264,8 @@
    "random_search",
    "scripted_expert"
   ],
-  "n_runs": 17,
-  "n_sweeps": 2,
+  "n_runs": 22,
+  "n_sweeps": 3,
   "same_runs_as_the_folders": true
  },
  "design": {
