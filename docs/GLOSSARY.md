@@ -87,6 +87,10 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Seed | The starting number for a random generator; the same seed gives the same "random" numbers. |
 | Driving Exam | The fixed test (tracks, starts, limits, metrics) that every network takes, however it was trained. |
 | Held-out track | A track never used during training or tuning; it tests generalisation. |
+| Metric | A precise rule that turns a whole drive (or run) into one number, so different drivers can be compared fairly. The Driving Exam's metrics are defined in `experiment/metrics.py`. |
+| Linear interpolation | Estimating a value between two known points by assuming a straight line between them. Lap times use it: if progress was 90 m at one frame and 105 m at the next, 100 m was reached two thirds of the way between them. |
+| Completion rate | The fraction of episodes that reached the target laps (2 of 4 completed gives 0.5). The crash rate is the same for episodes that left the road. |
+| Smoothness | The mean absolute change in steering from one step to the next; 0 means the steering never moved, larger means jerkier driving. |
 | Hairpin | A bend that turns the car round by about 150–180° at a small radius (on `hairpins_01`, 13 m, where grip allows only about 11 m/s). |
 | Sweeper | A long bend of nearly constant radius (on `sweeper_01`, 70 m held for about 240 m): the driver must hold one small steering angle for a long time. |
 | Mirrored track | A track reflected left to right: the same bends in the same order, each turning the other way. Not the same as driving a track in reverse, where the bends also come in the opposite order. |

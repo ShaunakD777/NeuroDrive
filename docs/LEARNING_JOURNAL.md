@@ -1137,3 +1137,23 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
 - Open question: does the scripted expert (5.3) lap every track, especially the hairpins and
   Monza's chicanes, inside the time limit? Will a learner trained only on the short loop ever learn
   to brake from 30 m/s, or will Monza need training on `monza_cw`?
+
+### 2026-11-02 — Task 5.2 Driving metrics
+- Concept: a metric is a precise rule that turns a drive into one number; the rules must say
+  exactly what counts (only the steps a car took before its episode ended) and what happens in odd
+  cases (driving backwards scores 0, a cut-short recording reports "running").
+- Key equation(s) in words: lap k ends at the first moment progress reaches k laps, found by linear
+  interpolation between the two frames around it, t = (j − 1 + (target − P before) ÷ (P after −
+  P before)) × dt; mean speed is the average of the speeds after each step, which equals distance
+  driven ÷ time driven because the car moves by its new speed; smoothness is the average absolute
+  change in steering per step.
+- What we observed: the worked example gives 3.333 s for both laps where whole frames would say
+  3.5 s; Study S1's neuron finishes the training loop in 86.27 s with laps of 48.00 s (from rest)
+  and 38.23 s, mean speed 16.98 m/s and smoothness 0.0038; a flat-out straight-ahead car crashes
+  after 42 m and 3.43 s.
+- Surprise or difficulty: a recording keeps every action a policy returns, also for cars that have
+  stopped, so a metric that forgets to cut at the car's own end looks plausible and is wrong (the
+  planted bug gave smoothness 1.615 instead of 0.25). Only a hand-made recording caught it: in the
+  real test drives the leftover actions were either constant or absent.
+- Open question: is mean absolute steering change the right smoothness for comparing methods, or
+  will RL policies with noisy-but-harmless steering look worse than they drive?

@@ -326,8 +326,9 @@ rebuilt from them with `nd db rebuild`. All of `runs/` is git-ignored.
 
 ### 6.14 Exam result (exam v1)
 Exam spec version, list of tracks, per-episode metrics (track, start index, progress, laps,
-crashed, lap times, mean speed, smoothness, time to crash), and aggregates per track and overall
-(median, IQR, completion rate). See `EXPERIMENT_PROTOCOL.md`.
+crashed, lap times, mean speed, smoothness, time to crash; since task 5.2 also status, end
+position, steps and time: `experiment/metrics.py` `EpisodeMetrics`), and aggregates per track and
+overall (median, IQR, completion rate: `Aggregate`). See `EXPERIMENT_PROTOCOL.md`.
 
 ### 6.15 Config file (toy: config v1, ADR-032)
 A YAML file; `method` picks the model in `experiment/config.py` (only `toy` so far; later methods

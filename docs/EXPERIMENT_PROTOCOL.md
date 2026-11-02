@@ -51,15 +51,23 @@
   2026-10-18 this read "90 s"; it changed before the exam was first implemented, and Study S1
   used 90 s.)
 - **Policy mode:** deterministic (RL policies use their mean action).
-- **Per-episode metrics:**
-  - `progress_m`: cumulative forward progress
-  - `progress_frac`: progress ÷ (2 × track length), capped at 1
-  - `completed`: the target laps were reached
+- **Per-episode metrics** (exact definitions in `experiment/metrics.py`, task 5.2; only the steps
+  a car took before its episode ended count, never its frozen frames or later actions):
+  - `progress_m`: cumulative forward progress at the end
+  - `progress_frac`: progress ÷ (2 × track length), capped at 1 and, since task 5.2, at 0 below
+    (driving backwards scores 0)
+  - `completed`: the target laps were reached (status finished)
   - `crashed`: the episode ended by leaving the road
-  - `lap_time_s`: time of each completed lap
-  - `mean_speed`: m/s while alive
+  - `lap_time_s` (`lap_times_s`, plus `best_lap_s`): time of each completed lap; a lap ends at the
+    first moment progress reaches k × track length, found by linear interpolation between frames;
+    laps are counted from each car's own start position
+  - `mean_speed`: m/s while alive, the mean of the speeds after each step taken (= distance
+    driven ÷ time driven)
   - `smoothness`: mean absolute change in steering per step (lower is smoother)
   - `time_to_crash_s`: if crashed
+  - Added in task 5.2, before the exam was first implemented: `status` (finished, crashed,
+    stalled, timeout), `end_s_m` (where on the lap the episode ended), plus `steps`, `time_s`
+    and `laps`.
 - **Aggregates per track and overall:** completion rate, crash rate, median and IQR of
   `progress_frac`, median best lap time (completed episodes only), median smoothness.
 - The exam spec version is stored with every result. Changing the exam requires an ADR and a new
