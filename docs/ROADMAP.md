@@ -472,7 +472,10 @@ weight distance).
 **7.8 Lineage and mutation diff:** `extra/lineage.jsonl`; the champion's ancestry; the Network
 view highlights the weights mutated since the parent.
 **7.9 Study S6:** population size and mutation sweeps; fitness design ablations (progress only,
-no time bonus, ...); GA vs random search at equal env steps; held-out tracks. Study report.
+no time bonus, ...); GA vs random search at equal env steps; held-out tracks. Also: **does
+evolution discover a racing line?** The scripted expert keeps to the centreline on purpose (task 5.3
+follow-up), so compare the best finishers' sideways offset through each bend with the expert's: do
+they swing wide, cut the apex, and does the time bonus make the difference? Study report.
 
 ---
 
@@ -535,7 +538,8 @@ standard deviation, sampling, log-probability and its gradient); gradient check.
 **10.8 RL views:** a reward trace along the trail, a value estimate overlay, the policy's standard
 deviation over training.
 **10.9 Study S9:** reward shaping, discount and entropy ablations; RL vs GA vs imitation under the
-protocol.
+protocol. Also: **does RL discover a racing line** (the S6 question, with the same offset-through-
+the-bends comparison against the centreline expert), and does reward design change it?
 
 ---
 

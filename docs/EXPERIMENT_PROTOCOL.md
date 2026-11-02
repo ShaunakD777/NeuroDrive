@@ -91,10 +91,10 @@
 | S3 | 4 | How do learning rate and optimizer choice affect convergence and stability? |
 | S4 | 5 | Does random search beat the baselines, and at what budget? |
 | S5a–c | 6 | Does low imitation loss mean good driving? Where does cloning fail, and does DAgger fix it? Human vs scripted teacher? |
-| S6 | 7 | How do population size, mutation and fitness design shape evolution? Does GA beat random search? |
+| S6 | 7 | How do population size, mutation and fitness design shape evolution? Does GA beat random search? Does evolution discover a racing line (cutting bends where the centreline expert does not)? |
 | S7 | 8 | Imitation vs evolution: which learns more per unit of experience, and which generalises? |
 | S8a/b | 9 | ES vs GA; fixed vs evolving topology. |
-| S9 | 10 | RL vs GA vs imitation; how does reward design change behaviour? |
+| S9 | 10 | RL vs GA vs imitation; how does reward design change behaviour? Does RL discover a racing line? |
 | S10 | 11 | Do hybrids beat their parts? |
 | S11 | 12 | Which methods generalise and stay robust, and what does that teach about AI? |
 
