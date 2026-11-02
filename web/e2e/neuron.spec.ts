@@ -84,14 +84,18 @@ test("the weighted sum is the contributions plus the bias, as the server compute
   await expect(page.getByTestId("number-w_right")).toHaveValue("4.00");
 
   const text = async (id: string) => (await page.getByTestId(id).innerText()).replace("−", "-");
-  const x0 = Number(await text("neuron-input-0"));
-  const x1 = Number(await text("neuron-input-1"));
-  const c0 = Number(await text("neuron-contribution-0"));
-  const c1 = Number(await text("neuron-contribution-1"));
-  const z = Number(await text("neuron-z"));
-  expect(c0).toBeCloseTo(-4 * x0, 1);
-  expect(c1).toBeCloseTo(4 * x1, 1);
-  expect(z).toBeCloseTo(c0 + c1 + 0.1, 1);
+  // The readout is the server's reply to each change. The bias is set last, so under load its
+  // reply can arrive after the boxes show their values: read and compare again until it has.
+  await expect(async () => {
+    const x0 = Number(await text("neuron-input-0"));
+    const x1 = Number(await text("neuron-input-1"));
+    const c0 = Number(await text("neuron-contribution-0"));
+    const c1 = Number(await text("neuron-contribution-1"));
+    const z = Number(await text("neuron-z"));
+    expect(c0).toBeCloseTo(-4 * x0, 1);
+    expect(c1).toBeCloseTo(4 * x1, 1);
+    expect(z).toBeCloseTo(c0 + c1 + 0.1, 1);
+  }).toPass({ timeout: 5_000 });
 });
 
 test("sigmoid can be chosen and its output is never negative", async ({ page }) => {

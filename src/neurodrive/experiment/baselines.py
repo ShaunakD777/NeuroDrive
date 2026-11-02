@@ -8,15 +8,17 @@ Three baselines, each examined with the Driving Exam and stored as a run folder 
   with no learning. One seed is luck, so it is examined for several seeds that share a sweep id.
 - ``hand_neuron``: Study S1's hand-wired neuron (``configs/baselines/hand_neuron.yaml``):
   steer = tanh(w_left · d_left + w_right · d_right + bias) with d_left, d_right the far-left
-  and far-right rays, throttle fixed. The cheap human solution.
+  and far-right rays, throttle fixed. The cheap human solution. Since the 5.6 follow-up it is
+  stored and examined as the equivalent 7 → 2 network (:func:`hand_neuron_network`).
 - ``scripted_expert``: the pure-pursuit expert of task 5.3. It reads the track itself, which no
   learner can, so it is the ceiling within these physics.
 
 A baseline run (run folder v1) has budget 0 units, an empty metrics.jsonl, status completed and
 one exam card ``exams/unit_0.json``. Its ``config.yaml`` describes the policy completely, so
-:func:`baseline_policy` rebuilds it exactly. Only the random network is a network, so only it
-has ``checkpoints/unit_0.npz`` and a card that refers to that checkpoint; the neuron's and the
-expert's cards refer to the baseline itself: ``{"kind": "baseline", "name": ..., "run": ...}``.
+:func:`baseline_policy` rebuilds it exactly. The random network and the neuron are networks:
+they are saved as ``checkpoints/unit_0.npz``, examined from it, and their card refers to it. The
+expert is not a network (it reads the track), so it has no checkpoint and its card refers to the
+baseline itself: ``{"kind": "baseline", "name": ..., "run": ...}`` (ADR-039 and its follow-up).
 """
 
 import time
@@ -26,6 +28,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import yaml
 
 from neurodrive.core.nn.init import init_network
@@ -33,7 +36,8 @@ from neurodrive.core.nn.network import Network
 from neurodrive.core.nn.spec import NetworkSpec
 from neurodrive.core.rng import make_rng
 from neurodrive.env.experts import ExpertParams, ScriptedExpert
-from neurodrive.env.policies import MLPPolicy, NeuronPolicy, Policy
+from neurodrive.env.policies import NEURON_INPUTS, MLPPolicy, Policy
+from neurodrive.env.sensors import OBSERVATION_SIZE
 from neurodrive.env.world import World
 from neurodrive.experiment.db import DB_NAME, Mirror
 from neurodrive.experiment.exam import DEFAULT_TRACKS_DIR, ExamResult, run_exam
@@ -103,16 +107,55 @@ def random_network(config: dict[str, Any]) -> Network:
     return init_network(NetworkSpec.from_dict(net), make_rng(config["seed"]), scheme)
 
 
+# The value b with f(b) = throttle, for each activation f the neuron may use.
+_INVERSE = {
+    "tanh": np.arctanh,
+    "sigmoid": lambda t: np.log(t / (1.0 - t)),
+    "linear": lambda t: t,
+    "relu": lambda t: t,
+}
+
+
+def hand_neuron_network(neuron: dict[str, Any]) -> Network:
+    """The hand-wired neuron written as a 7 → 2 network with no hidden layer.
+
+    Output 0 (steer) is f(W0 · o + b0): its weights are w_left on observation entry 0 (far-left
+    ray) and w_right on entry 4 (far-right ray), zero elsewhere, and b0 = bias, so it computes
+    f(w_left · d_left + w_right · d_right + bias), the neuron's formula. Output 1 (throttle) has
+    all-zero weights and the bias b1 = f⁻¹(throttle), so it is the constant f(f⁻¹(throttle)):
+    for tanh and the committed 0.24 that is tanh(atanh(0.24)) = 0.24 exactly. Both outputs share
+    the neuron's activation f. The matrix product adds the seven terms in its own order, so the
+    steering can differ from :class:`~neurodrive.env.policies.NeuronPolicy` in the last bit
+    (at most 9e-16 on 100,000 random observations): the same driver, not bit for bit.
+    """
+    f = neuron["activation"]
+    throttle = float(neuron["throttle"])
+    valid = {"tanh": -1 < throttle < 1, "sigmoid": 0 < throttle < 1, "relu": throttle >= 0}
+    if f not in _INVERSE or not valid.get(f, True):
+        raise ValueError(f"no {f} output gives the constant throttle {throttle}")
+    weights = np.zeros((2, OBSERVATION_SIZE))
+    weights[0, NEURON_INPUTS[0]] = neuron["w_left"]
+    weights[0, NEURON_INPUTS[1]] = neuron["w_right"]
+    biases = np.array([neuron["bias"], _INVERSE[f](throttle)])
+    spec = NetworkSpec(layer_sizes=(OBSERVATION_SIZE, 2), hidden_activation=f, output_activation=f)
+    return Network(spec, [weights], [biases])
+
+
+def baseline_network(config: dict[str, Any]) -> Network | None:
+    """The network a baseline config describes, or None for the expert (not a network)."""
+    if config["method"] == "random_network":
+        return random_network(config)
+    if config["method"] == "hand_neuron":
+        return hand_neuron_network(config["neuron"])
+    return None
+
+
 def baseline_policy(config: dict[str, Any]) -> PolicyFactory:
     """Rebuild a baseline's policy from its config: ``world -> policy``, as the exam takes it."""
     name = config["method"]
-    if name == "random_network":
-        network = random_network(config)
+    if name in ("random_network", "hand_neuron"):
+        network = baseline_network(config)
         return lambda world: MLPPolicy(network)
-    if name == "hand_neuron":
-        n = config["neuron"]
-        weights = (n["w_left"], n["w_right"])
-        return lambda world: NeuronPolicy(weights, n["bias"], n["activation"], n["throttle"])
     if name == "scripted_expert":
         params = ExpertParams(**config["expert"])
         return lambda world: ScriptedExpert(world, params)
@@ -137,9 +180,10 @@ def make_baseline_run(
 ) -> BaselineRun:
     """Examine one baseline and store it as a run folder under ``runs_dir``.
 
-    Steps: write the config; record a budget of 0 units (nothing is trained); save the random
-    network as checkpoint 0; take the Driving Exam and save the card as exams/unit_0.json; mark
-    the run completed; copy it into the database mirror ``<runs_dir>/neurodrive.db``.
+    Steps: write the config; record a budget of 0 units (nothing is trained); save the network
+    (random network, neuron) as checkpoint 0; take the Driving Exam and save the card as
+    exams/unit_0.json; mark the run completed; copy it into the database mirror
+    ``<runs_dir>/neurodrive.db``.
     """
     config = baseline_config(name, seed, neuron_file)
     tag = "baseline" if seed is None else f"baseline-s{seed}"
@@ -148,8 +192,9 @@ def make_baseline_run(
     )
     budget = {"units": 0, "env_steps": None, "wall_clock_s": None}
     store.update_meta(budget=budget, exams=True, stop_reason=None, resumed_at=[])
-    if name == "random_network":
-        store.save_checkpoint(0, random_network(config))
+    network = baseline_network(config)
+    if network is not None:
+        store.save_checkpoint(0, network)
         ref = {"kind": "checkpoint", "run": store.path.name, "unit": 0}
     else:
         ref = {"kind": "baseline", "name": name, "run": store.path.name}

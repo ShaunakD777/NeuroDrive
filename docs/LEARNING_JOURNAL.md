@@ -1270,3 +1270,11 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   (their ports are fixed in the configs); the verification was then repeated on separate ports.
 - Open question: random search (5.7) starts from these random networks; how many tries does it
   need before the first one even moves off the line?
+- Follow-up (2026-11-02, user request): the hand-wired neuron now has a checkpoint. It is the
+  same neuron written as a 7 → 2 network: one row for steering (−12 and +12 on the two side rays)
+  and one for throttle (no weights, bias atanh(0.24), so tanh gives exactly 0.24). The matrix
+  product adds its seven terms in a different order from the neuron's two-term sum, so the two
+  disagree in the last bit (9e-16); over the whole exam that never changes an outcome and only
+  moves numbers beyond the 12th digit. The expert stays without a checkpoint: it is not a network.
+  Two browser tests that failed now and then were reading the screen before the server's reply
+  (or the redrawn view) had arrived; they now wait for it.

@@ -131,6 +131,17 @@ test("a plain click on the car does not move the free view (a click is not a dra
   await ready(page, canvas);
   await page.getByTestId("camera-fit").click();
   await expect(canvas).toHaveAttribute("data-camera-mode", "fit");
+  // The fitted view can be drawn more than once while the canvas settles to its size: take the
+  // car's position only once two reads a moment apart agree.
+  let last = "";
+  await expect
+    .poll(async () => {
+      const now = `${await canvas.getAttribute("data-camera")}|${await canvas.getAttribute("data-cars")}`;
+      const same = now === last;
+      last = now;
+      return same;
+    })
+    .toBe(true);
   // The canvas lists each car's screen position. Zoom in around the car (it stays under the
   // cursor), then click it: a click does not count as a drag.
   const box = (await canvas.boundingBox())!;

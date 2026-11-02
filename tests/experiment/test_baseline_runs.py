@@ -12,13 +12,14 @@ from neurodrive.core.nn.init import init_network
 from neurodrive.core.nn.spec import NetworkSpec
 from neurodrive.core.rng import make_rng
 from neurodrive.env.experts import ExpertParams
-from neurodrive.env.policies import NeuronPolicy
+from neurodrive.env.policies import MLPPolicy, NeuronPolicy
 from neurodrive.env.track import Track
 from neurodrive.experiment import db
 from neurodrive.experiment.baselines import (
     HAND_NEURON_FILE,
     baseline_config,
     baseline_policy,
+    hand_neuron_network,
     load_hand_neuron,
     make_baselines,
 )
@@ -26,6 +27,14 @@ from neurodrive.experiment.exam import DEFAULT_TRACKS_DIR, EXAM_V1, TRAINING_TRA
 from neurodrive.experiment.stats import percentile
 
 SEEDS = (0, 1)
+COUNTED = ("track", "start_index", "status", "steps", "laps", "completed", "crashed")
+
+
+def committed_neuron() -> NeuronPolicy:
+    """The neuron straight from the committed YAML file, without the code under test."""
+    raw = yaml.safe_load(HAND_NEURON_FILE.read_text(encoding="utf-8"))["neuron"]
+    weights = (raw["w_left"], raw["w_right"])
+    return NeuronPolicy(weights, raw["bias"], raw["activation"], raw["throttle"])
 
 
 @pytest.fixture(scope="module")
@@ -76,8 +85,21 @@ def test_the_neuron_in_the_worked_example_steers_away_from_the_near_wall():
     obs[0, 0], obs[0, 4] = 0.3, 0.5  # wall close on the left: z = -3.6 + 6.0 = 2.4
     steer, throttle = policy.act(obs)[0]
     assert steer == pytest.approx(np.tanh(2.4)) and steer == pytest.approx(0.984, abs=5e-4)
-    assert throttle == 0.24
+    assert throttle == 0.24  # tanh(atanh(0.24)) is exactly 0.24
     assert policy.act(obs)[1, 0] == 0.0  # centred: z = 0, straight on
+
+
+def test_the_neuron_as_a_network_drives_like_the_neuron():
+    network = hand_neuron_network(load_hand_neuron())
+    assert network.spec.layer_sizes == (7, 2) and network.n_parameters == 16
+    assert network.weights[0][0].tolist() == [-12.0, 0, 0, 0, 12.0, 0, 0]
+    assert network.weights[0][1].tolist() == [0.0] * 7
+    obs = np.random.default_rng(0).random((10_000, 7))
+    as_network, as_neuron = MLPPolicy(network).act(obs), committed_neuron().act(obs)
+    assert np.all(as_network[:, 1] == 0.24)  # the throttle is exact
+    assert np.abs(as_network - as_neuron).max() < 1e-14  # the steering: the last bit at most
+    with pytest.raises(ValueError, match="constant throttle"):
+        hand_neuron_network({**load_hand_neuron(), "activation": "sigmoid", "throttle": -0.2})
 
 
 def test_a_broken_neuron_file_is_refused(tmp_path):
@@ -121,10 +143,17 @@ def test_every_baseline_is_a_complete_run_folder_with_an_exam_card(runs):
     for run in by_method(runs, "random_network"):
         assert run.store.checkpoint_units() == [0]
         assert run.card.policy == {"kind": "checkpoint", "run": run.store.path.name, "unit": 0}
-    for method in ("hand_neuron", "scripted_expert"):
-        (run,) = by_method(runs, method)
-        assert run.store.checkpoint_units() == []  # not a network: no checkpoint (ADR-039)
-        assert run.card.policy == {"kind": "baseline", "name": method, "run": run.store.path.name}
+    (neuron,) = by_method(runs, "hand_neuron")
+    assert neuron.store.checkpoint_units() == [0]  # the neuron as a 7 -> 2 network
+    assert neuron.store.load_checkpoint(0).equals(hand_neuron_network(load_hand_neuron()))
+    assert neuron.card.policy == {"kind": "checkpoint", "run": neuron.store.path.name, "unit": 0}
+    (expert,) = by_method(runs, "scripted_expert")
+    assert expert.store.checkpoint_units() == []  # not a network: no checkpoint (ADR-039)
+    assert expert.card.policy == {
+        "kind": "baseline",
+        "name": "scripted_expert",
+        "run": expert.store.path.name,
+    }
     sweeps = {r.store.read_meta().get("sweep") for r in made.values()}
     assert len(sweeps) == 2 and None in sweeps  # one sweep for the random seeds, none otherwise
     assert db.check(runs_dir) == []
@@ -143,14 +172,17 @@ def test_the_random_network_is_the_one_a_learner_with_that_seed_starts_from(runs
 
 
 def test_the_neuron_card_is_the_committed_yaml_neuron(runs):
-    raw = yaml.safe_load(HAND_NEURON_FILE.read_text(encoding="utf-8"))["neuron"]
-    weights = (raw["w_left"], raw["w_right"])
-
-    def direct(world):
-        return NeuronPolicy(weights, raw["bias"], raw["activation"], raw["throttle"])
-
+    """The checkpoint is examined; the YAML neuron gives the same drives: every outcome equal,
+    every number equal to 1e-9 (the network's sums differ from the neuron's in the last bit)."""
     (run,) = by_method(runs, "hand_neuron")
-    assert training_track_part(direct) == run.card.tracks[0].to_dict()
+    direct = training_track_part(lambda world: committed_neuron())
+    card = run.card.tracks[0].to_dict()
+    for ours, theirs in zip(card["episodes"], direct["episodes"], strict=True):
+        assert {k: ours[k] for k in COUNTED if k in ours} == {
+            k: theirs[k] for k in COUNTED if k in theirs
+        }
+        for key in ("progress_m", "time_s", "mean_speed", "best_lap_s", "end_s_m"):
+            assert ours[key] == pytest.approx(theirs[key], rel=1e-9, abs=1e-9)
 
 
 def test_floor_hand_tuned_and_ceiling(runs):
