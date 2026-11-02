@@ -313,7 +313,7 @@ rebuilds the same world. Replaying the actions reproduces every array bit for bi
 ### 6.12 Learner contract (learner v1)
 *Version 0 (task 3.7, ADR-030): `learn/base.py` without save/restore; wall-clock time measured by the runner; `experiment/runner.py` v0 owns a minimal loop.*
 
-*Version 1 (task 5.5, ADR-037):* save/restore is the optional `Resumable` protocol: `state()` → `LearnerState` (named NumPy arrays + a JSON-friendly `info` dict holding counters and every generator's state, `generator_state`), `restore(state)`. A learner without it trains but cannot resume. `experiment/runner.py` v1: `run(learner, store, budget, exams)` and `resume(learner, store)`; `Budget(units, env_steps, wall_clock_s)`, any limit stops the run after the unit that reaches it (overshoot ≤ 1 unit); checkpoint schedule 0, 1, 2, 5, 10, 20, 50, … plus the last unit; at every checkpoint the Driving Exam runs when exams are on and the network drives (7 → 2), its time kept out of the training clock (`exam_wall_clock_s`). Order within a unit: train → metrics line → checkpoint + exam → state (last). Resume cuts the folder back to the state's unit and continues; a killed run (status running) or a failed one can be resumed, identically except for wall-clock times. Since task 5.5b (ADR-038) the wall-clock limit is compared with the training time recorded in the last metrics line, like the step totals, so a run stops after the first unit whose line reaches the limit; the database mirror's time, like exam time, is kept out of the training clock. Since task 5.8 (ADR-041) the runner also stops before the next unit when the run folder holds a stop request (the file `stop_requested`): stop reason `stopped`, status `completed`, the last unit checkpointed and examined like any last unit; the request is removed before the final status is written, and `resume` removes an old one before continuing. `train_toy_run` and `train_random_search_run` take `on_start(store)`, called as soon as the folder exists.
+*Version 1 (task 5.5, ADR-037):* save/restore is the optional `Resumable` protocol: `state()` → `LearnerState` (named NumPy arrays + a JSON-friendly `info` dict holding counters and every generator's state, `generator_state`), `restore(state)`. A learner without it trains but cannot resume. `experiment/runner.py` v1: `run(learner, store, budget, exams)` and `resume(learner, store)`; `Budget(units, env_steps, wall_clock_s)`, any limit stops the run after the unit that reaches it (overshoot ≤ 1 unit); checkpoint schedule 0, 1, 2, 5, 10, 20, 50, … plus the last unit; at every checkpoint the Driving Exam runs when exams are on and the network drives (7 → 2), its time kept out of the training clock (`exam_wall_clock_s`). Order within a unit: train → metrics line → checkpoint + exam → state (last). Resume cuts the folder back to the state's unit and continues; a killed run (status running) or a failed one can be resumed, identically except for wall-clock times. Since task 5.5b (ADR-038) the wall-clock limit is compared with the training time recorded in the last metrics line, like the step totals, so a run stops after the first unit whose line reaches the limit; the database mirror's time, like exam time, is kept out of the training clock. Since task 5.8 (ADR-041) the runner also stops before the next unit when the run folder holds a stop request (the file `stop_requested`): stop reason `stopped`, status `completed`, the last unit checkpointed and examined like any last unit; the request is removed before the final status is written, and `resume` removes an old one before continuing. `train_toy_run` and `train_random_search_run` take `on_start(store)`, called as soon as the folder exists. Since task 5.9 (ADR-042) `UnitResult` has an optional `new_best` flag: a unit that reports a new best network (`current_networks()[0]`) is checkpointed, and examined, even when it is not on the schedule, so the run timeline shows every improvement; random search sets it when it improves (expected number of such units in n units: the harmonic number H_n, about 5 per 100), the toy learner never does.
 
 Every learning method provides:
 - `name` and `feedback_kind` ∈ {`labels`, `episode_score`, `step_reward`, `none`}
@@ -406,7 +406,7 @@ Only the named optimizer's own settings are allowed; their defaults are those of
 and `training.epochs`; an invalid config exits with status 2 and creates no run folder.
 
 *Random search (task 5.7, ADR-040, `configs/random_search.yaml`):* `method: random_search`, `seed`, `tag`; `network` (a driving network: 7 inputs first, 2 outputs last; default [7, 16, 16, 2], tanh / tanh, xavier); `search.candidates_per_unit` (≥ 1, default 20); `fitness` (`track`, which must have split `train`, default `train_loop_01`; `start_fractions` in [0, 1) and `lateral_offsets`, default the Driving Exam's 5 × 2 starts; `target_laps`, default 2); `budget` (`units`, `env_steps`, `wall_clock_s`: at least one); `exams` (default true). `nd train` and `nd sweep` pick the method from the file; `--units` overrides `budget.units` (`--epochs` is for toy configs only, and the other way round). `nd resume --run <folder>` rebuilds the learner from the run's resolved `config.yaml` (`runner.learner_from_config`) and continues it with `runner.resume`; it refuses runs whose learner saves no state (toy) and finished runs (status 2).
-## 7. Server API (api v1.13, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033, ADR-035, ADR-041)
+## 7. Server API (api v1.14, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033, ADR-035, ADR-041, ADR-042)
 
 REST (`/api/...`):
 - `GET health` → `{status: "ok", version}` (`version` is the NeuroDrive package version)
@@ -437,6 +437,12 @@ REST (`/api/...`):
   `skipped` = runs without the metric. Unknown or malformed id → 404; no ids, more than 64 or an
   unknown metric → 422. Shown in the Experiment page's "Compare runs" tab.
 - `GET runs/{id}/checkpoints/{unit}/diff?from={unit}`: per-weight change
+  *As built (task 5.9, ADR-042, api v1.14):* → `{run_id, unit, from_unit, layer_sizes, weight_delta,
+  bias_delta, max_abs_delta, weight_change, bias_change}`: delta = w(unit) − w(from) (6 significant
+  digits), M = `max_abs_delta` = the largest |delta| over every weight and bias, change = delta / M
+  in [−1, 1] (4 decimals; all 0 when M = 0). 400 when the layer sizes differ, 404 for an unknown
+  run or checkpoint, 422 without `from`. `GET runs/{id}/exams/{unit}` → `{run_id, unit, card}`, the
+  stored exam card (404 when there is none).
 - `POST runs` (launch from a config), `POST runs/{id}/stop`
   *As built (task 5.8, ADR-041, api v1.13):* `GET configs` → `{configs: [{name, method, task,
   seed, tag, length_field, length}]}`: every `*.yaml` directly in `configs/` that `nd train`
@@ -451,6 +457,9 @@ REST (`/api/...`):
   404 unknown run; 409 when the run has already ended, or when this server launched it and its
   process has gone (killed: `nd resume` continues it).
 - `POST replay` {run, unit, track, seed, focus_cars} → Episode Recording
+  *Not built (task 5.9, ADR-042):* a checkpoint is replayed in the live session instead (the
+  `"checkpoint"` driver below), so every view and tool works on it; `POST replay` stays planned
+  for when a recording is needed as data (for example population replays, Phase 7).
 - `POST explain/forward` {network ref, observation} → ForwardTrace + contributions + sensitivity
   (deferred to Phase 5, when checkpoints give networks a reference; live what-if uses the
   `what_if` WebSocket command instead, ADR-025)
@@ -459,7 +468,7 @@ REST (`/api/...`):
 
 WebSocket `/ws/live` (one independent session per connection):
 - `hello` is sent first, on connect: `{type: "hello", version, api}` (`api` is the message-contract
-  version, currently `"v1.12"`).
+  version, currently `"v1.14"`).
 - client → server (each has a `type` field):
   - `load_scenario {track, policy, n_cars, seed}`: `policy` is `"keyboard"`, `"constant"`,
     `"neuron"`, `"random_networks"` (every car is driven by its own random [7,16,16,2] network;
@@ -468,6 +477,15 @@ WebSocket `/ws/live` (one independent session per connection):
     network, so no network messages, readout or `what_if`); `n_cars`
     1 to 100 (default 1); `seed` is an integer for a seeded random start or null for the track's
     fixed start. Loads paused at step 0.
+    Since api v1.14 (task 5.9, ADR-042) also `"checkpoint"` with `checkpoint {run, unit}` (null for
+    every other driver): the saved network replays its Driving Exam drive on `track`. The cars are
+    placed at the exam's starts in the exam's order (car k = exam start k, 10 cars; `n_cars` and
+    `seed` are ignored), all driven by that one network as one batch (`MLPPolicy`), with the
+    exam's 2 target laps, so the session's step loop reproduces the exam drive exactly: every car
+    ends with the card's status and progress to the last digit (tested). It sends `network` and
+    traces, explanations, `what_if`, trail and `inspect_step` like the random-networks driver. An
+    unknown run or unit, a network that is not 7 → 2, or a run without checkpoints (the expert
+    baseline) is refused with `error`, and the loaded scenario stays.
   - `play`, `pause`, `step` (exactly one physics step, even while paused), `reset` (back to
     step 0 with the same scenario and seed; stays paused or playing as before),
     `set_speed {speed}` (0.1 to 8, default 1), `select_car {index}` (default 0),
@@ -493,6 +511,7 @@ WebSocket `/ws/live` (one independent session per connection):
   - `scenario {track, policy, n_cars, seed, dt, time_limit, target_laps, v_max, wheelbase,
     car_half_width, ray_angles, ray_range, trail_seconds}`: no geometry (use
     `GET tracks/{name}`). `trail_seconds` (60) is how much of the drive the session remembers.
+    Since api v1.14 also `checkpoint` (the replayed `{run, unit}`, else null).
   - `frame {step, time, playing, speed, cars, selected}`: `cars` holds one array per quantity, one
     entry per car: `x`, `y`, `psi`, `v`, `alive`, `progress`, `status` (0 running, 1 crashed,
     2 finished, 3 stalled, 4 timeout), `action` (a [steer, throttle] pair per car; the last action
@@ -618,6 +637,18 @@ ray k; the neuron driver's selected neuron gives its two rays.
 | Pause and drag a what-if slider | Ghost car shows the alternative action (built: 2 s of held action, ADR-026) | Recompute activations (server `what_if`, ADR-025) | — |
 | Click a point on the trail | Jump to that step (built: show the car's pose and rays then, the simulation stays put, ADR-027) | Show the trace at that step (server `inspect_step`) | — |
 | Select a run and scrub the timeline | Replay that checkpoint's exam drive | Weights at that checkpoint, changes highlighted | Cursor on all charts |
+
+*As built (task 5.9, ADR-042):* the Experiment page's "Timeline" tab (`Timeline.tsx`) picks a driving
+run (any run with checkpoints that is not a toy run) and an exam track; its history (metrics,
+checkpoints, exam headlines) comes over `/ws/runs` `watch`, so a training run grows there too.
+Moving the checkpoint slider (or clicking a ringed dot on the chart) sends `load_scenario` with the
+`"checkpoint"` driver, so the replay *is* the live scenario: the selection store's planned
+`mode`/`runId`/`unit` are the live store's `scenario.checkpoint`. The Environment view drives the 10
+exam starts (the Driver menu shows the checkpoint; cars and random start are fixed); the Network
+view shows a replay banner and, by default, colours every line by its change since the previous
+checkpoint (`changeStroke` in `views/network/diff.ts`: blue up, orange down, strength |change|,
+unchanged lines not drawn); the chart has a cursor; the card's 10 per-car results for the track are
+listed, the selected car's row highlighted, and clicking a row selects that car.
 
 ### 8.3 Output-neuron inspector (built up over phases)
 1. Readout: the value plus its physical meaning ("−0.93 = hard left").

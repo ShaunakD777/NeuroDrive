@@ -20,12 +20,18 @@ export function LiveChart({
   metric,
   budgetUnits,
   examUnits,
+  cursor = null,
+  onPick,
 }: {
   unit: number[];
   value: number[];
   metric: string;
   budgetUnits: number | null;
   examUnits: number[];
+  /** A unit to mark with a vertical line (the run timeline's checkpoint, task 5.9), or null. */
+  cursor?: number | null;
+  /** Called with an examined unit when its ringed dot is clicked (the timeline jumps there). */
+  onPick?: (unit: number) => void;
 }) {
   const [hover, setHover] = useState<number | null>(null);
   const log = metric.includes("loss") && value.length > 0 && value.every((v) => v > 0);
@@ -104,15 +110,17 @@ export function LiveChart({
         {unit.length > 1 && <path className="toy-line" d={linePath(px, py)} data-testid="live-line" />}
         {unit.length <= MAX_DOTS &&
           px.map((cx, i) => <circle key={unit[i]} className="live-dot" cx={cx} cy={py[i]} r={2.5} data-testid="live-point" />)}
-        {examUnits.map((u) => {
-          const v = valueAt.get(u);
-          if (v === undefined) return null;
-          return (
-            <circle key={`e${u}`} className="toy-checkpoint" cx={x(u)} cy={y(v)} r={4.5} data-testid="live-exam-point">
-              <title>{`unit ${u} was examined: ${label} ${formatNumber(v)}`}</title>
-            </circle>
-          );
-        })}
+        {cursor !== null && (
+          <line
+            className="toy-cursor"
+            data-testid="live-cursor"
+            data-unit={cursor}
+            x1={x(cursor)}
+            x2={x(cursor)}
+            y1={M.top}
+            y2={H - M.bottom}
+          />
+        )}
         <rect
           className="toy-hit"
           x={M.left}
@@ -122,6 +130,23 @@ export function LiveChart({
           onMouseMove={onMove}
           onMouseLeave={() => setHover(null)}
         />
+        {examUnits.map((u) => {
+          const v = valueAt.get(u);
+          if (v === undefined) return null;
+          return (
+            <circle
+              key={`e${u}`}
+              className={u === cursor ? "toy-checkpoint toy-checkpoint-selected" : "toy-checkpoint"}
+              cx={x(u)}
+              cy={y(v)}
+              r={u === cursor ? 6 : 4.5}
+              data-testid="live-exam-point"
+              onClick={onPick ? () => onPick(u) : undefined}
+            >
+              <title>{`unit ${u} was examined: ${label} ${formatNumber(v)}`}</title>
+            </circle>
+          );
+        })}
         {h !== null && <circle className="toy-hover-dot" pointerEvents="none" cx={px[h]} cy={py[h]} r={4} />}
       </svg>
       {h !== null && (

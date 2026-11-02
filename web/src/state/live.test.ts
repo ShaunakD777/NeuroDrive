@@ -38,6 +38,7 @@ const scenario: ScenarioMessage = {
   policy: "keyboard",
   n_cars: 1,
   seed: null,
+  checkpoint: null,
   dt: 1 / 30,
   time_limit: 90,
   target_laps: 2,
@@ -142,9 +143,10 @@ describe("live store: commands", () => {
       policy: "keyboard",
       n_cars: 1,
       seed: null,
+      checkpoint: null,
     });
     expect(sent).toEqual([
-      { type: "load_scenario", track: "train_loop_01", policy: "keyboard", n_cars: 1, seed: null },
+      { type: "load_scenario", track: "train_loop_01", policy: "keyboard", n_cars: 1, seed: null, checkpoint: null },
     ]);
   });
 
@@ -160,6 +162,7 @@ describe("live store: commands", () => {
       policy: "constant",
       n_cars: 5,
       seed: 7,
+      checkpoint: null,
     });
     loadScenario({ seed: null }); // null means "fixed start", it is not "unchanged"
     expect(sent.at(-1)).toMatchObject({ n_cars: 5, seed: null });
@@ -308,5 +311,24 @@ describe("live store: neuron settings survive a reconnect", () => {
     useLive.getState().setStatus("disconnected");
     useLive.getState().setStatus("connected");
     expect(useLive.getState().restoreNeuron).toBe(false); // no settings were ever seen
+  });
+});
+
+describe("live store: replaying a checkpoint (task 5.9)", () => {
+  const ref = { run: "20261102-151223-random_search-default", unit: 20 };
+
+  it("sends the checkpoint with the checkpoint driver, and keeps it when the track changes", () => {
+    const { loadScenario } = useLive.getState();
+    loadScenario({ track: "train_loop_01", policy: "checkpoint", checkpoint: ref });
+    expect(sent.at(-1)).toMatchObject({ policy: "checkpoint", checkpoint: ref, track: "train_loop_01" });
+    loadScenario({ track: "hairpins_01" });
+    expect(sent.at(-1)).toMatchObject({ policy: "checkpoint", checkpoint: ref, track: "hairpins_01" });
+  });
+
+  it("drops the checkpoint when another driver is chosen", () => {
+    const { loadScenario } = useLive.getState();
+    loadScenario({ track: "train_loop_01", policy: "checkpoint", checkpoint: ref });
+    loadScenario({ policy: "random_networks" });
+    expect(sent.at(-1)).toMatchObject({ policy: "random_networks", checkpoint: null });
   });
 });

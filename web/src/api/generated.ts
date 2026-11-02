@@ -30,6 +30,27 @@ export interface CarColumns {
 }
 
 /**
+ * Answer to ``GET /api/runs/{id}/checkpoints/{unit}/diff?from={from_unit}``: what changed.
+ *
+ * ``weight_delta[l][j][i]`` = W_l[j, i] at ``unit`` minus the same weight at ``from_unit``
+ * (``bias_delta`` likewise); ``max_abs_delta`` = M, the largest |delta| over every weight and
+ * bias; ``weight_change`` = delta / M, so between -1 and 1: the sign says up or down, the size
+ * how strongly to draw it (all 0 when nothing changed). Rounded to 4 decimals (deltas to 6
+ * significant digits).
+ */
+export interface CheckpointDiff {
+  bias_change: number[][];
+  bias_delta: number[][];
+  from_unit: number;
+  layer_sizes: number[];
+  max_abs_delta: number;
+  run_id: string;
+  unit: number;
+  weight_change: number[][][];
+  weight_delta: number[][][];
+}
+
+/**
  * Answer to ``GET /api/runs/{id}/checkpoints``: the units that have a saved network.
  */
 export interface CheckpointList {
@@ -60,6 +81,14 @@ export interface CheckpointNetwork {
   run_id: string;
   unit: number;
   weights: number[][][];
+}
+
+/**
+ * A saved network: checkpoint ``unit`` of run ``run`` (a run folder name).
+ */
+export interface CheckpointRef {
+  run: string;
+  unit: number;
 }
 
 /**
@@ -219,6 +248,17 @@ export interface EpisodeEndMessage {
 export interface ErrorMessage {
   message: string;
   type: "error";
+}
+
+/**
+ * Answer to ``GET /api/runs/{id}/exams/{unit}``: the exam card as stored (exam v1, §6.14).
+ */
+export interface ExamCardResponse {
+  card: {
+    [k: string]: unknown;
+  };
+  run_id: string;
+  unit: number;
 }
 
 /**
@@ -562,13 +602,26 @@ export interface LaunchResponse {
  * ``seed`` None starts every car at the track's start; an integer gives a seeded random start
  * (position, sideways offset and heading). For ``"random_networks"`` the same ``seed`` also picks
  * the networks (seed 0 when None), so a seed always gives the same 20 drivers.
+ *
+ * ``"checkpoint"`` (api v1.14, task 5.9, ADR-042) replays a saved network's Driving Exam drive
+ * on ``track``: ``checkpoint`` names it, and the cars are placed at the exam's starts on that
+ * track in the exam's order (car k = exam start k, 10 cars), all driven by that one network as
+ * one batch, exactly as the exam drove them. ``n_cars`` and ``seed`` are then ignored.
  */
 export interface LoadScenario {
+  checkpoint: CheckpointRef | null;
   n_cars: number;
-  policy: "keyboard" | "constant" | "neuron" | "random_networks" | "expert";
+  policy: "keyboard" | "constant" | "neuron" | "random_networks" | "expert" | "checkpoint";
   seed: number | null;
   track: string;
   type: "load_scenario";
+}
+/**
+ * A saved network: checkpoint ``unit`` of run ``run`` (a run folder name).
+ */
+export interface CheckpointRef {
+  run: string;
+  unit: number;
 }
 
 /**
@@ -847,13 +900,15 @@ export interface RunSummary {
  * ``dt`` is the physics step in seconds, ``ray_angles`` the sensor directions in radians
  * relative to the heading (left positive), ``ray_range`` the sensor range in metres. Track
  * geometry is not included: fetch ``GET /api/tracks/{track}``. ``trail_seconds`` is how much
- * of the drive the session remembers for the decision trail (ADR-027).
+ * of the drive the session remembers for the decision trail (ADR-027). ``checkpoint`` is the
+ * replayed network for the ``"checkpoint"`` driver (api v1.14), else null.
  */
 export interface ScenarioMessage {
   car_half_width: number;
+  checkpoint: CheckpointRef | null;
   dt: number;
   n_cars: number;
-  policy: "keyboard" | "constant" | "neuron" | "random_networks" | "expert";
+  policy: "keyboard" | "constant" | "neuron" | "random_networks" | "expert" | "checkpoint";
   ray_angles: number[];
   ray_range: number;
   seed: number | null;
@@ -864,6 +919,13 @@ export interface ScenarioMessage {
   type: "scenario";
   v_max: number;
   wheelbase: number;
+}
+/**
+ * A saved network: checkpoint ``unit`` of run ``run`` (a run folder name).
+ */
+export interface CheckpointRef {
+  run: string;
+  unit: number;
 }
 
 /**

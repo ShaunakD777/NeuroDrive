@@ -21,10 +21,12 @@ from neurodrive.server.runs import RunLibrary
 from neurodrive.server.runs_watch import Launcher, LaunchError, RunsHub, RunsWatcher
 from neurodrive.server.schemas import (
     ActivationCurves,
+    CheckpointDiff,
     CheckpointList,
     CheckpointNetwork,
     CompareResponse,
     ConfigListResponse,
+    ExamCardResponse,
     HealthResponse,
     HelloMessage,
     LaunchRequest,
@@ -143,6 +145,28 @@ def create_app(
         except KeyError:
             raise missing(f"checkpoint {unit} of run {run_id!r}") from None
 
+    # The run timeline (api v1.14, task 5.9, ADR-042): what changed between two checkpoints, and
+    # a checkpoint's exam card (the replay's per-car results).
+    @app.get("/api/runs/{run_id}/checkpoints/{unit}/diff")
+    def checkpoint_diff(
+        run_id: str,
+        unit: int,
+        from_unit: int = Query(..., alias="from", description="The checkpoint to compare with."),
+    ) -> CheckpointDiff:
+        try:
+            return runs.diff(run_id, unit, from_unit)
+        except KeyError:
+            raise missing(f"checkpoint {unit} or {from_unit} of run {run_id!r}") from None
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from None
+
+    @app.get("/api/runs/{run_id}/exams/{unit}")
+    def exam_card(run_id: str, unit: int) -> ExamCardResponse:
+        try:
+            return runs.exam_card(run_id, unit)
+        except KeyError:
+            raise missing(f"exam card {unit} of run {run_id!r}") from None
+
     @app.get("/api/runs/{run_id}/checkpoints/{unit}/toy")
     def toy_checkpoint(run_id: str, unit: int) -> ToyCheckpointResponse:
         try:
@@ -220,7 +244,7 @@ def create_app(
                 for message in session.tick(time.monotonic()):
                     await send(message)
 
-        session = LiveSession(tracks)
+        session = LiveSession(tracks, runs)
         await send(HelloMessage(version=__version__))
         timer = asyncio.create_task(ticker())
         try:

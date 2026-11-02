@@ -13,6 +13,13 @@ and sends one frame, keeping the fraction. So a frame covers one step at speeds 
 ``speed`` steps above it: frames per second = min(30, 30 * speed) on average, never more than 30,
 and the pace stays smooth even when the timer ticks unevenly (Windows timers tick every ~15 ms).
 Real time is passed in, never read, so tests can drive the clock by hand.
+
+Replaying a checkpoint (task 5.9, ADR-042). The ``"checkpoint"`` driver loads a saved network
+from a run folder and places one car at each of the Driving Exam's starts on the track, in the
+exam's order, all driven by that one network as one batch. The session's step loop (observe, act,
+step) is the exam's loop, so the drive is the exam drive: every car ends exactly as on the
+checkpoint's exam card. Everything a network driver offers (trace, explanations, what-if, trail,
+looking back) works on it.
 """
 
 import json
@@ -40,8 +47,10 @@ from neurodrive.env.policies import (
 from neurodrive.env.sensors import RAY_ANGLES, RAY_RANGE, edge_grid, observe
 from neurodrive.env.track import Track
 from neurodrive.env.world import Status, World, WorldConfig
+from neurodrive.experiment.exam import EXAM_V1, exam_starts
 from neurodrive.explain.contributions import neuron_contributions
 from neurodrive.explain.sensitivity import sensitivity
+from neurodrive.server.runs import RunLibrary
 from neurodrive.server.schemas import (
     COMMAND_ADAPTER,
     CarColumns,
@@ -195,8 +204,9 @@ class TrackLibrary:
 class LiveSession:
     """One browser connection's simulation: a loaded scenario, a clock and a selected car."""
 
-    def __init__(self, tracks: TrackLibrary) -> None:
+    def __init__(self, tracks: TrackLibrary, runs: RunLibrary | None = None) -> None:
         self.tracks = tracks
+        self.runs = runs  # where the "checkpoint" driver finds its networks (None: not offered)
         self.playing = False
         self.speed = 1.0
         self.selected = 0
@@ -315,8 +325,20 @@ class LiveSession:
             track = self.tracks.get(command.track)
         except KeyError:
             return [ErrorMessage(message=f"unknown track {command.track!r}")]
+        replayed: Network | None = None
+        laps = WorldConfig.for_track(track).target_laps
+        if command.policy == "checkpoint":
+            # Checked before anything changes: a refused checkpoint keeps the old scenario.
+            try:
+                replayed = self._checkpoint_network(command)
+            except ValueError as error:
+                return [ErrorMessage(message=str(error))]
+            n_starts = len(EXAM_V1.start_fractions) * len(EXAM_V1.lateral_offsets)
+            command = command.model_copy(update={"n_cars": n_starts, "seed": None})
+            laps = EXAM_V1.target_laps
         self._scenario = command
-        self._world = World(track, WorldConfig.for_track(track))  # per-track time limit (ADR-022)
+        # Per-track time limit (ADR-022); a replay uses the exam's lap count.
+        self._world = World(track, WorldConfig.for_track(track, laps))
         self._segments = edge_grid(track)
         self._keys = KeyboardPolicy() if command.policy == "keyboard" else None
         if command.policy == "neuron":
@@ -330,6 +352,9 @@ class LiveSession:
             # when none is given). Built once per load, so Reset replays the same brains.
             rng = child_rng(make_rng(command.seed or 0), "init")
             self._policy = PopulationPolicy(init_population(NetworkSpec(), command.n_cars, rng))
+        elif replayed is not None:
+            # One network for every car, as one batch: exactly how the exam drove it.
+            self._policy = MLPPolicy(replayed)
         elif command.policy == "expert":
             # Bound to this world, which Reset reuses, so one expert lasts the whole scenario.
             self._policy = ScriptedExpert(self._world)
@@ -345,6 +370,7 @@ class LiveSession:
             policy=command.policy,
             n_cars=command.n_cars,
             seed=command.seed,
+            checkpoint=command.checkpoint if replayed is not None else None,
             dt=world.dt,
             time_limit=world.config.time_limit,
             target_laps=world.config.target_laps,
@@ -360,7 +386,11 @@ class LiveSession:
     def _reset_world(self) -> None:
         assert self._world is not None and self._scenario is not None
         scenario = self._scenario
-        if scenario.seed is None:
+        if scenario.policy == "checkpoint":
+            # The exam's starts in the exam's order (car k = exam start k).
+            s0, lateral = exam_starts(self._world.track.length, EXAM_V1)
+            self._world.reset(s0=s0, lateral=lateral)
+        elif scenario.seed is None:
             self._world.reset(n=scenario.n_cars)
         else:
             self._world.reset(
@@ -376,6 +406,31 @@ class LiveSession:
         self._memory = DriveMemory(capacity, scenario.n_cars)  # a new drive: forget the old one
         self._trail_sent = 0
         self._trail_full = True
+
+    def _checkpoint_network(self, command: LoadScenario) -> Network:
+        """The network ``command.checkpoint`` names; ``ValueError`` (in plain words) if there is
+        none or it cannot drive."""
+        ref = command.checkpoint
+        if ref is None:
+            raise ValueError("the checkpoint driver needs checkpoint {run, unit}")
+        if self.runs is None:
+            raise ValueError("this server has no run folders to replay")
+        try:
+            store = self.runs.store(ref.run)
+        except KeyError:
+            raise ValueError(f"unknown run {ref.run!r}") from None
+        if ref.unit not in store.checkpoint_units():
+            raise ValueError(
+                f"run {ref.run!r} has no checkpoint {ref.unit}; saved: {store.checkpoint_units()}"
+            )
+        network = store.load_checkpoint(ref.unit)
+        spec = network.spec
+        if (spec.n_inputs, spec.n_outputs) != (7, 2):
+            raise ValueError(
+                f"checkpoint {ref.unit} of {ref.run!r} is a {spec.n_inputs} -> {spec.n_outputs} "
+                "network, not a driver (7 inputs -> 2 outputs)"
+            )
+        return network
 
     def _observe(self) -> np.ndarray:
         """The (N, 7) observation of every car now (computed once per step)."""
@@ -510,7 +565,10 @@ class LiveSession:
         assert world is not None
         if not isinstance(policy, MLPPolicy | PopulationPolicy):
             return [
-                ErrorMessage(message="what_if needs a network driver (policy 'random_networks')")
+                ErrorMessage(
+                    message="what_if needs a network driver (policy 'random_networks' or "
+                    "'checkpoint')"
+                )
             ]
         if self.playing:
             return [ErrorMessage(message="what_if works while paused: send pause first")]

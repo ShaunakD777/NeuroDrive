@@ -1,6 +1,7 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
-import type { Explanation } from "../../api/generated";
+import type { CheckpointDiff, CheckpointRef, Explanation } from "../../api/generated";
+import { fetchCheckpointDiff, fetchCheckpoints } from "../../api/rest";
 
 import { useLive } from "../../state/live";
 import { useMoment, usePlayback } from "../../state/playback";
@@ -10,11 +11,13 @@ import { NetworkDiagram } from "./NetworkDiagram";
 import { OutputInspector } from "./OutputInspector";
 import { WhatIfPanel } from "./WhatIfPanel";
 import { NeuronView } from "./NeuronView";
+import { previousCheckpoint } from "./diff";
 
 /**
- * The Network page: which picture to show depends on the driver. The random-networks driver gets
- * the selected car's multilayer network (the full diagram, or the compact summary in a drawer);
- * every other driver keeps the Neuron view (which also explains how to switch to it).
+ * The Network page: which picture to show depends on the driver. The random-networks driver and a
+ * replayed checkpoint (task 5.9) get the selected car's multilayer network (the full diagram, or
+ * the compact summary in a drawer); every other driver keeps the Neuron view (which also explains
+ * how to switch to it).
  */
 export function NetworkView({
   compact = false,
@@ -24,7 +27,8 @@ export function NetworkView({
   headerExtra?: ReactNode;
 }) {
   const policy = useLive((s) => s.scenario?.policy ?? null);
-  if (policy !== "random_networks") return <NeuronView compact={compact} headerExtra={headerExtra} />;
+  if (policy !== "random_networks" && policy !== "checkpoint")
+    return <NeuronView compact={compact} headerExtra={headerExtra} />;
   return <MultilayerView compact={compact} headerExtra={headerExtra} />;
 }
 
@@ -79,8 +83,44 @@ function CarStepper({ index: shown, count, compact }: { index: number; count: nu
   );
 }
 
+/**
+ * For a replayed checkpoint: the checkpoint before it and what changed since, both from the server
+ * (`GET checkpoints`, `GET checkpoints/{unit}/diff`). `from` is null for a run's first checkpoint.
+ */
+function useCheckpointChange(checkpoint: CheckpointRef | null): {
+  from: number | null;
+  diff: CheckpointDiff | null;
+} {
+  const [found, setFound] = useState<{ key: string; from: number | null; diff: CheckpointDiff | null } | null>(null);
+  const run = checkpoint?.run ?? null;
+  const unit = checkpoint?.unit ?? null;
+  useEffect(() => {
+    if (run === null || unit === null) return;
+    let live = true;
+    const key = `${run}/${unit}`;
+    fetchCheckpoints(run)
+      .then(async (list) => {
+        const from = previousCheckpoint(list.units, unit);
+        const diff = from === null ? null : await fetchCheckpointDiff(run, unit, from);
+        if (live) setFound({ key, from, diff });
+      })
+      .catch(() => live && setFound({ key, from: null, diff: null }));
+    return () => {
+      live = false;
+    };
+  }, [run, unit]);
+  if (found === null || found.key !== `${run}/${unit}`) return { from: null, diff: null };
+  return { from: found.from, diff: found.diff };
+}
+
+/** The full view's "show change" choice, kept while scrubbing from checkpoint to checkpoint. */
+let showChangeChoice = true;
+
 function MultilayerView({ compact, headerExtra }: { compact: boolean; headerExtra?: ReactNode }) {
   const frame = useLive((s) => s.frame);
+  const checkpoint = useLive((s) => s.scenario?.checkpoint ?? null);
+  const change = useCheckpointChange(compact ? null : checkpoint);
+  const [showChange, setShowChange] = useState(showChangeChoice);
   const network = useLive((s) => s.network);
   const connected = useLive((s) => s.status === "connected");
 
@@ -103,7 +143,13 @@ function MultilayerView({ compact, headerExtra }: { compact: boolean; headerExtr
   } else {
     body = (
       <>
-        <NetworkDiagram network={network} trace={trace} car={selected.index} atStep={moment?.step ?? null} />
+        <NetworkDiagram
+          network={network}
+          trace={trace}
+          car={selected.index}
+          atStep={moment?.step ?? null}
+          change={showChange ? change.diff : null}
+        />
         <Inspection explain={moment === null ? (selected.explain ?? null) : moment.explain} />
       </>
     );
@@ -119,6 +165,29 @@ function MultilayerView({ compact, headerExtra }: { compact: boolean; headerExtr
         {selected !== null && <CarStepper index={selected.index} count={count} compact={compact} />}
         {headerExtra}
       </div>
+      {checkpoint !== null && !compact && (
+        <div className="replay-banner" data-testid="replay-banner" data-run={checkpoint.run} data-unit={checkpoint.unit}>
+          <span>
+            Replaying checkpoint <strong>unit {checkpoint.unit}</strong> of {checkpoint.run}: the same network
+            drives every car, from the Driving Exam's starts.
+          </span>
+          <label className="replay-toggle">
+            <input
+              type="checkbox"
+              data-testid="show-change"
+              checked={showChange && change.from !== null}
+              disabled={change.from === null}
+              onChange={(e) => {
+                showChangeChoice = e.target.checked;
+                setShowChange(e.target.checked);
+              }}
+            />
+            {change.from === null
+              ? " Colour lines by change: this is the first checkpoint, nothing to compare"
+              : ` Colour lines by change since unit ${change.from}`}
+          </label>
+        </div>
+      )}
       {moment !== null && frame !== null && (
         <div className="past-banner" data-testid="past-banner">
           <span>

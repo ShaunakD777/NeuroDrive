@@ -7,6 +7,9 @@ const SPEEDS = [0.5, 1, 2, 4, 8];
 const MAX_CARS = 100; // the server's limit for one scenario
 const DEFAULT_SEED = 1;
 
+/** A run id without its leading `YYYYMMDD-HHMMSS-` time stamp. */
+const shortRun = (id: string) => id.replace(/^\d{8}-\d{6}-/, "");
+
 /**
  * A whole-number box that applies its value when the user finishes (Enter, leaving the box, or
  * the little arrows) and only if it is a whole number inside the allowed range. Typing a half
@@ -95,6 +98,8 @@ export function Controls({
   const speed = frame?.speed ?? 1;
   const nCars = scenario?.n_cars ?? 1;
   const seed = scenario?.seed ?? null;
+  // A replayed checkpoint (task 5.9) always drives the exam's 10 starts: cars and start are fixed.
+  const replay = scenario?.checkpoint ?? null;
   const selected = frame?.selected?.index ?? 0;
 
   return (
@@ -136,6 +141,11 @@ export function Controls({
             <option value="neuron">Neuron (you set its weights)</option>
             <option value="random_networks">Random networks (one per car)</option>
             <option value="expert">Expert (scripted, reads the track)</option>
+            {replay !== null && (
+              <option value="checkpoint">
+                Checkpoint: {shortRun(replay.run)} · unit {replay.unit} (exam starts)
+              </option>
+            )}
           </select>
         </label>
 
@@ -145,7 +155,7 @@ export function Controls({
           value={nCars}
           min={1}
           max={MAX_CARS}
-          disabled={!ready}
+          disabled={!ready || replay !== null}
           onCommit={(n) => loadScenario({ n_cars: n })}
         />
 
@@ -154,7 +164,7 @@ export function Controls({
             type="checkbox"
             data-testid="check-random-start"
             checked={seed !== null}
-            disabled={!ready}
+            disabled={!ready || replay !== null}
             onChange={(e) => {
               loadScenario({ seed: e.target.checked ? DEFAULT_SEED : null });
               e.target.blur();

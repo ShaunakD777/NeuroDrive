@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
-API_VERSION = "v1.13"
+API_VERSION = "v1.14"
 
 
 class WireModel(BaseModel):
@@ -80,6 +80,13 @@ class CommandModel(WireModel):
     model_config = ConfigDict(json_schema_serialization_defaults_required=True, extra="forbid")
 
 
+class CheckpointRef(CommandModel):
+    """A saved network: checkpoint ``unit`` of run ``run`` (a run folder name)."""
+
+    run: str
+    unit: int = Field(ge=0)
+
+
 class LoadScenario(CommandModel):
     """Load a track and a driver; the session starts paused at step 0.
 
@@ -90,13 +97,21 @@ class LoadScenario(CommandModel):
     ``seed`` None starts every car at the track's start; an integer gives a seeded random start
     (position, sideways offset and heading). For ``"random_networks"`` the same ``seed`` also picks
     the networks (seed 0 when None), so a seed always gives the same 20 drivers.
+
+    ``"checkpoint"`` (api v1.14, task 5.9, ADR-042) replays a saved network's Driving Exam drive
+    on ``track``: ``checkpoint`` names it, and the cars are placed at the exam's starts on that
+    track in the exam's order (car k = exam start k, 10 cars), all driven by that one network as
+    one batch, exactly as the exam drove them. ``n_cars`` and ``seed`` are then ignored.
     """
 
     type: Literal["load_scenario"] = "load_scenario"
     track: str
-    policy: Literal["keyboard", "constant", "neuron", "random_networks", "expert"] = "keyboard"
+    policy: Literal["keyboard", "constant", "neuron", "random_networks", "expert", "checkpoint"] = (
+        "keyboard"
+    )
     n_cars: int = Field(default=1, ge=1, le=100)
     seed: int | None = Field(default=None, ge=0)
+    checkpoint: CheckpointRef | None = None
 
 
 class Play(CommandModel):
@@ -208,14 +223,16 @@ class ScenarioMessage(WireModel):
     ``dt`` is the physics step in seconds, ``ray_angles`` the sensor directions in radians
     relative to the heading (left positive), ``ray_range`` the sensor range in metres. Track
     geometry is not included: fetch ``GET /api/tracks/{track}``. ``trail_seconds`` is how much
-    of the drive the session remembers for the decision trail (ADR-027).
+    of the drive the session remembers for the decision trail (ADR-027). ``checkpoint`` is the
+    replayed network for the ``"checkpoint"`` driver (api v1.14), else null.
     """
 
     type: Literal["scenario"] = "scenario"
     track: str
-    policy: Literal["keyboard", "constant", "neuron", "random_networks", "expert"]
+    policy: Literal["keyboard", "constant", "neuron", "random_networks", "expert", "checkpoint"]
     n_cars: int
     seed: int | None
+    checkpoint: CheckpointRef | None = None
     dt: float
     time_limit: float
     target_laps: int
@@ -743,6 +760,38 @@ class ExamDoneMessage(WireModel):
     heldout: ExamHeadline
 
 
+# ── replay and the run timeline (api v1.14, task 5.9, ADR-042) ─────────────────────────────────
+
+
+class CheckpointDiff(WireModel):
+    """Answer to ``GET /api/runs/{id}/checkpoints/{unit}/diff?from={from_unit}``: what changed.
+
+    ``weight_delta[l][j][i]`` = W_l[j, i] at ``unit`` minus the same weight at ``from_unit``
+    (``bias_delta`` likewise); ``max_abs_delta`` = M, the largest |delta| over every weight and
+    bias; ``weight_change`` = delta / M, so between -1 and 1: the sign says up or down, the size
+    how strongly to draw it (all 0 when nothing changed). Rounded to 4 decimals (deltas to 6
+    significant digits).
+    """
+
+    run_id: str
+    unit: int
+    from_unit: int
+    layer_sizes: list[int]
+    weight_delta: list[list[list[float]]]
+    bias_delta: list[list[float]]
+    max_abs_delta: float
+    weight_change: list[list[list[float]]]
+    bias_change: list[list[float]]
+
+
+class ExamCardResponse(WireModel):
+    """Answer to ``GET /api/runs/{id}/exams/{unit}``: the exam card as stored (exam v1, §6.14)."""
+
+    run_id: str
+    unit: int
+    card: dict[str, Any]
+
+
 class CompareResponse(WireModel):
     """Answer to ``GET /api/runs/compare?ids=a,b,...&metric=loss|val_loss`` (api v1.11, ADR-033).
 
@@ -810,4 +859,7 @@ WIRE_MODELS: tuple[type[WireModel], ...] = (
     CheckpointMessage,
     ExamHeadline,
     ExamDoneMessage,
+    CheckpointRef,
+    CheckpointDiff,
+    ExamCardResponse,
 )

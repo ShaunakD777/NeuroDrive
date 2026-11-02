@@ -52,6 +52,10 @@ class UnitResult:
     ``env_steps`` / ``demo_frames`` / ``teacher_queries``: budget used in this unit (0 for toys).
     ``diverged``: True when learning broke down (a loss or parameter became infinite or NaN);
     the runner then stops the run.
+    ``new_best``: True when the network checkpointed first (``current_networks()[0]``) is a new
+    best in this unit; the runner then saves a checkpoint (and takes the exam) at this unit even
+    when it is not on the fixed schedule, so the run timeline shows every improvement (task 5.9,
+    ADR-042). Optional: learners that never set it keep the fixed schedule.
     """
 
     metrics: dict[str, Metric] = field(default_factory=dict)
@@ -59,6 +63,7 @@ class UnitResult:
     demo_frames: int = 0
     teacher_queries: int = 0
     diverged: bool = False
+    new_best: bool = False
 
 
 @runtime_checkable

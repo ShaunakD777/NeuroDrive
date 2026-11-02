@@ -184,7 +184,7 @@ class RandomSearchLearner:
             "best_unit": self.best_unit,
             "candidates_total": self.candidates_total,
         }
-        return UnitResult(metrics=metrics, env_steps=result.env_steps)
+        return UnitResult(metrics=metrics, env_steps=result.env_steps, new_best=improved)
 
     def current_networks(self) -> list[Network]:
         return [self.best]

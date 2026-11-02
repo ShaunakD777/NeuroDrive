@@ -1324,3 +1324,26 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   when the browser scales the chart up (about 2× on a 1917 px screen); "Compare runs" had already
   switched to an HTML box in task 4.7b. All three now use that box (`ChartHover.tsx`), which keeps
   its own text size and stays sharp.
+
+### 2026-11-02 — Task 5.9 Replay endpoint and run timeline
+- Concept: replay by re-simulation. A drive is not stored as a film; it is computed again from what
+  fully decides it (network, track, start positions, fixed time step), so the replay of a
+  checkpoint is its exam drive, to the last digit. And a weight diff: what learning changed, weight
+  by weight, between two checkpoints.
+- Key equation(s) in words: change of a weight = new value − old value; drawn as change ÷ (largest
+  change in the network), blue up, orange down, unchanged not drawn ([0.5, −1, 2] → [0.75, −1, 1]:
+  changes [0.25, 0, −1], drawn at [0.25, 0, 1]). New bests in random search: unit k beats all k − 1
+  earlier independent units with probability 1 ÷ k, so n units give H_n = 1 + 1/2 + … + 1/n new bests
+  on average (H_50 = 4.50; the user's 50-unit run had 6).
+- What we observed: every checkpoint of a test run, replayed on the training loop and on the
+  hairpins, ended car for car exactly as its exam card says. Between two different random-search
+  bests every line of the diagram changes (largest change 0.97 in the e2e run); between equal bests
+  nothing does: random search has no continuity from one best to the next, which later methods
+  (GA, gradient descent) will.
+- Surprise or difficulty: the planned design (a recording sent to the browser and a separate replay
+  mode) would have doubled every view's data path; loading the checkpoint as one more live driver
+  gave the timeline every existing tool (inspector, what-if, trail) for free. The first test run
+  improved only at unit 1, which is on the schedule anyway, so the new-best rule went untested
+  until the fixture used a seed with improvements at units 3 and 4.
+- Open question: random search's diffs are all-or-nothing. What will a GA's diffs look like: a few
+  strong lines (mutations), or a blend of two parents (crossover)?

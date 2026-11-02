@@ -7,9 +7,10 @@ to stop* (docs/ARCHITECTURE.md §6.12). Each unit, in this order:
    frames, teacher queries) to the running totals;
 2. append one metrics line (unit, totals, training wall-clock seconds, the learner's metrics);
    stop with status "diverged" if the unit diverged;
-3. if the unit is on the checkpoint schedule (0, 1, 2, 5, 10, 20, 50, ...): save a checkpoint
-   and, when exams are on and the network drives (7 inputs, 2 outputs), take the Driving Exam
-   and save the card;
+3. if the unit is on the checkpoint schedule (0, 1, 2, 5, 10, 20, 50, ...), or the learner
+   reports a new best network in it (``UnitResult.new_best``, task 5.9, ADR-042): save a
+   checkpoint and, when exams are on and the network drives (7 inputs, 2 outputs), take the
+   Driving Exam and save the card;
 4. save the learner's state (a :class:`~neurodrive.learn.base.Resumable` learner), last in
    the folder;
 5. copy the unit into the database mirror ``<runs dir>/neurodrive.db`` (task 5.5b, ADR-038):
@@ -291,7 +292,7 @@ def _loop(
                 mirror(record)
                 break
             last_done = unit
-            if on_checkpoint_schedule(unit):
+            if on_checkpoint_schedule(unit) or result.new_best:
                 checkpoint(unit)
                 last_saved = unit
             save_state(unit)

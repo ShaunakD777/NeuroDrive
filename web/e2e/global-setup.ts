@@ -46,7 +46,28 @@ function hasCompletedSweep(tag: string, seeds: number): boolean {
   return [...counts.values()].some((n) => n === seeds);
 }
 
+// A small random-search run for the run timeline (task 5.9): 3 units, exams on, so it has several
+// examined checkpoints (0, 1, 2, 3 and any unit with a new best).
+export const E2E_SEARCH_TAG = "e2e";
+
+function hasCompletedSearch(): boolean {
+  if (!existsSync(runsDir)) return false;
+  return readdirSync(runsDir)
+    .filter((name) => name.endsWith(`-random_search-${E2E_SEARCH_TAG}`))
+    .some((name) => {
+      const meta = join(runsDir, name, "meta.json");
+      return existsSync(meta) && JSON.parse(readFileSync(meta, "utf8")).status === "completed";
+    });
+}
+
 export default function globalSetup(): void {
+  if (!hasCompletedSearch()) {
+    execFileSync(
+      "uv",
+      ["run", "python", "-m", "neurodrive", "train", "--config", "configs/random_search.yaml", "--units", "3", "--tag", E2E_SEARCH_TAG],
+      { cwd: repoRoot, stdio: "inherit" },
+    );
+  }
   for (const { task, args } of E2E_RUNS) {
     if (hasCompletedRun(task)) continue;
     execFileSync(

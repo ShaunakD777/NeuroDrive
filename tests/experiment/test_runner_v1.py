@@ -1,6 +1,8 @@
 """Tests for runner v1 and run folder v1 (task 5.5): budgets, exams at checkpoints, and a run
 killed at different moments that resumes exactly as if it had never stopped."""
 
+from dataclasses import replace
+
 import numpy as np
 import pytest
 from walk_learner import KILLS, SEED, UNITS, WalkLearner, run_killed
@@ -199,3 +201,25 @@ def test_resume_ignores_an_old_stop_request(reference, tmp_path):
     assert resume(WalkLearner(SEED), store) == "completed"
     assert store.read_meta()["stop_reason"] == "units"
     same_run(store, reference)
+
+
+# ── new bests get a checkpoint and an exam (task 5.9, ADR-042) ──────────────────────────────
+
+
+class NewBestAt(WalkLearner):
+    """A walk learner that reports a new best network in units 3 and 7."""
+
+    def train_unit(self) -> UnitResult:
+        return replace(super().train_unit(), new_best=self.units in (3, 7))
+
+
+def test_units_with_a_new_best_are_checkpointed_and_examined_too(reference, tmp_path):
+    store = RunStore.create(tmp_path, "walk", "t", {"seed": SEED})
+    run(NewBestAt(SEED), store, Budget(units=UNITS))
+    assert store.checkpoint_units() == [0, 1, 2, 3, 5, 7, 10, 12] == store.exam_units()
+    for unit in SCHEDULE:  # the same learner, so the scheduled checkpoints are unchanged
+        assert store.load_checkpoint(unit).equals(reference.load_checkpoint(unit))
+    lines = [{k: v for k, v in m.items() if k != "wall_clock_s"} for m in store.read_metrics()]
+    assert lines == [
+        {k: v for k, v in m.items() if k != "wall_clock_s"} for m in reference.read_metrics()
+    ]

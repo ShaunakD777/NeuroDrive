@@ -128,6 +128,10 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Offset | A position in a file counted in bytes from its start; here, how much of `metrics.jsonl` has been read already. |
 | Broadcast | Sending the same message to every connected browser; run status news goes to all, a run's metrics only to the browsers watching that run. |
 | Stop request | The empty file `stop_requested` in a run folder: the runner sees it after the current unit and ends the run cleanly, with a checkpoint and an exam of the last unit (stop reason "stopped"). |
+| Replay (re-simulation) | Watching a drive again by computing it again from what fully decides it: the network, the track, the start positions and the fixed time step. Nothing is filmed; the same inputs give the same drive to the last digit. |
+| Weight diff | The change of every weight between two checkpoints, Δw = new − old. Drawn as change ÷ (largest change), so the most-changed weight is drawn at full strength and unchanged ones not at all. |
+| Record (new best) | A value better than every one before it. In random search each unit's best is a fresh independent draw, so unit k is a record with probability 1 ÷ k. |
+| Harmonic number | H_n = 1 + 1/2 + … + 1/n, about ln n + 0.58. The expected number of records among n independent draws: H_50 = 4.50, H_100 = 5.19. |
 | Package | A folder of Python files that can be imported by name (`import neurodrive`). |
 | Virtual environment (venv) | A private copy of Python and libraries for one project (`.venv/`), so projects cannot break each other. |
 | Dependency | A library our code needs; listed in `pyproject.toml`. |

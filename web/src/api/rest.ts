@@ -1,8 +1,10 @@
 import type {
   ActivationCurves,
+  CheckpointDiff,
   CheckpointList,
   CompareResponse,
   ConfigListResponse,
+  ExamCardResponse,
   LaunchRequest,
   LaunchResponse,
   RunDetail,
@@ -57,6 +59,19 @@ export async function fetchRunMetrics(runId: string): Promise<RunMetrics> {
 /** The units that have a checkpoint (`GET /api/runs/{id}/checkpoints`). */
 export async function fetchCheckpoints(runId: string): Promise<CheckpointList> {
   return getJson<CheckpointList>(`${runPath(runId)}/checkpoints`);
+}
+
+/**
+ * What changed from checkpoint `from` to checkpoint `unit`, weight by weight, computed by the
+ * server (`GET /api/runs/{id}/checkpoints/{unit}/diff?from=`, task 5.9).
+ */
+export async function fetchCheckpointDiff(runId: string, unit: number, from: number): Promise<CheckpointDiff> {
+  return getJson<CheckpointDiff>(`${runPath(runId)}/checkpoints/${unit}/diff?from=${from}`);
+}
+
+/** A checkpoint's Driving Exam card as stored (`GET /api/runs/{id}/exams/{unit}`, task 5.9). */
+export async function fetchExamCard(runId: string, unit: number): Promise<ExamCardResponse> {
+  return getJson<ExamCardResponse>(`${runPath(runId)}/exams/${unit}`);
 }
 
 /** The toy lab's view of one checkpoint (`GET /api/runs/{id}/checkpoints/{unit}/toy`). */

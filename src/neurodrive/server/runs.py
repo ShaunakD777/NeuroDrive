@@ -1,4 +1,5 @@
-"""Run folders as REST answers (api v1.11, ADR-031, ADR-033): the toy lab and "Compare runs".
+"""Run folders as REST answers (api v1.11, ADR-031, ADR-033): the toy lab and "Compare runs";
+since api v1.14 (task 5.9, ADR-042) also checkpoint diffs and exam cards for the run timeline.
 
 ``RunLibrary`` reads the run folders under one directory (``runs/`` by default) and turns them into
 the message models of ``schemas.py``. It only reads: training writes the folders. A run id must
@@ -18,11 +19,13 @@ from neurodrive.experiment.stats import curve_bands, summarise
 from neurodrive.experiment.store import RunStore
 from neurodrive.experiment.toy_view import toy_checkpoint_view
 from neurodrive.server.schemas import (
+    CheckpointDiff,
     CheckpointList,
     CheckpointNetwork,
     CompareGroup,
     CompareResponse,
     CompareRun,
+    ExamCardResponse,
     RunDetail,
     RunListResponse,
     RunMetrics,
@@ -122,6 +125,43 @@ class RunLibrary:
 
     def network(self, run_id: str, unit: int) -> CheckpointNetwork:
         return _network(run_id, unit, self.store(run_id).load_checkpoint(unit))
+
+    def diff(self, run_id: str, unit: int, from_unit: int) -> CheckpointDiff:
+        """What changed from checkpoint ``from_unit`` to checkpoint ``unit``, weight by weight.
+
+        delta = w(unit) - w(from_unit) for every weight and bias; M = the largest |delta|;
+        change = delta / M (between -1 and 1, all 0 when M = 0). ``KeyError`` for an unknown run
+        or checkpoint, ``ValueError`` when the two networks have different layer sizes.
+        """
+        store = self.store(run_id)
+        new, old = store.load_checkpoint(unit), store.load_checkpoint(from_unit)
+        if new.spec.layer_sizes != old.spec.layer_sizes:
+            raise ValueError(
+                f"checkpoints {from_unit} and {unit} have different layer sizes "
+                f"({list(old.spec.layer_sizes)} and {list(new.spec.layer_sizes)})"
+            )
+        dw = [a - b for a, b in zip(new.weights, old.weights, strict=True)]
+        db = [a - b for a, b in zip(new.biases, old.biases, strict=True)]
+        biggest = max(float(np.max(np.abs(d), initial=0.0)) for d in [*dw, *db])
+        scale = biggest if biggest > 0 else 1.0
+        return CheckpointDiff(
+            run_id=run_id,
+            unit=unit,
+            from_unit=from_unit,
+            layer_sizes=list(new.spec.layer_sizes),
+            weight_delta=[_sig_array(d) for d in dw],
+            bias_delta=[_sig_array(d) for d in db],
+            max_abs_delta=_sig(biggest),
+            weight_change=[np.round(d / scale, 4).tolist() for d in dw],
+            bias_change=[np.round(d / scale, 4).tolist() for d in db],
+        )
+
+    def exam_card(self, run_id: str, unit: int) -> ExamCardResponse:
+        """The exam card of checkpoint ``unit`` as stored; ``KeyError`` if there is none."""
+        store = self.store(run_id)
+        if unit not in store.exam_units():
+            raise KeyError(unit)
+        return ExamCardResponse(run_id=run_id, unit=unit, card=store.load_exam(unit).to_dict())
 
     def toy(self, run_id: str, unit: int) -> ToyCheckpointResponse:
         """The toy lab's numbers for one checkpoint; ``ValueError`` if it is not a toy run."""
