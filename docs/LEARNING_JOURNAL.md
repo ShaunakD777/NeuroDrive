@@ -1250,3 +1250,23 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
 - Open question: storing every metric value as its own row makes the database 2.5 times the size
   of the folders and adds 0.45 ms per unit; for millisecond toy epochs that is a quarter of the
   time. Should fast learners mirror every N units, or summary metrics only?
+
+### 2026-11-02 — Task 5.6 Baselines
+- Concept: baselines as controls. A learned method's exam score only means something between a
+  floor (an untrained random network: no learning at all) and a ceiling (the scripted expert,
+  which reads the track), and next to the cheap human solution (the hand-wired neuron).
+- Key equation(s) in words: the neuron steers tanh(−12 · d_left + 12 · d_right); a wall close on
+  the left (d_left 0.3, d_right 0.5) gives z = 2.4 and steer 0.984, hard right. Random networks
+  are summarised across seeds by the median and IQR, never by one seed.
+- What we observed: the expert completes every start of every exam track; the neuron completes
+  the training loop and its mirror image and nothing else (held-out completion 0.25); the ten
+  random networks complete nothing, and five of them stall on all 50 starts. Three of those
+  (seeds 3, 4, 8) output a negative throttle even when every ray reads "open"; the other two
+  (seeds 7, 9) give a positive open-road throttle, so their stall comes from what the rays see at
+  the real starts. Held-out progress of the random networks: median 0.000 [IQR 0.000 to 0.002].
+- Surprise or difficulty: two of the three baselines are not networks, so a "run" had to become
+  something that can exist without a checkpoint; the config is then the complete description of
+  the policy. Also, the browser tests ran once against a server the user had open on port 8000
+  (their ports are fixed in the configs); the verification was then repeated on separate ports.
+- Open question: random search (5.7) starts from these random networks; how many tries does it
+  need before the first one even moves off the line?

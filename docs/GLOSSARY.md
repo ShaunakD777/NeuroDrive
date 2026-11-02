@@ -212,7 +212,9 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Central difference | Measuring a slope by nudging an input up by a small step h and down by h, then dividing the change in the output by 2h. Its error shrinks like h squared. |
 | Activation curve | A graph of an activation function: the weighted sum z along the bottom and the neuron's output up the side; a dot marks where the neuron is right now. |
 | Selection linking | Clicking something in one view (a car, a neuron) highlights the related thing in another view. |
-| Baseline | A simple reference controller every later method is compared against; here the hand-wired neuron. |
+| Baseline | A simple reference controller every later method is compared against. Since task 5.6 three are stored as runs with exam cards: a random network (the floor), the hand-wired neuron (a cheap hand-tuned solution) and the scripted expert (the ceiling). |
+| Control | In an experiment, a condition that differs from the one tested only in the thing being studied, so a difference can be blamed on it. A baseline is the control for "did learning help?". |
+| Floor and ceiling | The score with no skill at all (an untrained random network) and the best score reachable (an expert that reads the track). A learned method is placed between them. |
 | Positive feedback | An effect that makes its own cause bigger: with flipped weights the car steers towards the nearer wall, which makes that wall nearer still. |
 | Negative control | A run deliberately set up to fail (zero weights, flipped signs) to show that the success was caused by the thing being tested. |
 | Driving Exam (preview) | The fixed set of starts and limits every controller is judged on: 10 starts, 2 laps, 90 s. Built properly in Phase 5. |

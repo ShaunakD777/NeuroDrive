@@ -132,6 +132,7 @@ These are created in Phase 0. If a task changes a command, update this section i
 | Train from a config into `runs/` (toy configs: `configs/toy_line.yaml`, `toy_sine.yaml`, `toy_xor.yaml`, `toy_two_spirals.yaml`; options `--seed`, `--tag`, `--epochs`, `--runs-dir`) | `uv run python -m neurodrive train --config configs/toy_xor.yaml` (or `uv run nd train ...`) |
 | Run several seeds (one run folder per seed, tag `<tag>-s<seed>`, shared `sweep` id; prints median and IQR of the final loss) | `uv run python -m neurodrive sweep --config configs/toy_sine.yaml --seeds 0-4` (or `uv run nd sweep ...`) |
 | Driving Exam on a checkpoint (writes `exams/unit_<n>.json` in the run folder, prints the card; needs a 7-input, 2-output network) | `uv run python -m neurodrive exam --run runs/<run_id> --unit <n>` (or `uv run nd exam ...`) |
+| Make the baselines as run folders with exam cards (random network for seeds 0-9, hand-wired neuron, scripted expert; options `--name`, `--seeds`, `--runs-dir`) | `uv run python -m neurodrive baseline` (or `uv run nd baseline ...`) |
 | Rebuild / check the SQLite mirror `runs/neurodrive.db` (the runner keeps it up to date by itself; check exits 1 if it differs from the folders; option `--runs-dir`) | `uv run python -m neurodrive db rebuild` / `uv run python -m neurodrive db check` (or `uv run nd db ...`) |
 | Web unit tests / smoke test | `cd web && npm run test` / `npm run e2e` |
 | Regenerate TypeScript types from the Python message models | `cd web && npm run gen:types` |

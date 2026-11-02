@@ -1,8 +1,8 @@
 """The ``nd`` command-line tool.
 
 Each subcommand is one thing you can ask NeuroDrive to do from a terminal. ``version``,
-``serve``, ``train``, ``sweep``, ``exam`` and ``db rebuild`` / ``db check`` exist so far; others
-are added by later tasks.
+``serve``, ``train``, ``sweep``, ``exam``, ``baseline`` and ``db rebuild`` / ``db check`` exist so
+far; others are added by later tasks.
 """
 
 from pathlib import Path
@@ -144,6 +144,49 @@ def exam(
     mirror.close()
     typer.echo(format_card(result))
     typer.echo(f"exam card: {path.as_posix()}")
+
+
+@app.command()
+def baseline(
+    name: str = typer.Option(
+        "all", help="random_network, hand_neuron, scripted_expert, or all three."
+    ),
+    seeds: str | None = typer.Option(
+        None, help="Seeds of the random network, e.g. 0-4 or 0,2,7 (default 0-9)."
+    ),
+    runs_dir: str = typer.Option("runs", help="Folder to create the baseline runs in."),
+) -> None:
+    """Examine the baselines and store each as a run folder with its exam card."""
+    from neurodrive.experiment.baselines import BASELINES, DEFAULT_SEEDS, make_baselines
+    from neurodrive.experiment.runner import parse_seeds
+    from neurodrive.experiment.stats import summarise
+
+    try:
+        names = BASELINES if name == "all" else (name,)
+        if name != "all" and name not in BASELINES:
+            raise ValueError(f"unknown baseline {name!r}; choose from {', '.join(BASELINES)}, all")
+        if seeds is not None and "random_network" not in names:
+            raise ValueError(f"--seeds is only for random_network; {name} has no seed")
+        seed_list = tuple(parse_seeds(seeds)) if seeds is not None else DEFAULT_SEEDS
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=2) from None
+    runs = make_baselines(runs_dir, names, seed_list)
+    for run in runs:
+        t, h = run.card.training, run.card.heldout
+        typer.echo(
+            f"{run.store.path.name}  completion: training {t['completion_rate']:.2f}, "
+            f"held-out {h['completion_rate']:.2f}  held-out median progress "
+            f"{h['progress_frac_median']:.3f}"
+        )
+    randoms = [r.card.heldout for r in runs if r.store.read_meta()["method"] == "random_network"]
+    if randoms:
+        for key, label in (("completion_rate", "completion"), ("progress_frac_median", "progress")):
+            s = summarise([c[key] for c in randoms])
+            typer.echo(
+                f"random networks, held-out {label}: median {s.median:.3f} "
+                f"[IQR {s.q1:.3f} to {s.q3:.3f}] over {s.n} seeds"
+            )
 
 
 db_app = typer.Typer(

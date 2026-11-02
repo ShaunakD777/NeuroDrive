@@ -7,7 +7,8 @@
 # The weights have opposite signs, so the car steers away from the nearer wall.
 # It completes the Driving Exam's 2 laps in about 86 s on train_loop_01, from every exam start.
 #
-# The settings format here is informal until experiment/config.py (Phase 4) defines and validates it.
+# Read and checked by experiment/baselines.py (task 5.6); `nd baseline` examines it as the
+# hand_neuron baseline run. tests/env/test_baselines.py guards that it keeps working.
 name: hand_neuron
 policy: neuron
 inputs: [far_left_ray, far_right_ray]

@@ -27,6 +27,10 @@
 5. **Seeds:** at least 5, and 10 for headline studies. Report the median and interquartile range
    (IQR). Never report a single best run as the result.
 6. **Baselines are always shown:** random network, random search, hand-wired neuron, scripted expert.
+   Since task 5.6 (ADR-039) `nd baseline --runs-dir <folder>` makes the three fixed ones as run folders
+   with exam cards: the random network for seeds 0–9 (one sweep; report the median and IQR), the
+   hand-wired neuron (`configs/baselines/hand_neuron.yaml`) and the scripted expert (deterministic, one
+   run each). Random search is a learner (5.7) and is run like any other method.
 7. **Held-out tracks** are never used for training, tuning or checkpoint selection.
 8. **Checkpoint selection** uses the training track only (or a validation track), never the
    held-out tracks.

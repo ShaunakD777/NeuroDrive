@@ -341,6 +341,8 @@ rebuilt from them with `nd db rebuild`. All of `runs/` is git-ignored.
 
 *Mirror db v1 (task 5.5b, ADR-038), as built (`experiment/db.py`):* `<runs dir>/neurodrive.db`, SQLite in WAL mode (`synchronous=NORMAL`, 5 s busy timeout), schema version in `PRAGMA user_version` (1). Tables (key columns first): `runs` (run_id; meta fields as columns: run_version, method, tag, status, stop_reason, started_at, ended_at, seed, sweep, git_commit, git_dirty, budget (JSON), exams, exam_wall_clock_s, resumes; plus the whole config and meta as JSON), `metrics` (run_id, unit, name → value; one row per value of a metrics line, booleans 0/1, a list `x` as `x[0]`, `x[1]`, …), `checkpoints` (run_id, unit → layer_sizes, n_parameters, `weights` = the `.npz` file's bytes), `exams` (run_id, unit → exam_version, env_steps, policy, training and held-out completion rate, crash rate and median progress, both summaries as JSON), `exam_episodes` (run_id, unit, track, start_index → split, start and every episode metric). The runner writes the folder first and then, per unit, one transaction with that unit's rows (`Mirror.add_unit`); on start and resume it re-copies the run from its folder (`Mirror.sync_run`). A mirror that cannot be written warns once and stops for that run; the run goes on. Mirror time is kept out of the training clock. `nd db check` builds a copy from the folders in memory and lists differences per table and run (exit 1). No `studies` table yet (5.10).
 
+*Baseline runs (task 5.6, ADR-039, `experiment/baselines.py`):* run folders v1 with methods `random_network`, `hand_neuron`, `scripted_expert` and tag `baseline` (`baseline-s<k>` for the random network's seeds, which share a `sweep` id): budget 0 units, empty `metrics.jsonl`, status completed, stop reason units, one exam card `exams/unit_0.json`. `config.yaml` describes the policy completely (`baseline_policy(config)` rebuilds it): the random network's spec, init scheme and seed; the neuron's weights, bias, activation and throttle; the expert's `ExpertParams`. Only the random network is a network, so only it has `checkpoints/unit_0.npz`; a baseline run of the neuron or the expert has no checkpoint.
+
 ### 6.14 Exam result (exam v1)
 Exam spec version, list of tracks, per-episode metrics (track, start index, progress, laps,
 crashed, lap times, mean speed, smoothness, time to crash; since task 5.2 also status, end
@@ -354,7 +356,9 @@ examined), `tracks` (per track: split, length, time limit, 10 episodes with `sta
 `start_s0_m`, `start_lateral_m` and the `EpisodeMetrics` fields, and its aggregate), `training`
 and `heldout` (pooled) aggregates (the held-out one has `median_best_lap_s_by_track` instead of
 a pooled `median_best_lap_s`, ADR-036), `env_steps`, `extra`. `policy_for(world)` builds the policy
-for each track's world (the expert needs it). Each track's 10 starts are always driven as one
+for each track's world (the expert needs it). `policy` is `{"kind": "checkpoint", "run", "unit"}` for a
+network checkpoint, or, since task 5.6 (ADR-039), `{"kind": "baseline", "name", "run"}` for a baseline
+that is not a network (the policy is then rebuilt from the run's config). Each track's 10 starts are always driven as one
 batch in start order: a network's output differs by about 1e-16 between batch sizes, so a
 recording matches a card only when made the same way.
 
