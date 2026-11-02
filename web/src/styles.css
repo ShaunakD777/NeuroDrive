@@ -1518,16 +1518,6 @@ body {
   stroke-width: 2;
 }
 
-.toy-tooltip text,
-.toy-map-readout {
-  fill: var(--text);
-  font-size: 14px;
-  font-variant-numeric: tabular-nums;
-  paint-order: stroke;
-  stroke: var(--surface);
-  stroke-width: 3px;
-}
-
 .toy-dot {
   fill: var(--text-muted);
   opacity: 0.55;

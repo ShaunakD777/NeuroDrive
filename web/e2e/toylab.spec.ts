@@ -102,3 +102,24 @@ test("toy lab: the XOR run shows a map over the plane", async ({ page }) => {
   await expect(page.locator(".toy-point-pos")).toHaveCount(2); // the two corners labelled 1
   expect(Number(await page.getByTestId("prediction-plot").getAttribute("data-loss"))).toBeLessThan(0.01);
 });
+
+// Task 5.8 follow-up (the user's report): the hover read-outs were SVG text, blurry once the chart
+// is scaled up. They are now HTML boxes, like the one in "Compare runs".
+test("toy lab: the hover read-outs are sharp HTML boxes", async ({ page }) => {
+  await openRun(page, await latestRun(page, "sine"));
+  await page.getByTestId("loss-chart").locator("rect.toy-hit").hover();
+  const loss = page.getByTestId("loss-hover");
+  await expect(loss).toContainText(/^epoch \d+loss \d/);
+  expect(await loss.evaluate((el) => el.tagName)).toBe("DIV");
+  await page.getByTestId("prediction-plot").locator("rect.toy-hit").hover();
+  const prediction = page.getByTestId("prediction-hover");
+  await expect(prediction).toContainText(/^x -?[\d.]+ → network -?[\d.e-]+$/);
+  expect(await prediction.evaluate((el) => el.tagName)).toBe("DIV");
+
+  await openRun(page, await latestRun(page, "xor"));
+  await page.getByTestId("prediction-map").locator("rect").nth(20 * 41 + 20).hover();
+  const map = page.getByTestId("prediction-map-hover");
+  await expect(map).toContainText(/x1 .*x2 .*→ network/);
+  expect(await map.evaluate((el) => el.tagName)).toBe("DIV");
+  await expect(page.locator("svg text.toy-map-readout, .toy-tooltip")).toHaveCount(0);
+});

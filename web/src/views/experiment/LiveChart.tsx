@@ -1,5 +1,6 @@
 import { useMemo, useState, type MouseEvent } from "react";
 
+import { ChartHover } from "./ChartHover";
 import { formatNumber, formatPowerOfTen, linePath, linearScale, logScale, logTicks, nearestIndex, niceTicks } from "./charts";
 
 const W = 520;
@@ -73,6 +74,7 @@ export function LiveChart({
           </span>
         )}
       </figcaption>
+      <div className="cmp-plot">
       <svg
         className="toy-svg"
         viewBox={`0 0 ${W} ${H}`}
@@ -120,19 +122,17 @@ export function LiveChart({
           onMouseMove={onMove}
           onMouseLeave={() => setHover(null)}
         />
-        {h !== null && (
-          <g className="toy-tooltip" pointerEvents="none">
-            <circle className="toy-hover-dot" cx={px[h]} cy={py[h]} r={4} />
-            <text
-              x={Math.min(px[h] + 8, W - M.right - 4)}
-              y={Math.max(py[h] - 8, M.top + 10)}
-              textAnchor={px[h] > W - 170 ? "end" : "start"}
-            >
-              {`unit ${unit[h]}: ${formatNumber(value[h])}`}
-            </text>
-          </g>
-        )}
+        {h !== null && <circle className="toy-hover-dot" pointerEvents="none" cx={px[h]} cy={py[h]} r={4} />}
       </svg>
+      {h !== null && (
+        <ChartHover x={px[h]} y={M.top} width={W} height={H} testId="live-hover">
+          <div className="cmp-hover-title">unit {unit[h]}</div>
+          <div>
+            {label} {formatNumber(value[h])}
+          </div>
+        </ChartHover>
+      )}
+      </div>
     </figure>
   );
 }

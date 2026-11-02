@@ -45,6 +45,9 @@ test("a run launched from the app trains in the background and its chart grows u
   expect([...seen].sort()).toEqual([1, 2, 3]);
   await expect(page.getByTestId("live-point")).toHaveCount(3);
   await expect(chart).toHaveAttribute("data-metric", "best_fitness");
+  await chart.locator("rect.toy-hit").hover(); // an HTML read-out, sharp at any chart size
+  await expect(page.getByTestId("live-hover")).toContainText(/^unit \dbest fitness \d/);
+  expect(await page.getByTestId("live-hover").evaluate((el) => el.tagName)).toBe("DIV");
 
   await expect(row.getByTestId("training-run-units")).toHaveText("3 / 3 units");
   await expect(row.getByTestId("training-run-status")).toHaveText("completed");

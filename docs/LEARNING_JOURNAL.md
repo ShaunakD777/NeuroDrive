@@ -1319,3 +1319,8 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   history sent again. On a phone the third Experiment tab no longer fitted beside the drawer.
 - Open question: when 4 runs train at once, how much does each slow down? A parallel sweep for
   Study S4 (5.10) would need that number.
+- Follow-up (2026-11-02, user report): the hover read-outs of the new Training chart and of the
+  toy lab's loss chart and prediction plot were still SVG text with a light outline, which smears
+  when the browser scales the chart up (about 2× on a 1917 px screen); "Compare runs" had already
+  switched to an HTML box in task 4.7b. All three now use that box (`ChartHover.tsx`), which keeps
+  its own text size and stays sharp.
