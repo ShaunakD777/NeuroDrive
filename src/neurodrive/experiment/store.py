@@ -7,8 +7,9 @@ A run folder is the master record of a run (ADR-007). Version 1 (task 5.5) adds 
     runs/<YYYYMMDD-HHMMSS>-<method>-<tag>/
       config.yaml        the fully resolved config, including the seed
       meta.json          run_version, status, start/end time (UTC), git commit + dirty flag,
-                         Python / NumPy / NeuroDrive versions, and ``sweep`` (the sweep id)
-                         for runs made by ``nd sweep``
+                         Python / NumPy / NeuroDrive versions, ``sweep`` (the sweep id)
+                         for runs made by ``nd sweep``, and ``study`` (the study id, e.g. S4)
+                         for runs made for a study (task 5.10, ADR-043)
       metrics.jsonl      one JSON object per unit (unit, budget totals, wall_clock_s, the
                          learner's native metrics)
       checkpoints/       unit_<n>.npz (network files, core/nn/io.py) + index.json {"units": [...]}
@@ -49,6 +50,11 @@ _NAME_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ012345678
 def _check_name(kind: str, value: str) -> None:
     if not value or not set(value) <= _NAME_CHARS:
         raise ValueError(f"{kind} must be letters, digits, '_' or '-', got {value!r}")
+
+
+def check_study(study: str) -> None:
+    """Raise ``ValueError`` unless ``study`` is a valid study id (letters, digits, '_', '-')."""
+    _check_name("study", study)
 
 
 def _git_info() -> dict[str, Any]:
@@ -97,10 +103,13 @@ class RunStore:
 
         ``when`` (default: now, UTC) sets the timestamp in the name. If that folder already
         exists, ``-2``, ``-3``, ... is appended. The run starts with status "running".
-        ``extra_meta`` adds fields to ``meta.json``, e.g. ``{"sweep": <sweep id>}`` (ADR-033).
+        ``extra_meta`` adds fields to ``meta.json``, e.g. ``{"sweep": <sweep id>}`` (ADR-033)
+        or ``{"study": "S4"}`` (ADR-043; checked like a tag).
         """
         _check_name("method", method)
         _check_name("tag", tag)
+        if extra_meta and "study" in extra_meta:
+            check_study(extra_meta["study"])
         when = when or datetime.now(UTC)
         base = Path(runs_dir) / f"{when:%Y%m%d-%H%M%S}-{method}-{tag}"
         path, n = base, 1

@@ -1,4 +1,4 @@
-"""The SQLite mirror of the run folders, db v1 (ADR-007, ADR-038).
+"""The SQLite mirror of the run folders, db v2 (ADR-007, ADR-038, ADR-043).
 
 Run folders are the master copy (``store.py``); this database is a copy of them in tables, so a
 question across many runs is one SQL query. It lives at ``<runs dir>/neurodrive.db`` and can
@@ -6,8 +6,13 @@ always be rebuilt from the folders: when the two disagree, the folders win.
 
 Tables (key columns first; each row is one fact):
 
-- ``runs``: one row per run folder: its meta fields as columns (status, seed, sweep, ...), plus
-  the whole ``config.yaml`` and ``meta.json`` as JSON text.
+- ``runs``: one row per run folder: its meta fields as columns (status, seed, sweep, study,
+  ...), plus the whole ``config.yaml`` and ``meta.json`` as JSON text.
+- ``studies`` (db v2, task 5.10): one row per study id found in the runs' ``study`` field,
+  *derived* from the ``runs`` table: how many runs, which methods, sweeps and git commits, the
+  first start and the last end. It holds nothing the folders do not say; it is recomputed
+  whenever a run of that study is written or deleted. A study's question and hypotheses live in
+  ``docs/studies/<ID>.md``.
 - ``metrics``: one row per value of a metrics line, key (run_id, unit, name). A line with k
   values besides ``unit`` becomes k rows; booleans are stored as 0 / 1, and a list such as
   the toy learner's per-layer ``grad_norm`` gives one row per element (``grad_norm[0]``, ...).
@@ -45,7 +50,7 @@ from neurodrive.core.nn.io import load_network
 from neurodrive.experiment.exam import ExamResult
 from neurodrive.experiment.store import RunStore
 
-DB_VERSION = 1
+DB_VERSION = 2
 DB_NAME = "neurodrive.db"
 
 _EPISODE_COLUMNS = (
@@ -77,6 +82,7 @@ _SCHEMA = (
         ended_at TEXT,
         seed INTEGER,
         sweep TEXT,
+        study TEXT,
         git_commit TEXT,
         git_dirty INTEGER,
         budget TEXT,
@@ -85,6 +91,16 @@ _SCHEMA = (
         resumes INTEGER NOT NULL,
         config TEXT NOT NULL,
         meta TEXT NOT NULL
+    )""",
+    "CREATE INDEX runs_study ON runs (study)",
+    """CREATE TABLE studies (
+        study_id TEXT PRIMARY KEY,
+        n_runs INTEGER NOT NULL,
+        methods TEXT NOT NULL,
+        sweeps TEXT NOT NULL,
+        git_commits TEXT NOT NULL,
+        started_at TEXT,
+        ended_at TEXT
     )""",
     """CREATE TABLE metrics (
         run_id TEXT NOT NULL REFERENCES runs (run_id),
@@ -146,7 +162,9 @@ _SCHEMA = (
 
 # Each table and the number of leading columns that form its primary key; children after
 # parents (the order rows are inserted in), so deleting goes the other way round.
-TABLES = {"runs": 1, "metrics": 3, "checkpoints": 2, "exams": 2, "exam_episodes": 4}
+TABLES = {"runs": 1, "studies": 1, "metrics": 3, "checkpoints": 2, "exams": 2, "exam_episodes": 4}
+# The tables whose rows belong to one run (``studies`` rows belong to a study, derived from runs).
+_RUN_TABLES = tuple(t for t in TABLES if t != "studies")
 
 
 class DatabaseVersionError(sqlite3.DatabaseError):
@@ -236,6 +254,7 @@ _RUN_COLUMNS = (
     "ended_at",
     "seed",
     "sweep",
+    "study",
     "git_commit",
     "git_dirty",
     "budget",
@@ -254,7 +273,49 @@ _UPSERT_RUN = (
 )
 
 
+def _study_of(conn: sqlite3.Connection, run_id: str) -> str | None:
+    row = conn.execute("SELECT study FROM runs WHERE run_id = ?", (run_id,)).fetchone()
+    return row[0] if row else None
+
+
+def _refresh_study(conn: sqlite3.Connection, study: str | None) -> None:
+    """Recompute the ``studies`` row of ``study`` from its runs (remove it if none is left).
+
+    ``started_at`` is the earliest start; ``ended_at`` the latest end, or NULL while any run of
+    the study has not ended (it is still running, or was killed).
+    """
+    if study is None:
+        return
+    rows = conn.execute(
+        "SELECT method, sweep, git_commit, started_at, ended_at FROM runs WHERE study = ?",
+        (study,),
+    ).fetchall()
+    conn.execute("DELETE FROM studies WHERE study_id = ?", (study,))
+    if not rows:
+        return
+
+    def distinct(i: int) -> str:
+        return _json(sorted({r[i] for r in rows if r[i] is not None}))
+
+    starts = [r[3] for r in rows if r[3] is not None]
+    ends = [r[4] for r in rows]
+    conn.execute(
+        "INSERT INTO studies VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            study,
+            len(rows),
+            distinct(0),
+            distinct(1),
+            distinct(2),
+            min(starts) if starts else None,
+            None if None in ends else max(ends),
+        ),
+    )
+
+
 def _upsert_run(conn: sqlite3.Connection, store: RunStore) -> None:
+    """Write the run's row (meta.json and config.yaml), then its study's ``studies`` row."""
+    before = _study_of(conn, store.path.name)
     meta, config = store.read_meta(), store.read_config() or {}
     seed = config.get("seed") if isinstance(config, dict) else None
     exams = meta.get("exams")
@@ -271,6 +332,7 @@ def _upsert_run(conn: sqlite3.Connection, store: RunStore) -> None:
             meta.get("ended_at"),
             seed if isinstance(seed, int) else None,
             meta.get("sweep"),
+            meta.get("study"),
             meta.get("git_commit"),
             _optional(int, meta.get("git_dirty")),
             _json(meta["budget"]) if meta.get("budget") is not None else None,
@@ -281,6 +343,9 @@ def _upsert_run(conn: sqlite3.Connection, store: RunStore) -> None:
             _json(meta),
         ),
     )
+    _refresh_study(conn, meta.get("study"))
+    if before != meta.get("study"):
+        _refresh_study(conn, before)
 
 
 def _insert_metrics(conn: sqlite3.Connection, run_id: str, record: dict[str, Any]) -> None:
@@ -352,8 +417,10 @@ def _insert_exam(conn: sqlite3.Connection, run_id: str, unit: int, card: ExamRes
 
 
 def _delete_run(conn: sqlite3.Connection, run_id: str) -> None:
-    for table in reversed(TABLES):
+    study = _study_of(conn, run_id)
+    for table in reversed(_RUN_TABLES):
         conn.execute(f"DELETE FROM {table} WHERE run_id = ?", (run_id,))
+    _refresh_study(conn, study)
 
 
 def _copy_run(conn: sqlite3.Connection, store: RunStore) -> None:
@@ -556,6 +623,15 @@ def check(runs_dir: str | Path, db_path: str | Path | None = None) -> list[str]:
         want, have = dump(expected), dump(actual)
     for table, n_key in TABLES.items():
         w, h = _by_run(want[table], n_key), _by_run(have[table], n_key)
+        if table == "studies":
+            for study in sorted(set(w) | set(h)):
+                if study not in h:
+                    lines.append(f"studies: {study} has runs in the folders but no row")
+                elif study not in w:
+                    lines.append(f"studies: {study} has a row but no run folder of that study")
+                elif w[study] != h[study]:
+                    lines.append(f"studies: {study}: its row differs from its runs' meta.json")
+            continue
         if table == "runs":
             for run_id in sorted(set(w) | set(h)):
                 if run_id not in h:
@@ -606,3 +682,9 @@ def median_final_heldout_progress(conn: sqlite3.Connection, sweep: str) -> float
     """Median across the sweep's runs (seeds) of the held-out median progress at each run's
     last examined checkpoint; None if no run of the sweep has an exam."""
     return conn.execute(MEDIAN_FINAL_HELDOUT_PROGRESS, {"sweep": sweep}).fetchone()[0]
+
+
+def runs_of_study(conn: sqlite3.Connection, study: str) -> list[str]:
+    """The ids of every run whose meta.json says ``"study": <study>``, by id (ADR-043)."""
+    rows = conn.execute("SELECT run_id FROM runs WHERE study = ? ORDER BY run_id", (study,))
+    return [r[0] for r in rows]

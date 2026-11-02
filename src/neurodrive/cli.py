@@ -51,6 +51,17 @@ def serve(
     uvicorn.run(app_, host=host, port=port)
 
 
+_STUDY_HELP = "Study id written into each run's meta.json, e.g. S4 (ADR-043)."
+
+
+def _check_study_option(study: str | None) -> None:
+    """Refuse an invalid --study before anything is created."""
+    if study is not None:
+        from neurodrive.experiment.store import check_study
+
+        check_study(study)
+
+
 @app.command()
 def train(
     config: str = typer.Option(
@@ -61,6 +72,7 @@ def train(
     epochs: int | None = typer.Option(None, help="Override training.epochs (toy configs)."),
     units: int | None = typer.Option(None, help="Override budget.units (random_search configs)."),
     runs_dir: str = typer.Option("runs", help="Folder to create the run folder in."),
+    study: str | None = typer.Option(None, help=_STUDY_HELP),
 ) -> None:
     """Train from a config file (toy or random_search) and write a run folder."""
     import sys
@@ -69,10 +81,12 @@ def train(
     from neurodrive.experiment.runner import train_random_search_run, train_toy_run
 
     try:
+        _check_study_option(study)
         run_config = load_config(Path(config), seed=seed, tag=tag, epochs=epochs, units=units)
-    except ConfigError as exc:
+    except (ConfigError, ValueError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=2) from None
+    meta = {"study": study} if study is not None else None
 
     def announce(store) -> None:
         # Printed as soon as the folder exists, not at the end: the server reads this line to
@@ -81,11 +95,11 @@ def train(
         sys.stdout.flush()
 
     if not isinstance(run_config, ToyRunConfig):
-        found = train_random_search_run(run_config, runs_dir, on_start=announce)
+        found = train_random_search_run(run_config, runs_dir, meta, on_start=announce)
         typer.echo(f"status: {found.status} after {found.units_done} units")
         typer.echo(_best_line(found))
         return
-    result = train_toy_run(run_config, runs_dir, on_start=announce)
+    result = train_toy_run(run_config, runs_dir, meta, on_start=announce)
     typer.echo(f"status: {result.status} after {result.epochs_done} epochs")
     end = f"{result.end_loss:.6g}" if result.end_loss is not None else "none (diverged at once)"
     typer.echo(f"loss: {result.start_loss:.6g} at the start -> {end} at the last finite epoch")
@@ -140,6 +154,7 @@ def sweep(
     epochs: int | None = typer.Option(None, help="Override training.epochs (toy configs)."),
     units: int | None = typer.Option(None, help="Override budget.units (random_search configs)."),
     runs_dir: str = typer.Option("runs", help="Folder to create the run folders in."),
+    study: str | None = typer.Option(None, help=_STUDY_HELP),
 ) -> None:
     """Train one config once per seed; summarise the final loss or best fitness (median, IQR)."""
     from neurodrive.experiment.config import ConfigError, ToyRunConfig, load_config
@@ -147,12 +162,13 @@ def sweep(
     from neurodrive.experiment.stats import summarise
 
     try:
+        _check_study_option(study)
         seed_list = parse_seeds(seeds)
         run_config = load_config(Path(config), tag=tag, epochs=epochs, units=units)
     except (ConfigError, ValueError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=2) from None
-    sweep_id, results = sweep_seeds(run_config, seed_list, runs_dir)
+    sweep_id, results = sweep_seeds(run_config, seed_list, runs_dir, study=study)
     typer.echo(f"sweep: {sweep_id} ({len(results)} runs)")
     if not isinstance(run_config, ToyRunConfig):
         for seed, found in zip(seed_list, results, strict=True):
@@ -219,6 +235,7 @@ def baseline(
         None, help="Seeds of the random network, e.g. 0-4 or 0,2,7 (default 0-9)."
     ),
     runs_dir: str = typer.Option("runs", help="Folder to create the baseline runs in."),
+    study: str | None = typer.Option(None, help=_STUDY_HELP),
 ) -> None:
     """Examine the baselines and store each as a run folder with its exam card."""
     from neurodrive.experiment.baselines import BASELINES, DEFAULT_SEEDS, make_baselines
@@ -226,6 +243,7 @@ def baseline(
     from neurodrive.experiment.stats import summarise
 
     try:
+        _check_study_option(study)
         names = BASELINES if name == "all" else (name,)
         if name != "all" and name not in BASELINES:
             raise ValueError(f"unknown baseline {name!r}; choose from {', '.join(BASELINES)}, all")
@@ -235,7 +253,7 @@ def baseline(
     except ValueError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=2) from None
-    runs = make_baselines(runs_dir, names, seed_list)
+    runs = make_baselines(runs_dir, names, seed_list, study=study)
     for run in runs:
         t, h = run.card.training, run.card.heldout
         typer.echo(
@@ -272,7 +290,7 @@ def db_rebuild(
     summary = rebuild(runs_dir)
     rows = summary.rows
     typer.echo(f"rebuilt {(Path(runs_dir) / DB_NAME).as_posix()} from {rows['runs']} run folders")
-    for table in ("metrics", "checkpoints", "exams", "exam_episodes"):
+    for table in ("studies", "metrics", "checkpoints", "exams", "exam_episodes"):
         typer.echo(f"  {table}: {rows[table]:,} rows")
     for name, reason in summary.skipped:
         typer.echo(f"  skipped {name}: {reason}")

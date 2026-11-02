@@ -439,13 +439,14 @@ def sweep_seeds(
     seeds: list[int],
     runs_dir: str | Path,
     when: datetime | None = None,
+    study: str | None = None,
 ) -> tuple[str, list[ToyRunResult] | list[RandomSearchRunResult]]:
     """Train ``config`` once per seed; returns the sweep id and one result per seed.
 
     The sweep id is ``<YYYYMMDD-HHMMSS>-<method>-<tag>`` (formed like a run id; the method is
     ``toy_<task>`` or ``random_search``). Run k gets seed k, tag ``<tag>-s<k>`` (so its resolved
-    config re-creates it on its own) and ``"sweep": <id>`` in its ``meta.json``. Runs are
-    trained one after another.
+    config re-creates it on its own) and ``"sweep": <id>`` in its ``meta.json``, plus
+    ``"study": <study>`` when ``study`` is given (ADR-043). Runs are trained one after another.
     """
     if not seeds:
         raise ValueError("need at least one seed")
@@ -456,5 +457,6 @@ def sweep_seeds(
     results = []
     for seed in seeds:
         one = parse_config(resolved(config), seed=seed, tag=f"{config.tag}-s{seed}")
-        results.append(train(one, runs_dir, extra_meta={"sweep": sweep_id}))
+        meta = {"sweep": sweep_id} if study is None else {"sweep": sweep_id, "study": study}
+        results.append(train(one, runs_dir, extra_meta=meta))
     return sweep_id, results

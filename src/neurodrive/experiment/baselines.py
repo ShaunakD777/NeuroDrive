@@ -177,19 +177,19 @@ def make_baseline_run(
     sweep: str | None = None,
     tracks_dir: str | Path = DEFAULT_TRACKS_DIR,
     neuron_file: str | Path = HAND_NEURON_FILE,
+    study: str | None = None,
 ) -> BaselineRun:
     """Examine one baseline and store it as a run folder under ``runs_dir``.
 
     Steps: write the config; record a budget of 0 units (nothing is trained); save the network
     (random network, neuron) as checkpoint 0; take the Driving Exam and save the card as
     exams/unit_0.json; mark the run completed; copy it into the database mirror
-    ``<runs_dir>/neurodrive.db``.
+    ``<runs_dir>/neurodrive.db``. ``study`` (e.g. "S4") goes into meta.json (ADR-043).
     """
     config = baseline_config(name, seed, neuron_file)
     tag = "baseline" if seed is None else f"baseline-s{seed}"
-    store = RunStore.create(
-        runs_dir, name, tag, config, extra_meta={"sweep": sweep} if sweep else None
-    )
+    extra = {k: v for k, v in (("sweep", sweep), ("study", study)) if v}
+    store = RunStore.create(runs_dir, name, tag, config, extra_meta=extra or None)
     budget = {"units": 0, "env_steps": None, "wall_clock_s": None}
     store.update_meta(budget=budget, exams=True, stop_reason=None, resumed_at=[])
     network = baseline_network(config)
@@ -215,17 +215,20 @@ def make_baselines(
     seeds: tuple[int, ...] = DEFAULT_SEEDS,
     when: datetime | None = None,
     tracks_dir: str | Path = DEFAULT_TRACKS_DIR,
+    study: str | None = None,
 ) -> list[BaselineRun]:
     """Make every baseline in ``names``: one run per seed for the random network (sharing the
-    sweep id ``<YYYYMMDD-HHMMSS>-random_network-baseline``), one run for each other baseline."""
+    sweep id ``<YYYYMMDD-HHMMSS>-random_network-baseline``), one run for each other baseline.
+    With ``study``, every run gets ``"study": <study>`` in its meta.json (ADR-043)."""
     when = when or datetime.now(UTC)
     runs = []
     for name in names:
         if name == "random_network":
             sweep = f"{when:%Y%m%d-%H%M%S}-random_network-baseline"
             runs += [
-                make_baseline_run(name, runs_dir, s, sweep, tracks_dir=tracks_dir) for s in seeds
+                make_baseline_run(name, runs_dir, s, sweep, tracks_dir=tracks_dir, study=study)
+                for s in seeds
             ]
         else:
-            runs.append(make_baseline_run(name, runs_dir, tracks_dir=tracks_dir))
+            runs.append(make_baseline_run(name, runs_dir, tracks_dir=tracks_dir, study=study))
     return runs

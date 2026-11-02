@@ -1347,3 +1347,33 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   until the fixture used a seed with improvements at units 3 and 4.
 - Open question: random search's diffs are all-or-nothing. What will a GA's diffs look like: a few
   strong lines (mutations), or a blend of two parents (crossover)?
+
+### 2026-11-02 — Task 5.10 Study S4: random search vs baselines
+- Concept: comparing at an equal budget, and selection overfitting. A learner is judged by the
+  exam score of what it holds after B environment steps, at many values of B, against fixed
+  baselines. Choosing the best of many candidates on one fixed test partly chooses what suits that
+  test, so its score there can rise while its score elsewhere falls; only a held-out test shows it.
+  Also the `study` field in meta.json and a `studies` table in the database (db v2) that is derived
+  from the runs and holds nothing new.
+- Key equation(s) in words: S(B) = the exam card of the unit that found the best network held
+  after the last unit whose step total is at most B (steps 140k, 160k, 185k, 205k after units
+  6–9 and best unit 7 after unit 8: at B = 200k the card of unit 7). B* = the first budget at which
+  the median over seeds is above a baseline. Grip limit: tightest circle radius = v² / a_lat
+  (17.4² / 9 = 33.6 m, more than a 30 m bend).
+- What we observed: 5 seeds × 4,000 networks (4.5 M steps each, 21 minutes in parallel). Random
+  search beats random networks from its first unit (held-out progress, paired difference +0.235).
+  Its median held-out progress passed the hand-wired neuron at 0.78 M steps, reached 0.813 at
+  1.7–3.0 M, then fell back to 0.236 (neuron 0.234): three seeds found networks that finish all 10
+  training starts (fitness above 1 thanks to the time bonus) and drive the held-out tracks almost
+  exactly like the neuron, master of the loop, crashing elsewhere. The two seeds still holding
+  slow, safe networks generalise far better (0.81 and 0.99; seed 1 finishes Monza and the mirror).
+  No network ever brakes: all are cruise controllers (speed 80 × throttle) that only lift off.
+- Surprise or difficulty: more budget made the held-out result worse; "at what budget" has no
+  single answer when the fitness rewards the wrong thing. The failure case (seed 3, unit 160 on
+  the sweeper) crashes at the same metre on all 10 starts, 3 m/s too fast for a 30 m bend; the
+  unit-60 network it replaced, 3 m/s slower, never crashes there. Writing files with Python's
+  `write_text` on Windows turned every line ending into CRLF; the patched files had to be
+  converted back.
+- Open question: would a fitness that rewards margin (or is measured on more varied roads) keep
+  the slow, general drivers? And does the GA, which builds on its best networks instead of
+  starting afresh, fall into the same trap sooner? Study S6.

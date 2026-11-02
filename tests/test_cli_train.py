@@ -92,6 +92,20 @@ def test_invalid_config_exits_with_status_2_and_creates_no_folder(tmp_path):
     assert not runs.exists()
 
 
+def test_study_goes_into_meta_and_a_bad_study_creates_nothing(tmp_path):
+    xor = str(CONFIGS / "toy_xor.yaml")
+    result = train("--config", xor, "--epochs", "3", "--study", "S4", "--runs-dir", str(tmp_path))
+    assert result.exit_code == 0, result.output
+    assert only_run(tmp_path).read_meta()["study"] == "S4"
+    plain = tmp_path / "plain"
+    assert train("--config", xor, "--epochs", "3", "--runs-dir", str(plain)).exit_code == 0
+    assert "study" not in only_run(plain).read_meta()  # without --study, meta.json is unchanged
+    runs = tmp_path / "bad"
+    result = train("--config", xor, "--study", "S 4", "--runs-dir", str(runs))
+    assert result.exit_code == 2 and "study must be letters" in result.output
+    assert not runs.exists()
+
+
 def test_missing_file_and_bad_override(tmp_path):
     result = train("--config", str(tmp_path / "nope.yaml"), "--runs-dir", str(tmp_path / "r"))
     assert result.exit_code == 2 and "cannot read" in result.output

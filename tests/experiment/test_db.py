@@ -1,6 +1,7 @@
-"""Tests for the SQLite mirror (task 5.5b, ADR-007, ADR-038): the database written unit by unit
-equals one rebuilt from the folders, a rebuild after deleting it loses nothing, check finds
-differences, and a query across seeds gives the same answer as reading the folders."""
+"""Tests for the SQLite mirror (task 5.5b, ADR-007, ADR-038; db v2, task 5.10, ADR-043): the
+database written unit by unit equals one rebuilt from the folders, a rebuild after deleting it
+loses nothing, check finds differences, a query across seeds gives the same answer as reading the
+folders, and the ``studies`` table is derived from the runs' ``study`` field."""
 
 import json
 import shutil
@@ -17,7 +18,7 @@ from neurodrive.experiment import db
 from neurodrive.experiment.config import load_config
 from neurodrive.experiment.runner import Budget, resume, run, train_toy_run
 from neurodrive.experiment.stats import percentile
-from neurodrive.experiment.store import RunStore
+from neurodrive.experiment.store import RunStore, check_study
 
 CONFIGS = Path(__file__).resolve().parents[2] / "configs"
 
@@ -58,11 +59,12 @@ def runs(tmp_path_factory) -> Path:
     return runs_dir
 
 
-def test_a_new_database_has_the_v1_tables_in_wal_mode(tmp_path):
+def test_a_new_database_has_the_v2_tables_in_wal_mode(tmp_path):
     with closing(db.connect(tmp_path / "x.db")) as conn:
         tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         assert tables == set(db.TABLES)
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == db.DB_VERSION == 1
+        assert "studies" in tables
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == db.DB_VERSION == 2
         assert conn.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
 
 
@@ -198,15 +200,17 @@ def test_a_mirror_that_cannot_be_written_warns_and_the_run_still_completes(tmp_p
     assert store.read_meta()["status"] == "completed" and len(store.read_metrics()) == 3
 
 
-def test_an_old_schema_warns_and_rebuild_replaces_it(tmp_path):
+@pytest.mark.parametrize("version", [1, 99])  # 1: a db v1 file made before task 5.10
+def test_an_old_schema_warns_and_rebuild_replaces_it(tmp_path, version):
     path = tmp_path / db.DB_NAME
     with closing(sqlite3.connect(path)) as conn:
-        conn.execute("CREATE TABLE old (x)")
-        conn.execute("PRAGMA user_version = 99")
-    with pytest.warns(RuntimeWarning, match="schema version 99"):
+        conn.execute("CREATE TABLE runs (x)")
+        conn.execute(f"PRAGMA user_version = {version}")
+    with pytest.warns(RuntimeWarning, match=f"schema version {version}"):
         walk_run(tmp_path, units=2, exams=False)
     assert db.check(tmp_path) == [
-        "the database has schema version 99, this code uses 1; rebuild it with: nd db rebuild"
+        f"the database has schema version {version}, this code uses 2; rebuild it with: "
+        "nd db rebuild"
     ]
     summary = db.rebuild(tmp_path)
     assert summary.rows["runs"] == 1 and summary.rows["metrics"] == 2 * 7
@@ -224,3 +228,103 @@ def test_rebuild_reads_version_0_folders_and_skips_unreadable_ones(tmp_path):
     assert summary.rows["runs"] == 1 and summary.rows["metrics"] == 3
     assert [name for name, _ in summary.skipped] == [broken.path.name]
     assert db.check(tmp_path)[0].startswith(f"cannot read run folder {broken.path.name}")
+
+
+# --- studies (db v2, task 5.10, ADR-043) -------------------------------------------------------
+
+
+def study_row(runs_dir, study) -> dict | None:
+    with closing(database(runs_dir)) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM studies WHERE study_id = ?", (study,)).fetchone()
+        return dict(row) if row else None
+
+
+@pytest.fixture
+def studies(tmp_path) -> Path:
+    """Runs of two studies and runs of none: walk seeds 1, 2 and a toy run in S9 (the walks in
+    one sweep), walk seed 3 in S8, walk seed 4 in no study. Any mirror warning is an error."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        walk_run(tmp_path, seed=1, units=2, sweep="sw-a", study="S9")
+        walk_run(tmp_path, seed=2, units=2, sweep="sw-a", study="S9")
+        walk_run(tmp_path, seed=3, units=2, study="S8")
+        walk_run(tmp_path, seed=4, units=2)
+        toy = load_config(CONFIGS / "toy_xor.yaml", epochs=5)
+        train_toy_run(toy, tmp_path, extra_meta={"study": "S9"})
+    return tmp_path
+
+
+def test_the_studies_table_is_derived_from_the_runs_study_field(studies):
+    metas = [RunStore.open(p).read_meta() for p in db.run_folders(studies)]
+    s9 = [m for m in metas if m.get("study") == "S9"]
+    row = study_row(studies, "S9")
+    assert row == {
+        "study_id": "S9",
+        "n_runs": 3,
+        "methods": json.dumps(sorted({m["method"] for m in s9})),
+        "sweeps": json.dumps(["sw-a"]),
+        "git_commits": json.dumps(sorted({m["git_commit"] for m in s9} - {None})),
+        "started_at": min(m["started_at"] for m in s9),
+        "ended_at": max(m["ended_at"] for m in s9),
+    }
+    assert json.loads(row["methods"]) == ["toy_xor", "walk"]
+    assert study_row(studies, "S8")["n_runs"] == 1
+    assert study_row(studies, "S8")["sweeps"] == "[]"
+    with closing(database(studies)) as conn:
+        assert conn.execute("SELECT count(*) FROM studies").fetchone()[0] == 2  # no "None" row
+        assert db.runs_of_study(conn, "S9") == sorted(m["run_id"] for m in s9)
+        assert db.runs_of_study(conn, "S7") == []
+        without = conn.execute("SELECT count(*) FROM runs WHERE study IS NULL").fetchone()[0]
+        assert without == 1
+    assert dump_file(studies) == dump_folders(studies)  # incremental = rebuilt, studies included
+
+
+def test_a_running_run_leaves_its_study_open_until_it_ends(studies):
+    store = RunStore.create(studies, "walk", "late", {"seed": 5}, extra_meta={"study": "S9"})
+    mirror = db.Mirror(studies / db.DB_NAME)
+    mirror.sync_run(store)
+    assert study_row(studies, "S9")["n_runs"] == 4
+    assert study_row(studies, "S9")["ended_at"] is None  # one run of S9 has not ended
+    store.finish("completed", "units")
+    mirror.update_run(store)  # the status change must refresh the study row
+    mirror.close()
+    assert study_row(studies, "S9")["ended_at"] == store.read_meta()["ended_at"]
+    assert dump_file(studies) == dump_folders(studies)
+
+
+def test_check_reports_study_rows_that_differ_and_rebuild_repairs_them(studies):
+    assert db.check(studies) == []
+    with closing(database(studies)) as conn:
+        conn.execute("UPDATE studies SET n_runs = 99 WHERE study_id = 'S9'")
+        conn.execute("INSERT INTO studies VALUES ('S0', 1, '[]', '[]', '[]', NULL, NULL)")
+    (only_s8,) = [p for p in db.run_folders(studies) if p.name.endswith("walk-s3")]
+    shutil.rmtree(only_s8)
+    problems = db.check(studies)
+    assert "studies: S9: its row differs from its runs' meta.json" in problems
+    assert "studies: S0 has a row but no run folder of that study" in problems
+    assert "studies: S8 has a row but no run folder of that study" in problems
+    with closing(database(studies)) as conn:
+        conn.execute("DELETE FROM studies WHERE study_id = 'S9'")
+    assert "studies: S9 has runs in the folders but no row" in db.check(studies)
+    db.rebuild(studies)
+    assert db.check(studies) == []
+    assert study_row(studies, "S8") is None and study_row(studies, "S9")["n_runs"] == 3
+
+
+def test_resyncing_a_run_keeps_its_study_row(studies):
+    (one,) = [p for p in db.run_folders(studies) if p.name.endswith("walk-s1")]
+    before = study_row(studies, "S9")
+    mirror = db.Mirror(studies / db.DB_NAME)
+    mirror.sync_run(RunStore.open(one))  # delete the run's rows, then copy it again
+    mirror.close()
+    assert study_row(studies, "S9") == before
+
+
+@pytest.mark.parametrize("bad", ["", "S 4", "S4/x", "../S4"])
+def test_an_invalid_study_id_is_refused_before_a_folder_exists(tmp_path, bad):
+    with pytest.raises(ValueError, match="study must be"):
+        check_study(bad)
+    with pytest.raises(ValueError, match="study must be"):
+        RunStore.create(tmp_path, "walk", "s1", {}, extra_meta={"study": bad})
+    assert list(tmp_path.iterdir()) == []

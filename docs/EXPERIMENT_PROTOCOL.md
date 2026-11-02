@@ -35,7 +35,10 @@
 8. **Checkpoint selection** uses the training track only (or a validation track), never the
    held-out tracks.
 9. **Failure analysis is required:** every study inspects at least one failure in the linked views.
-10. **Reproducibility:** each study lists its configs, seeds, run IDs and the git commit.
+10. **Reproducibility:** each study lists its configs, seeds, run IDs and the git commit. Since
+    task 5.10 (ADR-043) every run made for a study carries `"study": "<ID>"` in its meta.json
+    (`--study` on `nd train`, `nd sweep`, `nd baseline`), including its own baseline runs, so the
+    study's runs are found with one query (`experiment/db.py: runs_of_study`).
 
 ## 3. Driving Exam v1
 

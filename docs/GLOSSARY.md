@@ -132,6 +132,11 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Weight diff | The change of every weight between two checkpoints, Δw = new − old. Drawn as change ÷ (largest change), so the most-changed weight is drawn at full strength and unchanged ones not at all. |
 | Record (new best) | A value better than every one before it. In random search each unit's best is a fresh independent draw, so unit k is a record with probability 1 ÷ k. |
 | Harmonic number | H_n = 1 + 1/2 + … + 1/n, about ln n + 0.58. The expected number of records among n independent draws: H_50 = 4.50, H_100 = 5.19. |
+| Study | A planned experiment that answers one question from the protocol (S1, S2a, …): its hypotheses written first, its runs tagged with its id (`"study": "S4"` in meta.json, since task 5.10), its report in `docs/studies/`. |
+| Derived table | A table whose rows are computed from other tables and hold nothing new; the `studies` table summarises the runs that carry each study id, so it can always be recomputed. |
+| Budget (comparison at equal budget) | How much a learner has spent, here counted in environment steps. Methods are compared at the same budget, not after the same number of their own units, because a unit costs different amounts in different methods. |
+| Budget-to-beat (B*) | The smallest budget at which a learner's median exam score (across seeds) is above a baseline's; "not within the budget" if it never is. |
+| Selection overfitting | Picking, among many candidates, the one that scores best on a fixed test, and so partly picking the one that happens to suit that test: its score there rises while its score elsewhere does not. |
 | Package | A folder of Python files that can be imported by name (`import neurodrive`). |
 | Virtual environment (venv) | A private copy of Python and libraries for one project (`.venv/`), so projects cannot break each other. |
 | Dependency | A library our code needs; listed in `pyproject.toml`. |
