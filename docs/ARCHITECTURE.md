@@ -346,7 +346,8 @@ saved as JSON (`exams/unit_<n>.json` in a run folder, written by `nd exam`): `ex
 `spec` (tracks, start fractions, lateral offsets, target laps; `EXAM_V1`), `policy` (what was
 examined), `tracks` (per track: split, length, time limit, 10 episodes with `start_index`,
 `start_s0_m`, `start_lateral_m` and the `EpisodeMetrics` fields, and its aggregate), `training`
-and `heldout` (pooled) aggregates, `env_steps`, `extra`. `policy_for(world)` builds the policy
+and `heldout` (pooled) aggregates (the held-out one has `median_best_lap_s_by_track` instead of
+a pooled `median_best_lap_s`, ADR-036), `env_steps`, `extra`. `policy_for(world)` builds the policy
 for each track's world (the expert needs it). Each track's 10 starts are always driven as one
 batch in start order: a network's output differs by about 1e-16 between batch sizes, so a
 recording matches a card only when made the same way.

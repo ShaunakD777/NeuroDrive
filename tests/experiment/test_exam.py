@@ -124,11 +124,17 @@ def test_the_expert_completes_every_episode_of_the_exam(expert_card):
     assert expert_card.env_steps > 0
 
 
-def test_pooled_heldout_summary_counts_every_track_equally(expert_card):
-    best = sorted(
-        e["best_lap_s"] for p in expert_card.tracks if p.split == "heldout" for e in p.episodes
-    )
-    assert expert_card.heldout["median_best_lap_s"] == pytest.approx((best[19] + best[20]) / 2)
+def test_heldout_lap_times_are_given_per_track_not_pooled(expert_card):
+    # Lap times compare only within a track (ADR-022, ADR-036): no pooled median best lap.
+    assert "median_best_lap_s" not in expert_card.heldout
+    by_track = expert_card.heldout["median_best_lap_s_by_track"]
+    heldout_parts = [p for p in expert_card.tracks if p.split == "heldout"]
+    assert by_track == {p.track: p.aggregate["median_best_lap_s"] for p in heldout_parts}
+    assert list(by_track) == ["hairpins_01", "monza_ccw", "sweeper_01", "train_loop_01_mirror"]
+    assert by_track["monza_ccw"] > by_track["hairpins_01"] > by_track["sweeper_01"]
+    # The rates are still pooled: 40 episodes, each track weighing the same.
+    assert expert_card.heldout["episodes"] == 40
+    assert "per track" in format_card(expert_card)
 
 
 def test_a_card_survives_json_and_prints(expert_card, tmp_path):

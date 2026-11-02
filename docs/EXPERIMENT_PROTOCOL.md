@@ -72,7 +72,9 @@
 - **Aggregates per track and overall** ("overall" = the training track on its own, plus all
   held-out episodes pooled; each held-out track has 10 episodes, so each weighs the same):
   completion rate, crash rate, median and IQR of
-  `progress_frac`, median best lap time (completed episodes only), median smoothness.
+  `progress_frac`, median best lap time (completed episodes only), median smoothness. Lap times
+  are never pooled across tracks (they compare only within a track, ADR-022): the held-out
+  summary gives each held-out track's median best lap instead (ADR-036, 2026-11-02).
 - The exam spec version is stored with every result. Changing the exam requires an ADR and a new
   version, and old results are not compared with new ones.
 

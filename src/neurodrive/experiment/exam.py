@@ -15,7 +15,8 @@ One fixed test for every driver, however it was trained:
   track's 10 episodes, the training track, and the 40 held-out episodes pooled are summarised
   by :func:`~neurodrive.experiment.metrics.aggregate`. Every track has the same 10 starts, so
   each held-out track weighs the same in the pool: completion rates 1.0, 0.0, 0.5 and 1.0 pool
-  to (10 + 0 + 5 + 10) / 40 = 0.625.
+  to (10 + 0 + 5 + 10) / 40 = 0.625. Lap times are not pooled: they compare only within a
+  track, so the held-out summary lists each track's median best lap instead (ADR-036).
 
 Each track's 10 starts are driven as one batch of 10 cars, in start order, always: a network's
 output for a car differs in the last bits (about 1e-16) between batch sizes, because the matrix
@@ -223,14 +224,21 @@ def run_exam(
         parts.append(part)
         env_steps += int(recording.alive[: recording.n_steps].sum())
     training = [e for p in parts if p.track == spec.tracks[0] for e in p.episodes]
-    heldout = [e for p in parts if p.split == "heldout" for e in p.episodes]
+    heldout_parts = [p for p in parts if p.split == "heldout"]
+    heldout = aggregate(_metrics_of([e for p in heldout_parts for e in p.episodes])).to_dict()
+    # Lap times compare only within a track (ADR-022), so the held-out summary gives each
+    # track's median best lap instead of one median over laps of different tracks (ADR-036).
+    del heldout["median_best_lap_s"]
+    heldout["median_best_lap_s_by_track"] = {
+        p.track: p.aggregate["median_best_lap_s"] for p in heldout_parts
+    }
     return ExamResult(
         exam_version=spec.version,
         spec=spec.to_dict(),
         policy=policy_ref or {},
         tracks=parts,
         training=aggregate(_metrics_of(training)).to_dict(),
-        heldout=aggregate(_metrics_of(heldout)).to_dict(),
+        heldout=heldout,
         env_steps=env_steps,
     )
 
@@ -252,9 +260,10 @@ def format_card(result: ExamResult) -> str:
             f"{agg['progress_frac_median']:.2f} [{agg['progress_frac_q1']:.2f},"
             f" {agg['progress_frac_q3']:.2f}]"
         )
+        lap = _fmt(agg["median_best_lap_s"], 1) if "median_best_lap_s" in agg else "per track"
         return (
             f"{label:31s} {agg['completion_rate']:5.2f} {agg['crash_rate']:5.2f} {spread:>26s}"
-            f" {_fmt(agg['median_best_lap_s'], 1):>10s} {agg['median_smoothness']:7.4f}"
+            f" {lap:>10s} {agg['median_smoothness']:7.4f}"
         )
 
     for part in result.tracks:

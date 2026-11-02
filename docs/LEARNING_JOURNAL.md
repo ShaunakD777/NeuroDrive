@@ -1202,3 +1202,6 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
 - Open question: the exam cost about 12 s for the expert; with checkpoints examined on a schedule
   (5.5), how often can a run afford it, and should early checkpoints of bad drivers (which end fast)
   be examined more often than good ones?
+- Follow-up (2026-11-02, user decision, ADR-036): the held-out summary no longer pools lap times;
+  it lists each held-out track's median best lap, because lap times compare only within a track
+  (the pooled 52.9 s sat between a 38 s and a 67 s track and described neither).
