@@ -15,9 +15,10 @@ to stop* (docs/ARCHITECTURE.md §6.12). Each unit, in this order:
 5. copy the unit into the database mirror ``<runs dir>/neurodrive.db`` (task 5.5b, ADR-038):
    one transaction with its metrics rows and any checkpoint and exam card just saved. The
    folder is written first and is the master copy; a mirror that cannot be written only warns;
-6. stop as soon as any :class:`Budget` limit is reached. A unit is never cut in half, so a run
-   can overshoot by at most one unit: 300 steps per unit and a 1,000-step limit stop after
-   unit 4, at 1,200 steps.
+6. stop as soon as any :class:`Budget` limit is reached, or when another process asked the run
+   to stop (the file ``stop_requested`` in the run folder, task 5.8, ADR-041: stop reason
+   "stopped", status "completed"). A unit is never cut in half, so a run can overshoot by at
+   most one unit: 300 steps per unit and a 1,000-step limit stop after unit 4, at 1,200 steps.
 
 The last completed unit always gets a checkpoint (and an exam). Exam time and the mirror's
 time are measured separately and kept out of the training clock and the budget.
@@ -37,6 +38,7 @@ folder's config describes, for ``nd resume`` (task 5.7).
 
 import re
 import time
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -184,6 +186,7 @@ def resume(
         unit, totals = info["unit"], info["totals"]
         clock, exam_clock = info["wall_clock_s"], info["exam_wall_clock_s"]
     store.cut_back(unit)
+    store.clear_stop_request()  # resuming is a new decision to train; an old request is void
     store.update_meta(
         status="running",
         ended_at=None,
@@ -196,6 +199,16 @@ def resume(
     return _loop(
         learner, store, budget, meta["exams"], tracks_dir, unit, totals, clock, exam_clock, db
     )
+
+
+def _stop_reason(
+    budget: Budget, store: RunStore, unit: int, totals: dict[str, int], wall_clock_s: float
+) -> str | None:
+    """Why the run stops before the next unit: a budget limit, a stop request, or None."""
+    reason = budget.reached(unit, totals, wall_clock_s)
+    if reason is None and store.stop_requested():
+        reason = "stopped"
+    return reason
 
 
 def _loop(
@@ -263,7 +276,7 @@ def _loop(
             checkpoint(0)  # the network before any learning (again, after a very early kill)
             last_saved = 0
             mirror(None)
-        while (reason := budget.reached(unit, totals, recorded)) is None:
+        while (reason := _stop_reason(budget, store, unit, totals, recorded)) is None:
             unit += 1
             result = learner.train_unit()
             totals["env_steps_total"] += result.env_steps
@@ -294,6 +307,7 @@ def _loop(
             db.close()
         raise
     store.update_meta(exam_wall_clock_s=exam_clock + exam_here)
+    store.clear_stop_request()  # answered (or the budget ended the run first), before the status
     store.finish(status, reason)
     if db is not None:
         db.update_run(store)
@@ -313,14 +327,18 @@ class ToyRunResult:
 
 
 def train_toy_run(
-    config: ToyRunConfig, runs_dir: str | Path, extra_meta: dict | None = None
+    config: ToyRunConfig,
+    runs_dir: str | Path,
+    extra_meta: dict | None = None,
+    on_start: Callable[[RunStore], None] | None = None,
 ) -> ToyRunResult:
     """Train one toy run described by ``config`` and write its run folder under ``runs_dir``.
 
     Steps: convert the config to the learner's ``ToyConfig``; build the learner from
     ``make_rng(seed)``; create the run folder with the *resolved* config (every default written
     out, ADR-032), ``extra_meta`` in its ``meta.json``, and the dataset; then :func:`run` for
-    ``training.epochs`` units.
+    ``training.epochs`` units. ``on_start(store)`` is called as soon as the folder exists (``nd
+    train`` prints its name then, which is how the server learns the id of a run it launched).
     """
     toy = to_toy_config(config)
     learner = ToyLearner(toy, make_rng(toy.seed))
@@ -328,6 +346,8 @@ def train_toy_run(
         runs_dir, learner.name, toy.tag, resolved(config), extra_meta=extra_meta
     )
     store.save_extra("dataset", x=learner.dataset.x, y=learner.dataset.y)
+    if on_start is not None:
+        on_start(store)
     start_loss = learner.loss()
     status = run(learner, store, Budget(units=toy.epochs), exams=False)
     metrics = store.read_metrics()
@@ -367,15 +387,19 @@ def train_random_search_run(
     runs_dir: str | Path,
     extra_meta: dict | None = None,
     tracks_dir: str | Path = DEFAULT_TRACKS_DIR,
+    on_start: Callable[[RunStore], None] | None = None,
 ) -> RandomSearchRunResult:
     """Train one random-search run described by ``config`` under ``runs_dir``.
 
     Steps: build the learner from ``make_rng(seed)``; create the run folder with the resolved
-    config; then :func:`run` with the config's budget and exams setting.
+    config (``on_start(store)`` is called then, as in :func:`train_toy_run`); then :func:`run`
+    with the config's budget and exams setting.
     """
     data = resolved(config)
     learner = learner_from_config(data, tracks_dir)
     store = RunStore.create(runs_dir, learner.name, config.tag, data, extra_meta=extra_meta)
+    if on_start is not None:
+        on_start(store)
     budget = Budget(**config.budget.model_dump())
     status = run(learner, store, budget, exams=config.exams, tracks_dir=tracks_dir)
     metrics = store.read_metrics()

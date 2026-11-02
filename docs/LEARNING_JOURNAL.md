@@ -1297,3 +1297,25 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   stopped; computing them only for running cars made a unit 9× faster with identical results.
 - Open question: is "safe but too slow" a fitness exploit? A stronger time bonus, or completion
   counted separately, might change which networks win; Study S4 (5.10) and S6 (Phase 7) can test it.
+
+### 2026-11-02 — Task 5.8 Run launching and progress streaming
+- Concept: training as a separate process that only writes files, and a server that follows those
+  files by polling and pushes what is new over a WebSocket. Nothing about the learner is known to
+  the watcher; it reads the run folder contract, so terminal runs and every later method show up too.
+- Key equation(s) in words: tailing a growing file. With o the bytes already read and n the file's
+  size now, read the bytes from o to n, keep everything up to the last newline, and move o forward
+  by exactly that much: two 40-byte lines give o = 80; a third line with only 25 of its 40 bytes
+  written leaves o at 80 (nothing sent); once it is complete, o = 120. The browser learns of a line
+  at most one poll (0.5 s) after it is written.
+- What we observed: a launch answers in about 0.7 s (the time for the new process to create its
+  folder); a 2,000-epoch toy XOR run streams in batches of about 340 lines per poll; a random-search
+  run adds one point every 3–7 s (the exams of better networks take longer). A run launched from
+  the app equals the same run trained directly, folder for folder. Killing the server mid-run left
+  the training running; it finished all 6 units with its exam cards, and a restarted server sees it.
+- Surprise or difficulty: the first launch log held an absolute path with the user name in it,
+  because the server passed an absolute runs folder; the process now runs in the runs folder's
+  parent and is given the folder's name only. Resuming a failed run that a browser was already
+  showing would have doubled its lines, so a run whose tracking starts always gets its whole
+  history sent again. On a phone the third Experiment tab no longer fitted beside the drawer.
+- Open question: when 4 runs train at once, how much does each slow down? A parallel sweep for
+  Study S4 (5.10) would need that number.

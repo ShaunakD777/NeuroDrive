@@ -15,6 +15,8 @@ A run folder is the master record of a run (ADR-007). Version 1 (task 5.5) adds 
       exams/             unit_<n>.json: Driving Exam cards of examined checkpoints (exam v1)
       state/             latest.npz: the learner's state after the latest unit, for resuming
       extra/             method-specific arrays, e.g. the toy dataset (extra/dataset.npz)
+      stop_requested     (only while asked to stop, task 5.8) an empty file: the runner ends
+                         the run cleanly after the unit in progress
 
 ``status`` is one of running, completed, diverged, failed. The state file is replaced
 atomically (written to ``latest.tmp.npz``, then renamed), so a kill never leaves half a state.
@@ -40,6 +42,7 @@ from neurodrive.learn.base import LearnerState
 
 RUN_VERSION = 1
 STATUSES = ("running", "completed", "diverged", "failed")
+STOP_FILE = "stop_requested"  # task 5.8, ADR-041: another process asks a run to stop
 _NAME_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
 
 
@@ -149,6 +152,18 @@ class RunStore:
     def update_meta(self, **fields: Any) -> None:
         """Set (or replace) fields of meta.json."""
         self._write_json("meta.json", {**self.read_meta(), **fields})
+
+    # --- asking a run to stop (task 5.8, ADR-041) ---
+
+    def request_stop(self) -> None:
+        """Ask the process training this run to stop after its current unit (an empty file)."""
+        (self.path / STOP_FILE).touch()
+
+    def stop_requested(self) -> bool:
+        return (self.path / STOP_FILE).is_file()
+
+    def clear_stop_request(self) -> None:
+        (self.path / STOP_FILE).unlink(missing_ok=True)
 
     # --- writing during the run ---
 

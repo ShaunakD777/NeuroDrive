@@ -63,6 +63,8 @@ def train(
     runs_dir: str = typer.Option("runs", help="Folder to create the run folder in."),
 ) -> None:
     """Train from a config file (toy or random_search) and write a run folder."""
+    import sys
+
     from neurodrive.experiment.config import ConfigError, ToyRunConfig, load_config
     from neurodrive.experiment.runner import train_random_search_run, train_toy_run
 
@@ -71,14 +73,19 @@ def train(
     except ConfigError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=2) from None
+
+    def announce(store) -> None:
+        # Printed as soon as the folder exists, not at the end: the server reads this line to
+        # learn the id of a run it launched (task 5.8, ADR-041).
+        typer.echo(f"run folder: {store.path.as_posix()}")
+        sys.stdout.flush()
+
     if not isinstance(run_config, ToyRunConfig):
-        found = train_random_search_run(run_config, runs_dir)
-        typer.echo(f"run folder: {found.store.path.as_posix()}")
+        found = train_random_search_run(run_config, runs_dir, on_start=announce)
         typer.echo(f"status: {found.status} after {found.units_done} units")
         typer.echo(_best_line(found))
         return
-    result = train_toy_run(run_config, runs_dir)
-    typer.echo(f"run folder: {result.store.path.as_posix()}")
+    result = train_toy_run(run_config, runs_dir, on_start=announce)
     typer.echo(f"status: {result.status} after {result.epochs_done} epochs")
     end = f"{result.end_loss:.6g}" if result.end_loss is not None else "none (diverged at once)"
     typer.echo(f"loss: {result.start_loss:.6g} at the start -> {end} at the last finite epoch")

@@ -4,10 +4,10 @@ export type ConnectionStatus = "connecting" | "connected" | "disconnected";
 
 const RETRY_MS = 2000;
 
-/** The live socket address, on the same origin as the page (the dev server forwards /ws). */
-function liveUrl(): string {
+/** A socket address on the same origin as the page (the dev server forwards /ws). */
+function socketUrl(path: string): string {
   const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${scheme}//${window.location.host}/ws/live`;
+  return `${scheme}//${window.location.host}${path}`;
 }
 
 function isHello(value: unknown): value is HelloMessage {
@@ -24,7 +24,9 @@ export interface LiveConnection {
 }
 
 /**
- * Keep a WebSocket open to the Python server and report its status.
+ * Keep a WebSocket open to the Python server and report its status. `path` is the socket:
+ * `/ws/live` (live driving, the default) or `/ws/runs` (training progress, task 5.8); both
+ * start with the server's `hello`.
  *
  * The status becomes "connected" only after the server's `hello` message arrives, so it proves
  * the server speaks the same message shapes as the generated types. Every message that parses
@@ -34,6 +36,7 @@ export interface LiveConnection {
 export function connectLive(
   onStatus: (status: ConnectionStatus) => void,
   onMessage?: (message: unknown) => void,
+  path = "/ws/live",
 ): LiveConnection {
   let socket: WebSocket | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -41,7 +44,7 @@ export function connectLive(
 
   function open(): void {
     onStatus("connecting");
-    const ws = new WebSocket(liveUrl());
+    const ws = new WebSocket(socketUrl(path));
     socket = ws;
 
     ws.onmessage = (event: MessageEvent) => {

@@ -160,3 +160,42 @@ def test_a_learner_without_state_still_trains_but_saves_none(tmp_path):
     store = RunStore.create(tmp_path, "stateless", "t", {})
     assert run(Stateless(), store, Budget(units=3), exams=False) == "completed"
     assert len(store.read_metrics()) == 3 and store.load_state() is None
+
+
+# ── a stop request (task 5.8, ADR-041) ──────────────────────────────────────────────────────
+
+
+class StopsAt(WalkLearner):
+    """A walk learner that, during unit ``at``, asks its own run to stop (as the server would)."""
+
+    def __init__(self, store: RunStore, at: int) -> None:
+        super().__init__(SEED)
+        self.store, self.at = store, at
+
+    def train_unit(self) -> UnitResult:
+        result = super().train_unit()
+        if self.units == self.at:
+            self.store.request_stop()
+        return result
+
+
+def test_a_stop_request_ends_the_run_cleanly_after_the_current_unit(reference, tmp_path):
+    store = RunStore.create(tmp_path, "walk", "t", {"seed": SEED})
+    assert run(StopsAt(store, 3), store, Budget(units=UNITS)) == "completed"
+    meta = store.read_meta()
+    assert (meta["status"], meta["stop_reason"]) == ("completed", "stopped")
+    lines = [{k: v for k, v in m.items() if k != "wall_clock_s"} for m in store.read_metrics()]
+    first_three = [
+        {k: v for k, v in m.items() if k != "wall_clock_s"} for m in reference.read_metrics()[:3]
+    ]
+    assert lines == first_three  # unit 3 finished, no unit 4 started
+    assert store.checkpoint_units() == [0, 1, 2, 3] == store.exam_units()  # 3: the last unit
+    assert not store.stop_requested()  # answered and removed
+
+
+def test_resume_ignores_an_old_stop_request(reference, tmp_path):
+    store = run_killed(tmp_path, "during_unit")
+    store.request_stop()  # e.g. asked for while the process was already dead
+    assert resume(WalkLearner(SEED), store) == "completed"
+    assert store.read_meta()["stop_reason"] == "units"
+    same_run(store, reference)

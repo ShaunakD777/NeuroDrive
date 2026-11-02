@@ -72,6 +72,14 @@ Status: v1 (planning). Changes to §6 contracts require an ADR in `DECISIONS.md`
   trips.
 - **Training** runs in separate processes, launched from the CLI or the UI. They only write files.
   The server watches the files and pushes progress to the browser.
+  *As built (task 5.8, ADR-041):* `POST /api/runs` starts `python -m neurodrive train --config
+  configs/<name> [overrides] --runs-dir <runs>` in its own process group (stopping the server does
+  not stop the training; tested by killing the server mid-run), its printed output going to
+  `<runs dir>/.launches/<time>.log`; `nd train` prints `run folder: runs/<id>` as soon as the folder
+  exists, which is how the server learns the id. The run watcher (`server/runs_watch.py`) polls the
+  run folders every 0.5 s and tails each running run's `metrics.jsonl` by byte offset (complete
+  lines only); it follows runs started from a terminal too. Stopping writes a stop request into the
+  run folder (§6.13), so the server never needs to signal a process.
 
 ## 4. Repository layout
 
@@ -138,7 +146,7 @@ neurodrive/
 │  │  ├─ schemas.py              Pydantic message models (source for TS types)
 │  │  ├─ live.py                 live sessions over WebSocket
 │  │  ├─ runs.py                 run folders as REST answers (read-only, api v1.10)
-│  │  └─ runs_watch.py           progress streaming for active runs
+│  │  └─ runs_watch.py           launching training processes, watching run folders, /ws/runs
 │  └─ cli.py                     `nd serve | train | sweep | exam | demo-record | ...`
 ├─ tests/                        mirrors src/neurodrive (core/, env/, learn/, experiment/, explain/, server/)
 ├─ reference/                    optional PyTorch cross-checks (never imported by src)
@@ -151,7 +159,7 @@ neurodrive/
 │  ├─ src/state/                 selection store, layout store (Page/Split/All, drawers), playback clock
 │  ├─ src/views/environment/     canvas renderer, trails, HUD, population mode
 │  ├─ src/views/network/         SVG diagram, output inspector, what-if panel, diff
-│  ├─ src/views/experiment/      toy lab (ToyLab, LossChart, PredictionPlot, ToyNetwork); later run list, timeline, comparison
+│  ├─ src/views/experiment/      toy lab (ToyLab, LossChart, ...), Compare runs (CompareRuns, RunList, CompareChart), Training (TrainingRuns, LiveChart; task 5.8); later timeline
 │  └─ src/components/            shared UI pieces
 └─ docs/                         concept, architecture, roadmap, checklist, protocol, journal ...
 ```
@@ -305,7 +313,7 @@ rebuilds the same world. Replaying the actions reproduces every array bit for bi
 ### 6.12 Learner contract (learner v1)
 *Version 0 (task 3.7, ADR-030): `learn/base.py` without save/restore; wall-clock time measured by the runner; `experiment/runner.py` v0 owns a minimal loop.*
 
-*Version 1 (task 5.5, ADR-037):* save/restore is the optional `Resumable` protocol: `state()` → `LearnerState` (named NumPy arrays + a JSON-friendly `info` dict holding counters and every generator's state, `generator_state`), `restore(state)`. A learner without it trains but cannot resume. `experiment/runner.py` v1: `run(learner, store, budget, exams)` and `resume(learner, store)`; `Budget(units, env_steps, wall_clock_s)`, any limit stops the run after the unit that reaches it (overshoot ≤ 1 unit); checkpoint schedule 0, 1, 2, 5, 10, 20, 50, … plus the last unit; at every checkpoint the Driving Exam runs when exams are on and the network drives (7 → 2), its time kept out of the training clock (`exam_wall_clock_s`). Order within a unit: train → metrics line → checkpoint + exam → state (last). Resume cuts the folder back to the state's unit and continues; a killed run (status running) or a failed one can be resumed, identically except for wall-clock times. Since task 5.5b (ADR-038) the wall-clock limit is compared with the training time recorded in the last metrics line, like the step totals, so a run stops after the first unit whose line reaches the limit; the database mirror's time, like exam time, is kept out of the training clock.
+*Version 1 (task 5.5, ADR-037):* save/restore is the optional `Resumable` protocol: `state()` → `LearnerState` (named NumPy arrays + a JSON-friendly `info` dict holding counters and every generator's state, `generator_state`), `restore(state)`. A learner without it trains but cannot resume. `experiment/runner.py` v1: `run(learner, store, budget, exams)` and `resume(learner, store)`; `Budget(units, env_steps, wall_clock_s)`, any limit stops the run after the unit that reaches it (overshoot ≤ 1 unit); checkpoint schedule 0, 1, 2, 5, 10, 20, 50, … plus the last unit; at every checkpoint the Driving Exam runs when exams are on and the network drives (7 → 2), its time kept out of the training clock (`exam_wall_clock_s`). Order within a unit: train → metrics line → checkpoint + exam → state (last). Resume cuts the folder back to the state's unit and continues; a killed run (status running) or a failed one can be resumed, identically except for wall-clock times. Since task 5.5b (ADR-038) the wall-clock limit is compared with the training time recorded in the last metrics line, like the step totals, so a run stops after the first unit whose line reaches the limit; the database mirror's time, like exam time, is kept out of the training clock. Since task 5.8 (ADR-041) the runner also stops before the next unit when the run folder holds a stop request (the file `stop_requested`): stop reason `stopped`, status `completed`, the last unit checkpointed and examined like any last unit; the request is removed before the final status is written, and `resume` removes an old one before continuing. `train_toy_run` and `train_random_search_run` take `on_start(store)`, called as soon as the folder exists.
 
 Every learning method provides:
 - `name` and `feedback_kind` ∈ {`labels`, `episode_score`, `step_reward`, `none`}
@@ -321,6 +329,8 @@ stop conditions (max env steps, max wall-clock, max units).
 
 ### 6.13 Run folder (run v1)
 *Version 0 (task 3.7, ADR-030): a strict subset (no `exams/`, `run_version: 0` in meta.json, `extra/dataset.npz` for toy runs), written by `experiment/store.py`.*
+
+*Task 5.8 (ADR-041), additions without a version change:* the empty file `stop_requested` exists only while another process asks the run to stop; `stop_reason` gains `stopped`. Launched runs leave their printed output in `<runs dir>/.launches/<time>.log` (not a run folder: no `meta.json`, ignored by every reader and by the database).
 
 *Version 1 (task 5.5, ADR-037), as built:* `run_version: 1`; `exams/unit_<n>.json` (exam cards); `state/latest.npz` (the learner's state after the latest unit plus the runner's unit, totals and clocks; replaced atomically: written as `latest.tmp.npz`, then renamed); meta.json adds `budget`, `exams`, `stop_reason` (units, env_steps, wall_clock, diverged, error), `resumed_at` (UTC times) and `exam_wall_clock_s`. Version-0 folders are still read.
 
@@ -396,7 +406,7 @@ Only the named optimizer's own settings are allowed; their defaults are those of
 and `training.epochs`; an invalid config exits with status 2 and creates no run folder.
 
 *Random search (task 5.7, ADR-040, `configs/random_search.yaml`):* `method: random_search`, `seed`, `tag`; `network` (a driving network: 7 inputs first, 2 outputs last; default [7, 16, 16, 2], tanh / tanh, xavier); `search.candidates_per_unit` (≥ 1, default 20); `fitness` (`track`, which must have split `train`, default `train_loop_01`; `start_fractions` in [0, 1) and `lateral_offsets`, default the Driving Exam's 5 × 2 starts; `target_laps`, default 2); `budget` (`units`, `env_steps`, `wall_clock_s`: at least one); `exams` (default true). `nd train` and `nd sweep` pick the method from the file; `--units` overrides `budget.units` (`--epochs` is for toy configs only, and the other way round). `nd resume --run <folder>` rebuilds the learner from the run's resolved `config.yaml` (`runner.learner_from_config`) and continues it with `runner.resume`; it refuses runs whose learner saves no state (toy) and finished runs (status 2).
-## 7. Server API (api v1.12, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033, ADR-035)
+## 7. Server API (api v1.13, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033, ADR-035, ADR-041)
 
 REST (`/api/...`):
 - `GET health` → `{status: "ok", version}` (`version` is the NeuroDrive package version)
@@ -428,6 +438,18 @@ REST (`/api/...`):
   unknown metric → 422. Shown in the Experiment page's "Compare runs" tab.
 - `GET runs/{id}/checkpoints/{unit}/diff?from={unit}`: per-weight change
 - `POST runs` (launch from a config), `POST runs/{id}/stop`
+  *As built (task 5.8, ADR-041, api v1.13):* `GET configs` → `{configs: [{name, method, task,
+  seed, tag, length_field, length}]}`: every `*.yaml` directly in `configs/` that `nd train`
+  accepts (`length_field` is `epochs` for toy configs, `units` for random search; `length` the
+  file's value or null). `POST runs` with body `{config, seed, tag, epochs, units}` (a listed file
+  name and the `nd train` overrides; null keeps the file's value; unknown fields refused) →
+  `{run_id}` once the new process has created its folder. 422 (with the config's problems as a
+  list) for an unknown config or a config that does not validate with the overrides, and nothing
+  is started; 409 when 4 launched runs are already training; 500 when the process ends before
+  creating its folder or takes more than 60 s. `POST runs/{id}/stop` → `{run_id, stop_requested:
+  true}`: writes the run folder's stop request (any running run, also one started in a terminal);
+  404 unknown run; 409 when the run has already ended, or when this server launched it and its
+  process has gone (killed: `nd resume` continues it).
 - `POST replay` {run, unit, track, seed, focus_cars} → Episode Recording
 - `POST explain/forward` {network ref, observation} → ForwardTrace + contributions + sensitivity
   (deferred to Phase 5, when checkpoints give networks a reference; live what-if uses the
@@ -532,6 +554,24 @@ WebSocket `/ws/live` (one independent session per connection):
   forwards `/api` and `/ws` to the Python server on port 8000 (ADR-015).
 
 WebSocket `/ws/runs`: `metrics`, `checkpoint`, `exam_done`, `run_status` events.
+*As built (task 5.8, ADR-041, api v1.13), `server/runs_watch.py`:*
+- On connect: `hello` (as on `/ws/live`), then a `run_status` for every running run and every run
+  this server launched.
+- client → server: `watch {run_id}` (null: none) follows one run. Answer: its history, `metrics`
+  with `replace: true` (every line so far), `checkpoint`, one `exam_done` per card; then that run's
+  new events. Unknown run or command → `error {message}`.
+- server → client: `run_status {run_id, method, tag, status, stop_reason, units_done,
+  budget_units, stop_requested, launched, exit_code}` to every connection when a run appears or
+  any field changes (so about every 0.5 s while it trains); `exit_code` is the launched process's
+  once it has ended (a run still "running" with an exit code was killed). For the watched run only:
+  `metrics {run_id, replace, records}` (records = metrics lines as stored; `replace` true = the
+  whole history again, also when a resumed run was cut back, and its exam rows then follow again),
+  `checkpoint {run_id, units}` (all units), `exam_done {run_id, unit, training, heldout}` (each
+  `{completion_rate, crash_rate, progress_frac_median}` from the card).
+- Every message goes into a per-connection queue on the event loop and one writer sends it, so a
+  history is never overtaken by later news. The watcher polls only while a browser is connected; it
+  re-reads `meta.json` only when its time or size changes, and reads a half-written file again on
+  the next poll.
 
 All message shapes are Pydantic models in `server/schemas.py`. TypeScript types are generated from
 them (`npm run gen:types`), so the two sides cannot drift apart.

@@ -120,6 +120,14 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | SQL query | A question written in SQL, the language of relational databases, answered across whole tables at once, e.g. "the median held-out progress over all runs of a sweep". |
 | Mirror (database) | A copy of data kept for fast searching, rebuilt from the master copy (the run folders) whenever they disagree. The folders are always written first and always win. |
 | WAL (write-ahead log) | A SQLite mode in which changes are first appended to a separate log file, so readers keep seeing a consistent database while one writer adds to it. |
+| Process | A running program with its own memory. Training runs in its own process (`nd train`), started by the server but separate from it: a long or crashing run cannot slow or stop the server, and several runs can use several CPU cores. |
+| Process group | Processes the operating system treats as one for signals such as Ctrl+C. A launched training process gets its own group, so stopping the server does not stop the training. |
+| Exit code | The number a process leaves behind when it ends: 0 for success, anything else for a failure or a kill. |
+| Polling | Looking again at regular intervals instead of being told about changes; the run watcher looks at the run folders every 0.5 s. |
+| Tailing (a file) | Following a file that keeps growing by remembering how much was already read (the offset) and reading only what came after it, complete lines only, like `tail -f`. |
+| Offset | A position in a file counted in bytes from its start; here, how much of `metrics.jsonl` has been read already. |
+| Broadcast | Sending the same message to every connected browser; run status news goes to all, a run's metrics only to the browsers watching that run. |
+| Stop request | The empty file `stop_requested` in a run folder: the runner sees it after the current unit and ends the run cleanly, with a checkpoint and an exam of the last unit (stop reason "stopped"). |
 | Package | A folder of Python files that can be imported by name (`import neurodrive`). |
 | Virtual environment (venv) | A private copy of Python and libraries for one project (`.venv/`), so projects cannot break each other. |
 | Dependency | A library our code needs; listed in `pyproject.toml`. |
