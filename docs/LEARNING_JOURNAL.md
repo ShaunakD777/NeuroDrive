@@ -1157,3 +1157,25 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   real test drives the leftover actions were either constant or absent.
 - Open question: is mean absolute steering change the right smoothness for comparing methods, or
   will RL policies with noisy-but-harmless steering look worse than they drive?
+
+### 2026-11-02 — Task 5.3 Scripted expert
+- Concept: a teacher with privileged information. The expert drives from its exact place on the
+  centreline and the bends ahead, which the network never sees; imitation (Phase 6) will show what
+  a student can and cannot copy from it.
+- Key equation(s) in words: pure pursuit steers along the circle that leaves the car in its
+  current direction and passes through a point 8 m + 0.5 s × speed ahead, with curvature
+  2 sin(angle to the point) ÷ distance to it; the wheel angle is atan(curvature × wheelbase). The
+  speed profile is the square root of (0.8 × grip × radius) in each bend, lowered before it so
+  that braking at 11.2 m/s² is enough; throttle is 0.5 × (target speed − speed).
+- What we observed: it finishes all 60 exam starts (6 tracks × 10) with no crash; its slowest
+  finishes use 0.63 (Monza) to 0.74 (sweeper) of the time limit and are 4.5–10 % slower than the
+  ideal laps of task 5.1; it never strays more than 2.23 m from the centreline (on the hairpins);
+  loop and mirror give identical times; it still finished every start with full grip and full
+  braking, a 4× stiffer speed control or half the look-ahead.
+- Surprise or difficulty: the first prototype worked at once, so the risk was in the tests, not
+  the driver: a braking-distance test assumed the car brakes straight to the hairpin's slowest
+  point, but the averaged curvature tightens gradually and braking starts 39 m before it, not
+  36 m. The fix tests the planned deceleration itself.
+- Open question: the expert is bound to one world because the Policy protocol passes only the
+  observations; will DAgger (6.6), which labels the student's states, want the expert to label a
+  state without a world?

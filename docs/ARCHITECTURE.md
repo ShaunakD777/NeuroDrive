@@ -244,6 +244,13 @@ ADR and a new version.
     ℓ = 8 m + 0.5·v ahead.
   - Throttle: target speed = min(v_max, sqrt(a_lat_max / κ_ahead)), where κ is the curvature and
     a_lat_max = 9 m/s². Accelerate or brake proportionally toward the target.
+  - *As built (task 5.3, `env/experts.py`):* "κ ahead" is a speed profile computed once per
+    track: bend speed min(v_max, sqrt(0.8 · a_lat_max / κ)) with κ averaged over 9 m, then a
+    backward pass so the car brakes in time at 0.7 · a_brk (11.2 m/s²); throttle =
+    0.5 · (v_ref(s) − v), clipped. Steering: κ = 2 sin α / d to the look-ahead point,
+    steer = −atan(κ·Lw) / δ_max. The settings are `ExpertParams`. `ScriptedExpert(world)` reads
+    the privileged state from the world it is bound to: `label()` is the teacher label for the
+    current state of every car. It laps all six tracks from all 10 exam starts.
 - **Step reward** (reward v1): r_t = 0.1·Δs_t (metres of forward progress this step); add −5 on
   the crash step. Revised in Phase 10 via ADR.
 - **Episode summary** (summary v1): total progress P, laps, crashed (yes/no), steps alive, lap
@@ -275,6 +282,10 @@ for every car, and `trace_for(car)` cuts out one car's trace. A population needs
 observation row per network. `env/sensors.py: observe(world, segments)` is the one place that
 builds a world's observation; the action contract has `ACTION_VERSION`, `ACTION_NAMES` and
 `ACTION_SIZE` in `env/car.py`.
+
+*Expert (task 5.3):* `env/experts.py: ScriptedExpert` satisfies the protocol but is bound to one
+`World` at construction, because the 7 observations do not hold the privileged state it drives
+by. Its `act` checks the observations' shape and ignores their values; build one expert per world.
 
 ### 6.11 Episode Recording (recording v1)
 Metadata: track, seed, dt, policy reference (run, unit, car indices), physics/observation versions.
