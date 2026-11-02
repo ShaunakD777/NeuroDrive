@@ -1112,3 +1112,28 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   imitation learning (Phase 6) start from, Adam at 0.01 as on sine? Does RMSProp's rounding
   sensitivity matter across machines? Whether the user can predict too-high learning-rate
   behaviour (this phase's last criterion) is for the user to confirm; the evidence is in S3.
+
+### 2026-11-02 — Task 5.1 Track set
+- Concept: a held-out test checks whether a learner learned driving or memorised one road. Each
+  held-out track changes something specific: tighter hairpins (slow down more), a long sweeper (hold
+  one small steering angle), the mirrored loop (every bend turns the other way, same order) and
+  Monza counter-clockwise (long distances, braking from top speed; the user's choice, ADR-034).
+- Key equation(s) in words: the grip speed of a bend is the square root of grip limit times radius
+  (13 m hairpin: √117 = 10.8 m/s); the ideal lap time adds distance over speed along the fastest
+  profile that respects grip, acceleration and braking; a track counts as drivable if two ideal
+  laps take at most 0.75 of the time limit. Mirroring (x, y) → (−x, y) turns a heading h into
+  π − h and flips the sign of every turn. Closing a loop built from pieces is two linear equations
+  in two open straight lengths.
+- What we observed: ratios 0.61 (Monza) to 0.68 (hairpins); the S1 hand neuron finishes the
+  mirrored loop 10/10 in exactly the loop's 86.23 s, because its weights are symmetric (−12 left,
+  +12 right, bias 0), but crashes on all 10 starts of the hairpin track and the sweeper: its fixed
+  throttle settles near 19 m/s, faster than the 10.8 m/s (13 m) and 16.4 m/s (30 m) grip speeds.
+  It drives the 70 m sweeper itself (grip 25 m/s) and crashes in the 30 m bend after it.
+- Surprise or difficulty: reflecting in the x-axis instead of the y-axis is not a bug: it is the
+  same road turned by 180°, which a car cannot tell apart. Reversing the loop is the real look-alike
+  bug: same length, same total turn, but the bends come in the opposite order; only the turn
+  sequence test catches it. Measured on 1 m samples, the hairpins look tighter (9.4 m) than they are
+  (13 m), so bends are judged by their median radius.
+- Open question: does the scripted expert (5.3) lap every track, especially the hairpins and
+  Monza's chicanes, inside the time limit? Will a learner trained only on the short loop ever learn
+  to brake from 30 m/s, or will Monza need training on `monza_cw`?

@@ -335,9 +335,12 @@ def test_rest_track_endpoints():
     listing = client.get("/api/tracks").json()
     assert listing == {
         "tracks": [
+            {"name": "hairpins_01", "split": "heldout"},
             {"name": "monza_ccw", "split": "heldout"},
             {"name": "monza_cw", "split": "train"},
+            {"name": "sweeper_01", "split": "heldout"},
             {"name": TRACK, "split": "train"},
+            {"name": "train_loop_01_mirror", "split": "heldout"},
         ]
     }
     geometry = client.get(f"/api/tracks/{TRACK}").json()

@@ -87,6 +87,11 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Seed | The starting number for a random generator; the same seed gives the same "random" numbers. |
 | Driving Exam | The fixed test (tracks, starts, limits, metrics) that every network takes, however it was trained. |
 | Held-out track | A track never used during training or tuning; it tests generalisation. |
+| Hairpin | A bend that turns the car round by about 150–180° at a small radius (on `hairpins_01`, 13 m, where grip allows only about 11 m/s). |
+| Sweeper | A long bend of nearly constant radius (on `sweeper_01`, 70 m held for about 240 m): the driver must hold one small steering angle for a long time. |
+| Mirrored track | A track reflected left to right: the same bends in the same order, each turning the other way. Not the same as driving a track in reverse, where the bends also come in the opposite order. |
+| Grip speed | The fastest a car can take a bend of radius r without sliding wide: the square root of (grip limit × r), here √(9 × r) m/s, capped at the 30 m/s top speed. |
+| Ideal lap time | The lap time of a perfect driver on the centreline: every bend at its grip speed, full throttle and full braking in between. A track is called drivable here if two ideal laps take at most 0.75 of the time limit. |
 | Transfer | Using a controller or model in a setting other than the one it was built or trained for (here: a neuron tuned on one loop, driven on Monza). |
 | Spatial grid | A speed-up that sorts objects into square cells, so a query only looks at objects in nearby cells instead of all of them. The answer is unchanged; only the work is less. |
 | Per-track time limit | The episode time limit set from the track's length: 2 laps at an average of 16 m/s, rounded up to a whole second (ADR-022). |

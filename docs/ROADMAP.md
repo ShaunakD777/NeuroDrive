@@ -383,8 +383,11 @@ click still selects; Follow car / Whole track / double-click return.
 timeline replays any checkpoint with the network view linked.
 
 **5.1 Track set:** `scripts/make_tracks.py`, `tracks/` with 1 training track and 3 held-out tracks
-(tighter hairpins, a long sweeper, the mirrored training track). Verify: all pass the track tests;
-the expert completes each.
+(tighter hairpins, a long sweeper, the mirrored training track); `monza_ccw` is a fourth held-out
+exam track (ADR-034, the user's choice). Verify: all pass the track tests, including a
+drivability check (the ideal 2-lap time from the grip-limited speed profile is at most 0.75 of the
+time limit, `tests/env/test_track_set.py`). That the expert completes each is verified in 5.3,
+which comes after this task (the user's choice).
 **5.2 Driving metrics:** `experiment/metrics.py` (definitions in EXPERIMENT_PROTOCOL §3), tests
 on synthetic recordings.
 **5.3 Scripted expert:** `env/experts.py` (pure pursuit + curvature speed control), tests.

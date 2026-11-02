@@ -35,12 +35,19 @@
 
 ## 3. Driving Exam v1
 
-- **Tracks:** `train_loop_01` (reported separately) + every track with `split: heldout`.
+- **Tracks:** `train_loop_01` (reported separately) + every track with `split: heldout`. Since
+  task 5.1 (ADR-034) the held-out tracks are `hairpins_01` (two 13 m hairpins, 1,540 m, 193 s),
+  `sweeper_01` (a 70 m bend held for 240 m, 856 m, 107 s), `train_loop_01_mirror` (the training
+  loop reflected left to right, 731 m, 92 s) and `monza_ccw` (half-size Monza driven
+  counter-clockwise, 2,900 m, 363 s). `monza_cw` has split `train` and is not examined; studies may
+  train on it as a long road.
 - **Starts per track:** 5 positions at 0 %, 20 %, 40 %, 60 % and 80 % of the track length,
   centred and aligned with the tangent, plus the same 5 with a +1.5 m lateral offset → 10 episodes
   per track.
 - **Limits:** target 2 laps; time limit per track, ceil(2 × track length / 16 m/s) (ADR-022:
-  92 s on `train_loop_01`, 363 s on the Monza tracks); stall rule as in ARCHITECTURE §6.6. (Until
+  92 s on `train_loop_01`, 363 s on the Monza tracks; every track's ideal 2-lap time, from the
+  grip-limited speed profile, is at most 0.75 of its limit, `tests/env/test_track_set.py`); stall
+  rule as in ARCHITECTURE §6.6. (Until
   2026-10-18 this read "90 s"; it changed before the exam was first implemented, and Study S1
   used 90 s.)
 - **Policy mode:** deterministic (RL policies use their mean action).
