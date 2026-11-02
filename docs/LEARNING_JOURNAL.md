@@ -1278,3 +1278,22 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   moves numbers beyond the 12th digit. The expert stays without a checkpoint: it is not a network.
   Two browser tests that failed now and then were reading the screen before the server's reply
   (or the redrawn view) had arrived; they now wait for it.
+
+### 2026-11-02 — Task 5.7 Random search learner
+- Concept: gradient-free learning and the null model. Random search uses nothing but a score per
+  network and selection: each unit draws 20 fresh random networks, scores them on the training
+  track and keeps the best one so far. Every smarter search must beat it at an equal budget.
+- Key equation(s) in words: per start, fitness f = progress (as a share of 2 laps, up to 1) plus,
+  for a finisher, the share of the time limit left over; a network's fitness is the mean over
+  the 10 exam starts of the training track. Two starts, one finishing at 69 s of 92 s (1.25) and
+  one crashing at 30 % (0.30), give 0.775. With a fixed evaluation, the best so far can only rise.
+- What we observed: 2,000 networks (100 units) found a network finishing 6 of 10 training starts
+  (unit 23, fitness 0.865) and then a better-scoring one (unit 51, 0.893) that never finishes: it
+  drives at 12–14 m/s, crashes almost nowhere, and runs out of time at about 89 % of two laps on
+  every start. Selection preferred safe and slow to fast and fragile, because steady progress on
+  all 10 starts outweighs 6 finishes with a small time bonus. On the held-out tracks the slow
+  driver reaches 81 % progress (the hand-wired neuron 23 %) but completes nothing (the neuron 25 %).
+- Surprise or difficulty: most of the time went into the sensors of cars that had already
+  stopped; computing them only for running cars made a unit 9× faster with identical results.
+- Open question: is "safe but too slow" a fitness exploit? A stronger time bonus, or completion
+  counted separately, might change which networks win; Study S4 (5.10) and S6 (Phase 7) can test it.

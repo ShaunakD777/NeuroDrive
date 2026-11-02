@@ -362,9 +362,9 @@ that is not a network (the policy is then rebuilt from the run's config). Each t
 batch in start order: a network's output differs by about 1e-16 between batch sizes, so a
 recording matches a card only when made the same way.
 
-### 6.15 Config file (toy: config v1, ADR-032)
-A YAML file; `method` picks the model in `experiment/config.py` (only `toy` so far; later methods
-add their own model). Unknown fields, wrong types, unknown names and out-of-range numbers are
+### 6.15 Config file (toy and random_search: config v1, ADR-032, ADR-040)
+A YAML file; `method` picks the model in `experiment/config.py` (`toy`, and since task 5.7
+`random_search`; later methods add their own model). Unknown fields, wrong types, unknown names and out-of-range numbers are
 refused, every problem listed as `field.path: message`. A toy config:
 
 ```yaml
@@ -395,6 +395,7 @@ Only the named optimizer's own settings are allowed; their defaults are those of
 `nd train --config FILE [--seed S] [--tag T] [--epochs E] [--runs-dir D]` overrides `seed`, `tag`
 and `training.epochs`; an invalid config exits with status 2 and creates no run folder.
 
+*Random search (task 5.7, ADR-040, `configs/random_search.yaml`):* `method: random_search`, `seed`, `tag`; `network` (a driving network: 7 inputs first, 2 outputs last; default [7, 16, 16, 2], tanh / tanh, xavier); `search.candidates_per_unit` (≥ 1, default 20); `fitness` (`track`, which must have split `train`, default `train_loop_01`; `start_fractions` in [0, 1) and `lateral_offsets`, default the Driving Exam's 5 × 2 starts; `target_laps`, default 2); `budget` (`units`, `env_steps`, `wall_clock_s`: at least one); `exams` (default true). `nd train` and `nd sweep` pick the method from the file; `--units` overrides `budget.units` (`--epochs` is for toy configs only, and the other way round). `nd resume --run <folder>` rebuilds the learner from the run's resolved `config.yaml` (`runner.learner_from_config`) and continues it with `runner.resume`; it refuses runs whose learner saves no state (toy) and finished runs (status 2).
 ## 7. Server API (api v1.12, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033, ADR-035)
 
 REST (`/api/...`):

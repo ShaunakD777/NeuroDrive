@@ -71,7 +71,11 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Imitation learning (behavioural cloning) | Supervised learning where the targets are an expert's actions. |
 | Distribution shift | The learner ends up in situations the expert never showed it, so errors compound. |
 | DAgger | Let the learner drive, ask the expert what it *should* have done there, add that to the data, retrain. |
-| Fitness | One score for a whole drive, used by evolutionary methods. |
+| Fitness | One score for a whole drive, used by evolutionary methods. Random search (task 5.7) uses, per start, progress (up to 1) plus a time bonus for finishing, averaged over fixed training-track starts. |
+| Random search | The simplest gradient-free learner: draw fresh random networks, score each, keep the best one so far. It uses no direction at all, only selection, so it is the null model for every smarter search. |
+| Gradient-free learning | Learning that uses only a score per candidate, never the gradient of a loss through the network: random search, evolution, evolution strategies. |
+| Candidate | One network a search method scores in a unit; random search draws 20 per unit by default. |
+| Null model | The simplest explanation a result must beat; here random search, which shows how far luck alone gets at a given budget. |
 | Genome | All of a network's parameters laid out as one list of numbers. |
 | Selection / crossover / mutation | Pick the better drivers / mix two parents' genomes / add small random changes. |
 | Elitism | Copy the best few drivers unchanged into the next generation. |

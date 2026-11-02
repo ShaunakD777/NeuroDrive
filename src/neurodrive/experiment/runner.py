@@ -29,8 +29,10 @@ point loses at most the unit in progress, and that unit is recomputed with the s
 numbers: the run continues exactly as if it had never stopped, except for wall-clock times.
 The mirror's rows of that run are then copied again from the cut-back folder.
 
-``train_toy_run`` starts a whole toy run from a validated config (``nd train``, task 4.6b);
-``sweep_seeds`` runs one config once per seed (``nd sweep``, task 4.7a, ADR-033).
+``train_toy_run`` starts a whole toy run from a validated config (``nd train``, task 4.6b),
+``train_random_search_run`` a random-search run (task 5.7); ``sweep_seeds`` runs one config once
+per seed (``nd sweep``, task 4.7a, ADR-033); ``learner_from_config`` rebuilds the learner a run
+folder's config describes, for ``nd resume`` (task 5.7).
 """
 
 import re
@@ -45,11 +47,21 @@ from neurodrive.core.rng import make_rng
 from neurodrive.env.car import ACTION_SIZE
 from neurodrive.env.policies import MLPPolicy
 from neurodrive.env.sensors import OBSERVATION_SIZE
-from neurodrive.experiment.config import ToyRunConfig, parse_config, resolved, to_toy_config
+from neurodrive.env.track import Track
+from neurodrive.experiment.config import (
+    RandomSearchRunConfig,
+    RunConfig,
+    ToyRunConfig,
+    parse_config,
+    resolved,
+    to_random_search_settings,
+    to_toy_config,
+)
 from neurodrive.experiment.db import DB_NAME, Mirror
 from neurodrive.experiment.exam import DEFAULT_TRACKS_DIR, ExamResult, run_exam
 from neurodrive.experiment.store import RunStore
 from neurodrive.learn.base import Learner, Resumable
+from neurodrive.learn.evolution.random_search import RandomSearchLearner
 from neurodrive.learn.supervised.train_toy import ToyLearner
 
 _TOTALS = ("env_steps_total", "demo_frames_total", "teacher_queries_total")
@@ -323,6 +335,56 @@ def train_toy_run(
     return ToyRunResult(store, status, len(metrics), start_loss, finite[-1] if finite else None)
 
 
+@dataclass(frozen=True)
+class RandomSearchRunResult:
+    """What ``train_random_search_run`` reports: the folder, the status, units, best fitness."""
+
+    store: RunStore
+    status: str
+    units_done: int
+    best_fitness: float | None  # None if no unit finished
+    best_unit: int
+
+
+def learner_from_config(
+    data: dict[str, Any], tracks_dir: str | Path = DEFAULT_TRACKS_DIR
+) -> Learner:
+    """The learner a (resolved) config describes, freshly built from its seed.
+
+    For a run folder's ``config.yaml`` this is the learner exactly as the run started, which is
+    what :func:`resume` needs (it then restores the saved state into it).
+    """
+    config = parse_config(data, source="run config")
+    if isinstance(config, RandomSearchRunConfig):
+        track = Track.from_json(Path(tracks_dir) / f"{config.fitness.track}.json")
+        return RandomSearchLearner(to_random_search_settings(config), track, make_rng(config.seed))
+    toy = to_toy_config(config)
+    return ToyLearner(toy, make_rng(toy.seed))
+
+
+def train_random_search_run(
+    config: RandomSearchRunConfig,
+    runs_dir: str | Path,
+    extra_meta: dict | None = None,
+    tracks_dir: str | Path = DEFAULT_TRACKS_DIR,
+) -> RandomSearchRunResult:
+    """Train one random-search run described by ``config`` under ``runs_dir``.
+
+    Steps: build the learner from ``make_rng(seed)``; create the run folder with the resolved
+    config; then :func:`run` with the config's budget and exams setting.
+    """
+    data = resolved(config)
+    learner = learner_from_config(data, tracks_dir)
+    store = RunStore.create(runs_dir, learner.name, config.tag, data, extra_meta=extra_meta)
+    budget = Budget(**config.budget.model_dump())
+    status = run(learner, store, budget, exams=config.exams, tracks_dir=tracks_dir)
+    metrics = store.read_metrics()
+    last = metrics[-1] if metrics else {}
+    return RandomSearchRunResult(
+        store, status, len(metrics), last.get("best_fitness"), last.get("best_unit", 0)
+    )
+
+
 _SEED_PART = re.compile(r"^(\d+)(?:-(\d+))?$")
 
 
@@ -348,23 +410,26 @@ def parse_seeds(spec: str) -> list[int]:
 
 
 def sweep_seeds(
-    config: ToyRunConfig,
+    config: RunConfig,
     seeds: list[int],
     runs_dir: str | Path,
     when: datetime | None = None,
-) -> tuple[str, list[ToyRunResult]]:
+) -> tuple[str, list[ToyRunResult] | list[RandomSearchRunResult]]:
     """Train ``config`` once per seed; returns the sweep id and one result per seed.
 
-    The sweep id is ``<YYYYMMDD-HHMMSS>-toy_<task>-<tag>`` (formed like a run id). Run k gets
-    seed k, tag ``<tag>-s<k>`` (so its resolved config re-creates it on its own) and
-    ``"sweep": <id>`` in its ``meta.json``. Runs are trained one after another.
+    The sweep id is ``<YYYYMMDD-HHMMSS>-<method>-<tag>`` (formed like a run id; the method is
+    ``toy_<task>`` or ``random_search``). Run k gets seed k, tag ``<tag>-s<k>`` (so its resolved
+    config re-creates it on its own) and ``"sweep": <id>`` in its ``meta.json``. Runs are
+    trained one after another.
     """
     if not seeds:
         raise ValueError("need at least one seed")
     when = when or datetime.now(UTC)
-    sweep_id = f"{when:%Y%m%d-%H%M%S}-toy_{config.task}-{config.tag}"
+    label = f"toy_{config.task}" if isinstance(config, ToyRunConfig) else config.method
+    sweep_id = f"{when:%Y%m%d-%H%M%S}-{label}-{config.tag}"
+    train = train_toy_run if isinstance(config, ToyRunConfig) else train_random_search_run
     results = []
     for seed in seeds:
         one = parse_config(resolved(config), seed=seed, tag=f"{config.tag}-s{seed}")
-        results.append(train_toy_run(one, runs_dir, extra_meta={"sweep": sweep_id}))
+        results.append(train(one, runs_dir, extra_meta={"sweep": sweep_id}))
     return sweep_id, results

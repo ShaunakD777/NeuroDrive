@@ -1,7 +1,8 @@
 """Config files: the written recipe of an experiment, validated before anything runs (ADR-032).
 
-A config file is YAML. Its ``method`` field says which kind of run it describes; only ``toy``
-exists so far. A toy config (config v1, docs/ARCHITECTURE.md §6.15) looks like::
+A config file is YAML. Its ``method`` field says which kind of run it describes: ``toy`` (task
+4.6b) or ``random_search`` (task 5.7, ``configs/random_search.yaml``). A toy config (config v1,
+docs/ARCHITECTURE.md §6.15) looks like::
 
     method: toy
     task: sine              # line, sine, xor or two_spirals
@@ -27,8 +28,13 @@ out, is what a run folder stores, so ``nd train --config runs/<id>/config.yaml``
 Run folders written before this format (Phase 3: the learner's flat ``ToyConfig`` dictionary) are
 still read: they are converted on load.
 
-The learner keeps its own flat ``ToyConfig`` (``learn/`` does not use Pydantic); this module
-converts between the file and it. Every list of valid names comes from the module that owns it.
+A random-search config has the sections ``network`` (a driving network: 7 inputs, 2 outputs),
+``search`` (candidates per unit), ``fitness`` (a training track and the evaluation starts; a
+held-out track is refused, EXPERIMENT_PROTOCOL rule 7), ``budget`` (units, env_steps,
+wall_clock_s: at least one) and ``exams``.
+
+The learners keep their own plain settings (``learn/`` does not use Pydantic); this module
+converts between the file and them. Every list of valid names comes from the module that owns it.
 """
 
 from functools import cache
@@ -48,8 +54,14 @@ from pydantic import (
 
 from neurodrive.core.activations import ACTIVATIONS
 from neurodrive.core.nn.init import SCHEMES
+from neurodrive.core.nn.spec import NetworkSpec
 from neurodrive.core.optim import OPTIMIZERS
 from neurodrive.core.rng import make_rng
+from neurodrive.env.car import ACTION_SIZE
+from neurodrive.env.sensors import OBSERVATION_SIZE
+from neurodrive.env.track import Track
+from neurodrive.experiment.exam import DEFAULT_TRACKS_DIR, EXAM_V1, TRAINING_TRACK
+from neurodrive.learn.evolution.random_search import RandomSearchSettings
 from neurodrive.learn.supervised.toy_tasks import TOY_TASKS, make_toy_dataset
 from neurodrive.learn.supervised.train_toy import LOSSES, ToyConfig
 
@@ -187,6 +199,94 @@ class ToyRunConfig(_Section):
         return self
 
 
+class DrivingNetworkSection(NetworkSection):
+    """A network that drives: 7 observation inputs first, 2 outputs (steer, throttle) last."""
+
+    layer_sizes: list[Annotated[StrictInt, Field(ge=1)]] = Field(
+        default_factory=lambda: list(NetworkSpec().layer_sizes), min_length=2
+    )
+    output_activation: str = "tanh"
+
+    @field_validator("layer_sizes")
+    @classmethod
+    def _drives(cls, v: list[int]) -> list[int]:
+        if (v[0], v[-1]) != (OBSERVATION_SIZE, ACTION_SIZE):
+            raise ValueError(
+                f"a driving network needs {OBSERVATION_SIZE} inputs first and {ACTION_SIZE} "
+                f"outputs last, got {v}"
+            )
+        return v
+
+
+class SearchSection(_Section):
+    """Random search: how many fresh networks one unit draws and scores."""
+
+    candidates_per_unit: Annotated[StrictInt, Field(ge=1)] = 20
+
+
+@cache
+def _track_split(name: str) -> str:
+    """The split (train / heldout) of the track file ``name``; ValueError if there is none."""
+    path = DEFAULT_TRACKS_DIR / f"{name}.json"
+    if not path.is_file():
+        raise ValueError(f"no track {name!r} in tracks/")
+    return Track.from_json(path).split
+
+
+class FitnessSection(_Section):
+    """Where fitness is measured: a training track and the starts (the exam's layout by default)."""
+
+    track: str = TRAINING_TRACK
+    start_fractions: list[Annotated[float, Field(ge=0.0, lt=1.0)]] = Field(
+        default_factory=lambda: list(EXAM_V1.start_fractions), min_length=1
+    )
+    lateral_offsets: list[Annotated[float, Field(gt=-2.5, lt=2.5)]] = Field(
+        default_factory=lambda: list(EXAM_V1.lateral_offsets), min_length=1
+    )
+    target_laps: Annotated[StrictInt, Field(ge=1)] = 2
+
+    @field_validator("track")
+    @classmethod
+    def _training_track(cls, v: str) -> str:
+        if _track_split(v) != "train":
+            raise ValueError(
+                f"{v!r} is a held-out track; fitness may only use training tracks "
+                "(EXPERIMENT_PROTOCOL rule 7)"
+            )
+        return v
+
+
+class BudgetSection(_Section):
+    """When the run stops: any limit reached ends it after that unit. At least one is needed."""
+
+    units: Annotated[StrictInt, Field(ge=1)] | None = None
+    env_steps: Annotated[StrictInt, Field(ge=1)] | None = None
+    wall_clock_s: Annotated[float, Field(gt=0.0)] | None = None
+
+    @model_validator(mode="after")
+    def _some_limit(self) -> "BudgetSection":
+        if self.units is None and self.env_steps is None and self.wall_clock_s is None:
+            raise ValueError("give at least one of units, env_steps, wall_clock_s")
+        return self
+
+
+class RandomSearchRunConfig(_Section):
+    """A complete random-search run (task 5.7)."""
+
+    method: Literal["random_search"]
+    seed: Annotated[StrictInt, Field(ge=0)] = 0
+    tag: str = Field("default", pattern=r"^[A-Za-z0-9_-]+$")
+    network: DrivingNetworkSection = Field(default_factory=DrivingNetworkSection)
+    search: SearchSection = Field(default_factory=SearchSection)
+    fitness: FitnessSection = Field(default_factory=FitnessSection)
+    budget: BudgetSection
+    exams: bool = True
+
+
+RunConfig = ToyRunConfig | RandomSearchRunConfig
+METHODS = ("toy", "random_search")
+
+
 # --- reading ---
 
 
@@ -223,12 +323,14 @@ def parse_config(
     seed: int | None = None,
     tag: str | None = None,
     epochs: int | None = None,
+    units: int | None = None,
     source: str = "config",
-) -> ToyRunConfig:
+) -> RunConfig:
     """Validate ``data`` (a parsed YAML mapping) and return the config.
 
-    ``seed``, ``tag`` and ``epochs`` override the file's values when given. A Phase 3 flat
-    config is converted first. Raises ``ConfigError`` listing every problem.
+    ``seed``, ``tag``, ``epochs`` (toy: training.epochs) and ``units`` (random search:
+    budget.units) override the file's values when given. A Phase 3 flat config is converted
+    first. Raises ``ConfigError`` listing every problem.
     """
     if not isinstance(data, dict):
         raise ConfigError(["the file must contain a mapping (field: value lines)"], source)
@@ -242,13 +344,26 @@ def parse_config(
         data["seed"] = seed
     if tag is not None:
         data["tag"] = tag
+    method = data.get("method")
     if epochs is not None:
+        if method == "random_search":
+            raise ConfigError(["--epochs is for toy configs; use --units"], source)
         training = data.get("training")
         data["training"] = (
             {**training, "epochs": epochs} if isinstance(training, dict) else training
         )
+    if units is not None:
+        if method != "random_search":
+            raise ConfigError(["--units is for random_search configs; use --epochs"], source)
+        budget = data.get("budget")
+        data["budget"] = (
+            {**budget, "units": units} if isinstance(budget, dict) else {"units": units}
+        )
+    # Anything but random_search is read as a toy config, so a missing or unknown method gets
+    # the same message as before random search existed.
+    model = RandomSearchRunConfig if method == "random_search" else ToyRunConfig
     try:
-        return ToyRunConfig.model_validate(data)
+        return model.model_validate(data)
     except ValidationError as exc:
         raise ConfigError(_format_errors(exc), source) from None
 
@@ -259,7 +374,8 @@ def load_config(
     seed: int | None = None,
     tag: str | None = None,
     epochs: int | None = None,
-) -> ToyRunConfig:
+    units: int | None = None,
+) -> RunConfig:
     """Read and validate the YAML config file at ``path`` (overrides as in :func:`parse_config`)."""
     path = Path(path)
     source = path.name
@@ -276,13 +392,13 @@ def load_config(
         raise ConfigError([f"not valid YAML at {where}: {problem}"], source) from None
     if data is None:
         raise ConfigError(["the file is empty"], source)
-    return parse_config(data, seed=seed, tag=tag, epochs=epochs, source=source)
+    return parse_config(data, seed=seed, tag=tag, epochs=epochs, units=units, source=source)
 
 
 # --- converting ---
 
 
-def resolved(config: ToyRunConfig) -> dict[str, Any]:
+def resolved(config: RunConfig) -> dict[str, Any]:
     """The config as plain data with every default written out (what a run folder stores)."""
     return config.model_dump(mode="json")
 
@@ -306,6 +422,23 @@ def to_toy_config(config: ToyRunConfig) -> ToyConfig:
         optimizer_settings=settings,
         batch_size=config.training.batch_size,
         val_fraction=config.training.val_fraction,
+    )
+
+
+def to_random_search_settings(config: RandomSearchRunConfig) -> RandomSearchSettings:
+    """The learner's ``RandomSearchSettings`` for this config."""
+    net = config.network
+    return RandomSearchSettings(
+        spec=NetworkSpec(
+            layer_sizes=tuple(net.layer_sizes),
+            hidden_activation=net.hidden_activation,
+            output_activation=net.output_activation,
+        ),
+        init_scheme=net.init_scheme,
+        candidates=config.search.candidates_per_unit,
+        start_fractions=tuple(config.fitness.start_fractions),
+        lateral_offsets=tuple(config.fitness.lateral_offsets),
+        target_laps=config.fitness.target_laps,
     )
 
 

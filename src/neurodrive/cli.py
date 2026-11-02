@@ -1,8 +1,8 @@
 """The ``nd`` command-line tool.
 
 Each subcommand is one thing you can ask NeuroDrive to do from a terminal. ``version``,
-``serve``, ``train``, ``sweep``, ``exam``, ``baseline`` and ``db rebuild`` / ``db check`` exist so
-far; others are added by later tasks.
+``serve``, ``train``, ``sweep``, ``resume``, ``exam``, ``baseline`` and ``db rebuild`` /
+``db check`` exist so far; others are added by later tasks.
 """
 
 from pathlib import Path
@@ -58,23 +58,69 @@ def train(
     ),
     seed: int | None = typer.Option(None, help="Override the config's seed."),
     tag: str | None = typer.Option(None, help="Override the config's tag (run folder label)."),
-    epochs: int | None = typer.Option(None, help="Override training.epochs."),
+    epochs: int | None = typer.Option(None, help="Override training.epochs (toy configs)."),
+    units: int | None = typer.Option(None, help="Override budget.units (random_search configs)."),
     runs_dir: str = typer.Option("runs", help="Folder to create the run folder in."),
 ) -> None:
-    """Train from a config file and write a run folder (open it in the toy lab)."""
-    from neurodrive.experiment.config import ConfigError, load_config
-    from neurodrive.experiment.runner import train_toy_run
+    """Train from a config file (toy or random_search) and write a run folder."""
+    from neurodrive.experiment.config import ConfigError, ToyRunConfig, load_config
+    from neurodrive.experiment.runner import train_random_search_run, train_toy_run
 
     try:
-        run_config = load_config(Path(config), seed=seed, tag=tag, epochs=epochs)
+        run_config = load_config(Path(config), seed=seed, tag=tag, epochs=epochs, units=units)
     except ConfigError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=2) from None
+    if not isinstance(run_config, ToyRunConfig):
+        found = train_random_search_run(run_config, runs_dir)
+        typer.echo(f"run folder: {found.store.path.as_posix()}")
+        typer.echo(f"status: {found.status} after {found.units_done} units")
+        typer.echo(_best_line(found))
+        return
     result = train_toy_run(run_config, runs_dir)
     typer.echo(f"run folder: {result.store.path.as_posix()}")
     typer.echo(f"status: {result.status} after {result.epochs_done} epochs")
     end = f"{result.end_loss:.6g}" if result.end_loss is not None else "none (diverged at once)"
     typer.echo(f"loss: {result.start_loss:.6g} at the start -> {end} at the last finite epoch")
+
+
+def _best_line(found) -> str:
+    """One line on a random-search run's best network."""
+    if found.best_fitness is None:
+        return "best fitness: none (no unit finished)"
+    return f"best fitness: {found.best_fitness:.4f} (found in unit {found.best_unit})"
+
+
+@app.command()
+def resume(
+    run: str = typer.Option(..., "--run", help="Run folder to continue, e.g. runs/<run_id>."),
+) -> None:
+    """Continue a killed or failed run exactly where it stopped (resumable methods only)."""
+    from neurodrive.experiment.config import ConfigError
+    from neurodrive.experiment.runner import learner_from_config
+    from neurodrive.experiment.runner import resume as resume_run
+    from neurodrive.experiment.store import RunStore
+    from neurodrive.learn.base import Resumable
+
+    try:
+        store = RunStore.open(run)
+        learner = learner_from_config(store.read_config())
+        if not isinstance(learner, Resumable):
+            raise ValueError(
+                f"{learner.name} runs cannot be resumed (the learner saves no state); "
+                "train them again instead"
+            )
+        units_before = len(store.read_metrics())
+        status = resume_run(learner, store)
+    except (FileNotFoundError, ConfigError, ValueError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=2) from None
+    metrics = store.read_metrics()
+    typer.echo(f"run folder: {store.path.as_posix()}")
+    typer.echo(f"status: {status} after {len(metrics)} units ({units_before} were kept)")
+    last = metrics[-1] if metrics else {}
+    if "best_fitness" in last:
+        typer.echo(f"best fitness: {last['best_fitness']:.4f} (found in unit {last['best_unit']})")
 
 
 @app.command()
@@ -84,22 +130,33 @@ def sweep(
     ),
     seeds: str = typer.Option(..., help="Seeds to run, e.g. 0-4 or 0,2,7."),
     tag: str | None = typer.Option(None, help="Override the config's tag; runs get <tag>-s<seed>."),
-    epochs: int | None = typer.Option(None, help="Override training.epochs."),
+    epochs: int | None = typer.Option(None, help="Override training.epochs (toy configs)."),
+    units: int | None = typer.Option(None, help="Override budget.units (random_search configs)."),
     runs_dir: str = typer.Option("runs", help="Folder to create the run folders in."),
 ) -> None:
-    """Train one config once per seed and summarise the final loss (median and IQR)."""
-    from neurodrive.experiment.config import ConfigError, load_config
+    """Train one config once per seed; summarise the final loss or best fitness (median, IQR)."""
+    from neurodrive.experiment.config import ConfigError, ToyRunConfig, load_config
     from neurodrive.experiment.runner import parse_seeds, sweep_seeds
     from neurodrive.experiment.stats import summarise
 
     try:
         seed_list = parse_seeds(seeds)
-        run_config = load_config(Path(config), tag=tag, epochs=epochs)
+        run_config = load_config(Path(config), tag=tag, epochs=epochs, units=units)
     except (ConfigError, ValueError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=2) from None
     sweep_id, results = sweep_seeds(run_config, seed_list, runs_dir)
     typer.echo(f"sweep: {sweep_id} ({len(results)} runs)")
+    if not isinstance(run_config, ToyRunConfig):
+        for seed, found in zip(seed_list, results, strict=True):
+            typer.echo(
+                f"  seed {seed}: {found.store.path.name}  {found.status}  {_best_line(found)}"
+            )
+        s = summarise([f.best_fitness or 0.0 for f in results])
+        typer.echo(
+            f"best fitness: median {s.median:.4f} [IQR {s.q1:.4f} to {s.q3:.4f}] over {s.n} seeds"
+        )
+        return
     finals = []
     for seed, result in zip(seed_list, results, strict=True):
         final = result.end_loss if result.status == "completed" else float("inf")
