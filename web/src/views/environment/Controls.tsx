@@ -135,6 +135,7 @@ export function Controls({
             <option value="constant">Constant (steer 0, throttle 0.3)</option>
             <option value="neuron">Neuron (you set its weights)</option>
             <option value="random_networks">Random networks (one per car)</option>
+            <option value="expert">Expert (scripted, reads the track)</option>
           </select>
         </label>
 

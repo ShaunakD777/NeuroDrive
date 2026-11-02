@@ -1179,3 +1179,6 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
 - Open question: the expert is bound to one world because the Policy protocol passes only the
   observations; will DAgger (6.6), which labels the student's states, want the expert to label a
   state without a world?
+- Follow-up (2026-11-02, user request): the expert is now a live driver in the app (ADR-035, api
+  v1.12). Discussed whether to give it a racing line: kept on the centreline for now, so that
+  whether evolution or RL discovers corner cutting on its own stays an open, measurable question.

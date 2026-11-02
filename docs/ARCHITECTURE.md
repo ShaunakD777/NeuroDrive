@@ -374,7 +374,7 @@ Only the named optimizer's own settings are allowed; their defaults are those of
 `nd train --config FILE [--seed S] [--tag T] [--epochs E] [--runs-dir D]` overrides `seed`, `tag`
 and `training.epochs`; an invalid config exits with status 2 and creates no run folder.
 
-## 7. Server API (api v1.11, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033)
+## 7. Server API (api v1.12, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033, ADR-035)
 
 REST (`/api/...`):
 - `GET health` → `{status: "ok", version}` (`version` is the NeuroDrive package version)
@@ -415,11 +415,13 @@ REST (`/api/...`):
 
 WebSocket `/ws/live` (one independent session per connection):
 - `hello` is sent first, on connect: `{type: "hello", version, api}` (`api` is the message-contract
-  version, currently `"v1.9"`).
+  version, currently `"v1.12"`).
 - client → server (each has a `type` field):
   - `load_scenario {track, policy, n_cars, seed}`: `policy` is `"keyboard"`, `"constant"`,
-    `"neuron"` or `"random_networks"` (every car is driven by its own random [7,16,16,2] network;
-    the seed also picks the networks, seed 0 when null; more arrive with later tasks); `n_cars`
+    `"neuron"`, `"random_networks"` (every car is driven by its own random [7,16,16,2] network;
+    the seed also picks the networks, seed 0 when null) or, since api v1.12 (ADR-035),
+    `"expert"` (the scripted expert of `env/experts.py`, bound to the session's world; it has no
+    network, so no network messages, readout or `what_if`); `n_cars`
     1 to 100 (default 1); `seed` is an integer for a seeded random start or null for the track's
     fixed start. Loads paused at step 0.
   - `play`, `pause`, `step` (exactly one physics step, even while paused), `reset` (back to

@@ -99,7 +99,7 @@ export function updateTrail(trail: Trail | null, car: number, points: TrailPoint
 /** What a `load_scenario` message asks for. */
 export interface ScenarioRequest {
   track: string;
-  policy: "keyboard" | "constant" | "neuron" | "random_networks";
+  policy: "keyboard" | "constant" | "neuron" | "random_networks" | "expert";
   n_cars: number;
   /**
    * null: every car starts at the track's start line; a number: a seeded random start. With

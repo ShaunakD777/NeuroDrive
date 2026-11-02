@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
-API_VERSION = "v1.11"
+API_VERSION = "v1.12"
 
 
 class WireModel(BaseModel):
@@ -84,8 +84,9 @@ class LoadScenario(CommandModel):
     """Load a track and a driver; the session starts paused at step 0.
 
     ``policy`` is ``"keyboard"`` (driven by ``key_state``), ``"constant"`` (every car holds steer 0,
-    throttle 0.3), ``"neuron"`` (one shared neuron steers; change it with ``set_param``) or
-    ``"random_networks"`` (every car is driven by its own random [7, 16, 16, 2] network).
+    throttle 0.3), ``"neuron"`` (one shared neuron steers; change it with ``set_param``),
+    ``"random_networks"`` (every car is driven by its own random [7, 16, 16, 2] network) or
+    ``"expert"`` (the scripted expert of ``env/experts.py``, which reads the track; api v1.12).
     ``seed`` None starts every car at the track's start; an integer gives a seeded random start
     (position, sideways offset and heading). For ``"random_networks"`` the same ``seed`` also picks
     the networks (seed 0 when None), so a seed always gives the same 20 drivers.
@@ -93,7 +94,7 @@ class LoadScenario(CommandModel):
 
     type: Literal["load_scenario"] = "load_scenario"
     track: str
-    policy: Literal["keyboard", "constant", "neuron", "random_networks"] = "keyboard"
+    policy: Literal["keyboard", "constant", "neuron", "random_networks", "expert"] = "keyboard"
     n_cars: int = Field(default=1, ge=1, le=100)
     seed: int | None = Field(default=None, ge=0)
 
@@ -212,7 +213,7 @@ class ScenarioMessage(WireModel):
 
     type: Literal["scenario"] = "scenario"
     track: str
-    policy: Literal["keyboard", "constant", "neuron", "random_networks"]
+    policy: Literal["keyboard", "constant", "neuron", "random_networks", "expert"]
     n_cars: int
     seed: int | None
     dt: float

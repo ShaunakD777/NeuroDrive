@@ -28,6 +28,7 @@ from neurodrive.core.nn.network import Network
 from neurodrive.core.nn.spec import NetworkSpec
 from neurodrive.core.rng import child_rng, make_rng
 from neurodrive.env.car import CarState, step_cars
+from neurodrive.env.experts import ScriptedExpert
 from neurodrive.env.policies import (
     ConstantPolicy,
     KeyboardPolicy,
@@ -329,6 +330,9 @@ class LiveSession:
             # when none is given). Built once per load, so Reset replays the same brains.
             rng = child_rng(make_rng(command.seed or 0), "init")
             self._policy = PopulationPolicy(init_population(NetworkSpec(), command.n_cars, rng))
+        elif command.policy == "expert":
+            # Bound to this world, which Reset reuses, so one expert lasts the whole scenario.
+            self._policy = ScriptedExpert(self._world)
         else:
             self._policy = self._keys or self._neuron or ConstantPolicy(0.0, CONSTANT_THROTTLE)
         self.playing = False

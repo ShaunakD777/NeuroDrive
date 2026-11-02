@@ -9,6 +9,9 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
+from neurodrive.env.experts import ScriptedExpert
+from neurodrive.env.track import Track
+from neurodrive.env.world import World, WorldConfig
 from neurodrive.server.app import create_app
 from neurodrive.server.live import LiveSession, TrackLibrary
 from neurodrive.server.schemas import (
@@ -354,7 +357,7 @@ def test_rest_track_endpoints():
 def test_websocket_session_end_to_end():
     client = TestClient(create_app())
     with client.websocket_connect("/ws/live") as ws:
-        assert json.loads(ws.receive_text())["api"] == API_VERSION == "v1.11"
+        assert json.loads(ws.receive_text())["api"] == API_VERSION == "v1.12"
         ws.send_text(json.dumps({"type": "load_scenario", "track": TRACK, "policy": "constant"}))
         assert json.loads(ws.receive_text())["type"] == "scenario"
         assert json.loads(ws.receive_text())["step"] == 0
@@ -429,7 +432,7 @@ def test_neuron_scenario_starts_with_zero_weights_and_a_readout_in_every_frame()
 
 
 def test_the_other_drivers_have_no_neuron_readout():
-    for policy in ("keyboard", "constant"):
+    for policy in ("keyboard", "constant", "expert"):
         (frame,) = send(loaded(policy), type="step")
         assert frame.selected.neuron is None
 
@@ -1047,3 +1050,35 @@ def test_moments_work_for_drivers_without_a_network():
     (moment,) = send(session, type="inspect_step", step=1)
     assert moment.trace is None and moment.explain is None
     assert (moment.x, moment.y) == (frames[0].cars.x[0], frames[0].cars.y[0])
+
+
+# ── the scripted expert (api v1.12, ADR-035) ────────────────────────────────────────────────
+
+
+def test_expert_scenario_drives_every_car_like_the_expert_itself():
+    session = LiveSession(TrackLibrary(TRACKS))
+    scenario, frame = send(
+        session, type="load_scenario", track="hairpins_01", policy="expert", n_cars=3, seed=4
+    )
+    assert scenario.policy == "expert" and len(frame.cars.x) == 3
+    # The same three seeded starts driven by the expert directly, step for step.
+    track = Track.from_json(TRACKS / "hairpins_01.json")
+    world = World(track, WorldConfig.for_track(track))
+    world.reset(**session._world.start)  # the session's seeded starts, exactly
+    expert = ScriptedExpert(world)
+    for _ in range(300):  # 10 s: past the start, at speed
+        action = expert.label()
+        world.step(action[:, 0], action[:, 1])
+    frame = drive_steps(session, 300)
+    assert frame.cars.alive == [True] * 3
+    assert frame.cars.x == pytest.approx(np.round(world.cars.x, 2).tolist(), abs=0.011)
+    assert min(frame.cars.v) > 10.0  # really driving, not crawling
+
+
+def test_expert_survives_reset_and_refuses_what_if():
+    session = loaded("expert")
+    first = drive_steps(session, 60)
+    send(session, type="reset")
+    assert drive_steps(session, 60).cars.x == first.cars.x  # same expert, same drive
+    (reply,) = send(session, type="what_if", overrides={})
+    assert isinstance(reply, ErrorMessage)
