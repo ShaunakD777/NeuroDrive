@@ -1,7 +1,9 @@
-"""The FastAPI application: health, track data, run folders and live driving over a WebSocket.
+"""The FastAPI application: health, track data, run folders, live driving over a WebSocket, and
+launching and following training runs (task 5.8).
 
 REST is request and response (the browser asks once, the server answers once). A WebSocket stays
-open, so the server can push messages without being asked each time, which live driving needs.
+open, so the server can push messages without being asked each time, which live driving and
+training progress need. Training itself runs in separate processes (``server/runs_watch.py``).
 """
 
 import asyncio
@@ -16,16 +18,23 @@ from neurodrive import __version__
 from neurodrive.core.activations import ACTIVATIONS
 from neurodrive.server.live import LiveSession, TrackLibrary
 from neurodrive.server.runs import RunLibrary
+from neurodrive.server.runs_watch import Launcher, LaunchError, RunsHub, RunsWatcher
 from neurodrive.server.schemas import (
     ActivationCurves,
+    CheckpointDiff,
     CheckpointList,
     CheckpointNetwork,
     CompareResponse,
+    ConfigListResponse,
+    ExamCardResponse,
     HealthResponse,
     HelloMessage,
+    LaunchRequest,
+    LaunchResponse,
     RunDetail,
     RunListResponse,
     RunMetrics,
+    StopResponse,
     ToyCheckpointResponse,
     TrackGeometry,
     TrackListResponse,
@@ -34,15 +43,28 @@ from neurodrive.server.schemas import (
 
 DEFAULT_TRACKS_DIR = Path(__file__).resolve().parents[3] / "tracks"  # <repository>/tracks
 DEFAULT_RUNS_DIR = Path(__file__).resolve().parents[3] / "runs"  # <repository>/runs (git-ignored)
+DEFAULT_CONFIGS_DIR = Path(__file__).resolve().parents[3] / "configs"  # what the app may launch
 MAX_COMPARE_RUNS = 64  # runs per comparison request (8 groups of 8 seeds)
 TICK_SECONDS = 1.0 / 120.0  # timer period; Windows rounds it up to about 15 ms, which is still fine
 
 
-def create_app(tracks_dir: Path | None = None, runs_dir: Path | None = None) -> FastAPI:
-    """Build the app. A function, so each test can get a fresh one (and its own folders)."""
+def create_app(
+    tracks_dir: Path | None = None,
+    runs_dir: Path | None = None,
+    configs_dir: Path | None = None,
+    launcher: Launcher | None = None,
+) -> FastAPI:
+    """Build the app. A function, so each test can get a fresh one (and its own folders).
+
+    ``launcher`` replaces the default one (``configs_dir``, at most 4 runs at once), for tests.
+    """
     app = FastAPI(title="NeuroDrive", version=__version__)
     tracks = TrackLibrary(DEFAULT_TRACKS_DIR if tracks_dir is None else tracks_dir)
     runs = RunLibrary(DEFAULT_RUNS_DIR if runs_dir is None else runs_dir)
+    if launcher is None:
+        configs = DEFAULT_CONFIGS_DIR if configs_dir is None else configs_dir
+        launcher = Launcher(runs.runs_dir, configs)
+    hub = RunsHub(RunsWatcher(runs.runs_dir, launcher))
 
     @app.get("/api/health")
     def health() -> HealthResponse:
@@ -123,6 +145,28 @@ def create_app(tracks_dir: Path | None = None, runs_dir: Path | None = None) -> 
         except KeyError:
             raise missing(f"checkpoint {unit} of run {run_id!r}") from None
 
+    # The run timeline (api v1.14, task 5.9, ADR-042): what changed between two checkpoints, and
+    # a checkpoint's exam card (the replay's per-car results).
+    @app.get("/api/runs/{run_id}/checkpoints/{unit}/diff")
+    def checkpoint_diff(
+        run_id: str,
+        unit: int,
+        from_unit: int = Query(..., alias="from", description="The checkpoint to compare with."),
+    ) -> CheckpointDiff:
+        try:
+            return runs.diff(run_id, unit, from_unit)
+        except KeyError:
+            raise missing(f"checkpoint {unit} or {from_unit} of run {run_id!r}") from None
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from None
+
+    @app.get("/api/runs/{run_id}/exams/{unit}")
+    def exam_card(run_id: str, unit: int) -> ExamCardResponse:
+        try:
+            return runs.exam_card(run_id, unit)
+        except KeyError:
+            raise missing(f"exam card {unit} of run {run_id!r}") from None
+
     @app.get("/api/runs/{run_id}/checkpoints/{unit}/toy")
     def toy_checkpoint(run_id: str, unit: int) -> ToyCheckpointResponse:
         try:
@@ -131,6 +175,56 @@ def create_app(tracks_dir: Path | None = None, runs_dir: Path | None = None) -> 
             raise missing(f"checkpoint {unit} of run {run_id!r}") from None
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from None
+
+    # Launching training runs (api v1.13, task 5.8, ADR-041). The server starts `nd train` as a
+    # separate process and never trains itself; /ws/runs reports what the process writes.
+    def refused(error: LaunchError) -> HTTPException:
+        return HTTPException(status_code=error.status, detail=error.detail)
+
+    @app.get("/api/configs")
+    def list_configs() -> ConfigListResponse:
+        return ConfigListResponse(configs=launcher.configs())
+
+    @app.post("/api/runs")
+    def launch_run(request: LaunchRequest) -> LaunchResponse:
+        # A plain (not async) function: FastAPI runs it in a worker thread, so the few seconds
+        # spent waiting for the new process to create its folder never block live driving.
+        try:
+            return LaunchResponse(run_id=launcher.launch(request))
+        except LaunchError as error:
+            raise refused(error) from None
+
+    @app.post("/api/runs/{run_id}/stop")
+    def stop_run(run_id: str) -> StopResponse:
+        try:
+            launcher.stop(runs.store(run_id))
+        except KeyError:
+            raise missing(f"run {run_id!r}") from None
+        except LaunchError as error:
+            raise refused(error) from None
+        return StopResponse(run_id=run_id)
+
+    @app.websocket("/ws/runs")
+    async def runs_socket(websocket: WebSocket) -> None:
+        # Messages are queued per connection (by `watch` and by the poll loop) and one writer
+        # sends them in order, so a run's history is never overtaken by later news about it.
+        await websocket.accept()
+        client = hub.connect()
+
+        async def writer() -> None:
+            while True:
+                message = await client.queue.get()
+                await websocket.send_text(message.model_dump_json())
+
+        sending = asyncio.create_task(writer())
+        try:
+            while True:
+                hub.handle_text(client, await websocket.receive_text())
+        except WebSocketDisconnect:
+            pass
+        finally:
+            sending.cancel()
+            hub.disconnect(client)
 
     @app.websocket("/ws/live")
     async def live(websocket: WebSocket) -> None:
@@ -150,7 +244,7 @@ def create_app(tracks_dir: Path | None = None, runs_dir: Path | None = None) -> 
                 for message in session.tick(time.monotonic()):
                     await send(message)
 
-        session = LiveSession(tracks)
+        session = LiveSession(tracks, runs)
         await send(HelloMessage(version=__version__))
         timer = asyncio.create_task(ticker())
         try:

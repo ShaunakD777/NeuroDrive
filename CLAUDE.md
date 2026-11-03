@@ -128,11 +128,17 @@ These are created in Phase 0. If a task changes a command, update this section i
 | Lint and format | `uv run ruff check . && uv run ruff format .` |
 | Start backend (port 8000) | `uv run python -m neurodrive serve` (or `uv run nd serve`; add `--runs-dir <folder>` to show other runs) |
 | Start web app (port 5173) | `cd web && npm install && npm run dev` |
+| Launch, watch and stop training runs from the app (runs `nd train` with a config from `configs/` as a separate process that keeps going if the server stops; at most 4 at once; each process's output in `runs/.launches/`; terminal runs show up too) | start both servers, then Experiment → **Training** (`http://127.0.0.1:5173/#/experiment`) |
+| Replay a driving run's checkpoints in every view (the checkpoint drives the Driving Exam's 10 starts on a chosen track; the Network view colours what changed since the previous checkpoint) | start both servers, then Experiment → **Timeline** |
 | Regenerate the track files in `tracks/` | `uv run python scripts/make_tracks.py` |
 | Train from a config into `runs/` (toy configs: `configs/toy_line.yaml`, `toy_sine.yaml`, `toy_xor.yaml`, `toy_two_spirals.yaml`; options `--seed`, `--tag`, `--epochs`, `--runs-dir`) | `uv run python -m neurodrive train --config configs/toy_xor.yaml` (or `uv run nd train ...`) |
-| Run several seeds (one run folder per seed, tag `<tag>-s<seed>`, shared `sweep` id; prints median and IQR of the final loss) | `uv run python -m neurodrive sweep --config configs/toy_sine.yaml --seeds 0-4` (or `uv run nd sweep ...`) |
-| Driving Exam on a checkpoint | `uv run nd exam --run runs/<run_id> --unit <n>` |
-| Rebuild / check the SQLite mirror | `uv run nd db rebuild` / `uv run nd db check` |
+| Train random search (the first driving learner: fresh random networks, keep the best; option `--units` overrides `budget.units`; exams at every checkpoint) | `uv run python -m neurodrive train --config configs/random_search.yaml` |
+| Continue a killed or failed run exactly where it stopped (resumable methods: random search; toy runs cannot be resumed) | `uv run python -m neurodrive resume --run runs/<run_id>` (or `uv run nd resume ...`) |
+| Run several seeds (one run folder per seed, tag `<tag>-s<seed>`, shared `sweep` id; prints median and IQR of the final loss, or of the best fitness for random search; `--units` for random search; `--study <ID>` tags every run for a study, as do `nd train` and `nd baseline`) | `uv run python -m neurodrive sweep --config configs/toy_sine.yaml --seeds 0-4` (or `uv run nd sweep ...`) |
+| Driving Exam on a checkpoint (writes `exams/unit_<n>.json` in the run folder, prints the card; needs a 7-input, 2-output network) | `uv run python -m neurodrive exam --run runs/<run_id> --unit <n>` (or `uv run nd exam ...`) |
+| Make the baselines as run folders with exam cards (random network for seeds 0-9, hand-wired neuron, scripted expert; options `--name`, `--seeds`, `--runs-dir`) | `uv run python -m neurodrive baseline` (or `uv run nd baseline ...`) |
+| Rebuild / check the SQLite mirror `runs/neurodrive.db` (the runner keeps it up to date by itself; check exits 1 if it differs from the folders; option `--runs-dir`; after a schema change (db v2 in task 5.10) run rebuild once) | `uv run python -m neurodrive db rebuild` / `uv run python -m neurodrive db check` (or `uv run nd db ...`) |
+| Study S4: random search vs the baselines (5 seeds x 200 units plus the S4 baselines, about 20 min; then the analysis, results in `docs/studies/S4_results.json`; without `--train` it only analyses; `--train-seeds 5-9` trains more seeds one at a time (about 7 min each) and `--seeds 0-9` analyses them into `S4_results_seeds0-9.json`) | `uv run --with matplotlib python scripts/study_s4.py --train --figures` |
 | Web unit tests / smoke test | `cd web && npm run test` / `npm run e2e` |
 | Regenerate TypeScript types from the Python message models | `cd web && npm run gen:types` |
 | PyTorch cross-check of our gradients and optimizers (PyTorch fetched for that run only; `reference/` is never imported by `src/`) | `uv run --with torch python reference/torch_check.py` (its tests: `uv run --with torch python -m pytest tests/reference`) |
@@ -146,10 +152,9 @@ the development machine; the browser tests start it this way too), and `uv run p
 works wherever `uv run pytest` does not. If Smart App Control blocks Python's own `asyncio` DLLs in
 the Python that uv downloads (seen on 2026-10-25), install Python 3.12 from python.org and run
 `uv sync --python <path to its python.exe>`; the browser tests also train two small toy runs into
-`runs/` (tag `e2e`) the first time.
-
-**Not available yet** (the command is listed so its final form is fixed; running it today gives
-"No such command"): `nd exam` arrives in task 5.4 and `nd db` in 5.5b.
+`runs/` (tag `e2e`) the first time, and every run of them launches two small random-search runs
+from the Training tab (tags `e2elaunch`, `e2estop`, task 5.8); the first time they also train a
+3-unit random search (tag `e2e`) for the timeline test (task 5.9).
 
 ## 7. Project slash commands
 

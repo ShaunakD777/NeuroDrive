@@ -1112,3 +1112,308 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   imitation learning (Phase 6) start from, Adam at 0.01 as on sine? Does RMSProp's rounding
   sensitivity matter across machines? Whether the user can predict too-high learning-rate
   behaviour (this phase's last criterion) is for the user to confirm; the evidence is in S3.
+
+### 2026-11-02 — Task 5.1 Track set
+- Concept: a held-out test checks whether a learner learned driving or memorised one road. Each
+  held-out track changes something specific: tighter hairpins (slow down more), a long sweeper (hold
+  one small steering angle), the mirrored loop (every bend turns the other way, same order) and
+  Monza counter-clockwise (long distances, braking from top speed; the user's choice, ADR-034).
+- Key equation(s) in words: the grip speed of a bend is the square root of grip limit times radius
+  (13 m hairpin: √117 = 10.8 m/s); the ideal lap time adds distance over speed along the fastest
+  profile that respects grip, acceleration and braking; a track counts as drivable if two ideal
+  laps take at most 0.75 of the time limit. Mirroring (x, y) → (−x, y) turns a heading h into
+  π − h and flips the sign of every turn. Closing a loop built from pieces is two linear equations
+  in two open straight lengths.
+- What we observed: ratios 0.61 (Monza) to 0.68 (hairpins); the S1 hand neuron finishes the
+  mirrored loop 10/10 in exactly the loop's 86.23 s, because its weights are symmetric (−12 left,
+  +12 right, bias 0), but crashes on all 10 starts of the hairpin track and the sweeper: its fixed
+  throttle settles near 19 m/s, faster than the 10.8 m/s (13 m) and 16.4 m/s (30 m) grip speeds.
+  It drives the 70 m sweeper itself (grip 25 m/s) and crashes in the 30 m bend after it.
+- Surprise or difficulty: reflecting in the x-axis instead of the y-axis is not a bug: it is the
+  same road turned by 180°, which a car cannot tell apart. Reversing the loop is the real look-alike
+  bug: same length, same total turn, but the bends come in the opposite order; only the turn
+  sequence test catches it. Measured on 1 m samples, the hairpins look tighter (9.4 m) than they are
+  (13 m), so bends are judged by their median radius.
+- Open question: does the scripted expert (5.3) lap every track, especially the hairpins and
+  Monza's chicanes, inside the time limit? Will a learner trained only on the short loop ever learn
+  to brake from 30 m/s, or will Monza need training on `monza_cw`?
+
+### 2026-11-02 — Task 5.2 Driving metrics
+- Concept: a metric is a precise rule that turns a drive into one number; the rules must say
+  exactly what counts (only the steps a car took before its episode ended) and what happens in odd
+  cases (driving backwards scores 0, a cut-short recording reports "running").
+- Key equation(s) in words: lap k ends at the first moment progress reaches k laps, found by linear
+  interpolation between the two frames around it, t = (j − 1 + (target − P before) ÷ (P after −
+  P before)) × dt; mean speed is the average of the speeds after each step, which equals distance
+  driven ÷ time driven because the car moves by its new speed; smoothness is the average absolute
+  change in steering per step.
+- What we observed: the worked example gives 3.333 s for both laps where whole frames would say
+  3.5 s; Study S1's neuron finishes the training loop in 86.27 s with laps of 48.00 s (from rest)
+  and 38.23 s, mean speed 16.98 m/s and smoothness 0.0038; a flat-out straight-ahead car crashes
+  after 42 m and 3.43 s.
+- Surprise or difficulty: a recording keeps every action a policy returns, also for cars that have
+  stopped, so a metric that forgets to cut at the car's own end looks plausible and is wrong (the
+  planted bug gave smoothness 1.615 instead of 0.25). Only a hand-made recording caught it: in the
+  real test drives the leftover actions were either constant or absent.
+- Open question: is mean absolute steering change the right smoothness for comparing methods, or
+  will RL policies with noisy-but-harmless steering look worse than they drive?
+
+### 2026-11-02 — Task 5.3 Scripted expert
+- Concept: a teacher with privileged information. The expert drives from its exact place on the
+  centreline and the bends ahead, which the network never sees; imitation (Phase 6) will show what
+  a student can and cannot copy from it.
+- Key equation(s) in words: pure pursuit steers along the circle that leaves the car in its
+  current direction and passes through a point 8 m + 0.5 s × speed ahead, with curvature
+  2 sin(angle to the point) ÷ distance to it; the wheel angle is atan(curvature × wheelbase). The
+  speed profile is the square root of (0.8 × grip × radius) in each bend, lowered before it so
+  that braking at 11.2 m/s² is enough; throttle is 0.5 × (target speed − speed).
+- What we observed: it finishes all 60 exam starts (6 tracks × 10) with no crash; its slowest
+  finishes use 0.63 (Monza) to 0.74 (sweeper) of the time limit and are 4.5–10 % slower than the
+  ideal laps of task 5.1; it never strays more than 2.23 m from the centreline (on the hairpins);
+  loop and mirror give identical times; it still finished every start with full grip and full
+  braking, a 4× stiffer speed control or half the look-ahead.
+- Surprise or difficulty: the first prototype worked at once, so the risk was in the tests, not
+  the driver: a braking-distance test assumed the car brakes straight to the hairpin's slowest
+  point, but the averaged curvature tightens gradually and braking starts 39 m before it, not
+  36 m. The fix tests the planned deceleration itself.
+- Open question: the expert is bound to one world because the Policy protocol passes only the
+  observations; will DAgger (6.6), which labels the student's states, want the expert to label a
+  state without a world?
+- Follow-up (2026-11-02, user request): the expert is now a live driver in the app (ADR-035, api
+  v1.12). Discussed whether to give it a racing line: kept on the centreline for now, so that
+  whether evolution or RL discovers corner cutting on its own stays an open, measurable question.
+
+### 2026-11-02 — Task 5.4 Driving Exam v1
+- Concept: a standardised test. Every driver takes the same fixed exam (5 tracks, 10 starts each,
+  2 laps, per-track time limits) and is marked on the same sheet; changing the exam means a new
+  version, so old and new cards are never mixed. A card is trustworthy because it is deterministic
+  and because every number on it can be recomputed from a recorded drive.
+- Key equation(s) in words: start i sits at fraction 0, 0.2, 0.4, 0.6 or 0.8 of the lap, centred
+  or 1.5 m to the left; the held-out summary pools all 40 held-out episodes, which weighs every
+  held-out track equally because each has 10 (completion 1, 0, 0.5, 1 pools to 25 / 40 = 0.625).
+- What we observed: the expert completes all 50 episodes (best laps 32.0 s on the loop, 114.1 s on
+  Monza; 11.9 s of computing for 172,809 car-steps); Study S1's neuron completes the loop and the
+  mirror but crashes on every hairpin, sweeper and Monza start (held-out completion 0.25, crash rate
+  0.75); a random network stalls on every start.
+- Surprise or difficulty: a network's output for the same car differs by about 2e-16 between a
+  batch of 10 and a batch of 1 (the matrix routines add in another order), so "the exam matches a
+  recording" holds only when the recording is made exactly as the exam drives: 10 cars, in start
+  order. The exam fixes that layout.
+- Open question: the exam cost about 12 s for the expert; with checkpoints examined on a schedule
+  (5.5), how often can a run afford it, and should early checkpoints of bad drivers (which end fast)
+  be examined more often than good ones?
+- Follow-up (2026-11-02, user decision, ADR-036): the held-out summary no longer pools lap times;
+  it lists each held-out track's median best lap, because lap times compare only within a track
+  (the pooled 52.9 s sat between a 38 s and a 67 s track and described neither).
+
+### 2026-11-02 — Task 5.5 Learner contract v1 + Runner
+- Concept: checkpoint and resume. Continuing a run exactly needs the whole learner state, not
+  just the weights: counters and, above all, the random generator's state, or the "random" draws
+  after the restart differ and the run quietly becomes another experiment. Budgets (units,
+  environment steps, wall-clock seconds) decide when a run stops, so methods compare at equal cost.
+- Key equation(s) in words: a run stops after the first unit whose running total reaches a limit
+  (300 steps a unit and a 1,000-step limit stop after unit 4, at 1,200); within a unit the order
+  is train, metrics line, checkpoint and exam, state last, so on resume everything after the
+  state's unit is cut away and recomputed with the same random numbers.
+- What we observed: a 12-unit test run killed in another process at four different moments
+  (mid unit 7, after unit 7's metrics but before its state, in the middle of writing the state,
+  mid unit 1) and then resumed gave exactly the uninterrupted run's metrics, checkpoints, exam
+  cards and final generator state. Forgetting the generator broke 3 of the 4; forgetting the
+  cut-back broke the 2 that had written a line after the last state. For a trivial learner the
+  exams cost 2.2 s against 0.03 s of training, which is why exam time is kept off the clock.
+- Surprise or difficulty: the kill "in unit 1, before any state" resumes correctly with a fresh
+  learner, because a freshly built learner with the same seed is the unit-0 state; and a rename
+  is all-or-nothing, so a state file is never seen half-written.
+- Open question: for real methods (random search in 5.7, GA in Phase 7) a unit can take minutes;
+  is one saved state per unit still cheap when the state is a whole population?
+
+### 2026-11-02 — Task 5.5b SQLite mirror
+- Concept: relational tables and a mirror. The run folders stay the master copy; the database is
+  a copy in tables (one row per fact, picked out by a primary key) so that a question across many
+  runs is one SQL query. Because the folders are written first and the database can always be
+  rebuilt from them, a database problem never costs a training run.
+- Key equation(s) in words: the SQL median uses the same rule as `stats.percentile`: sort the n
+  values, h = (n − 1) × 0.5, median = v[floor h] + (h − floor h) × (v[ceil h] − v[floor h]);
+  0.02, 0.05, 0.03, 0.08 give 0.03 + 0.5 × 0.02 = 0.04, and five seeds' final held-out progress
+  gives exactly the value computed from the exam cards on disk.
+- What we observed: the database written unit by unit equals one rebuilt from the folders, also
+  after deleting the file and after runs killed at five moments and resumed. The fifth moment
+  (between a unit's folder writes and its database rows) was added because a planted bug, "no
+  re-copy on resume", passed the four older kill tests: with the database written after the
+  state it can only fall behind, never get ahead. A copy of the 84 Phase 3–4 folders rebuilt into
+  2.38 million metrics rows; one query then listed every sweep's final losses.
+- Surprise or difficulty: the existing tests found three things: toy metrics contain lists
+  (`grad_norm` per layer), checkpoint 0 is saved twice after a kill in unit 1, and the wall-clock
+  stop compared the limit with the clock after the unit's checkpoint and state writes instead of
+  the recorded time, so a run could stop "for wall_clock" after a line that was still below the
+  limit. The stop rule now reads the recorded time, like the step totals.
+- Open question: storing every metric value as its own row makes the database 2.5 times the size
+  of the folders and adds 0.45 ms per unit; for millisecond toy epochs that is a quarter of the
+  time. Should fast learners mirror every N units, or summary metrics only?
+
+### 2026-11-02 — Task 5.6 Baselines
+- Concept: baselines as controls. A learned method's exam score only means something between a
+  floor (an untrained random network: no learning at all) and a ceiling (the scripted expert,
+  which reads the track), and next to the cheap human solution (the hand-wired neuron).
+- Key equation(s) in words: the neuron steers tanh(−12 · d_left + 12 · d_right); a wall close on
+  the left (d_left 0.3, d_right 0.5) gives z = 2.4 and steer 0.984, hard right. Random networks
+  are summarised across seeds by the median and IQR, never by one seed.
+- What we observed: the expert completes every start of every exam track; the neuron completes
+  the training loop and its mirror image and nothing else (held-out completion 0.25); the ten
+  random networks complete nothing, and five of them stall on all 50 starts. Three of those
+  (seeds 3, 4, 8) output a negative throttle even when every ray reads "open"; the other two
+  (seeds 7, 9) give a positive open-road throttle, so their stall comes from what the rays see at
+  the real starts. Held-out progress of the random networks: median 0.000 [IQR 0.000 to 0.002].
+- Surprise or difficulty: two of the three baselines are not networks, so a "run" had to become
+  something that can exist without a checkpoint; the config is then the complete description of
+  the policy. Also, the browser tests ran once against a server the user had open on port 8000
+  (their ports are fixed in the configs); the verification was then repeated on separate ports.
+- Open question: random search (5.7) starts from these random networks; how many tries does it
+  need before the first one even moves off the line?
+- Follow-up (2026-11-02, user request): the hand-wired neuron now has a checkpoint. It is the
+  same neuron written as a 7 → 2 network: one row for steering (−12 and +12 on the two side rays)
+  and one for throttle (no weights, bias atanh(0.24), so tanh gives exactly 0.24). The matrix
+  product adds its seven terms in a different order from the neuron's two-term sum, so the two
+  disagree in the last bit (9e-16); over the whole exam that never changes an outcome and only
+  moves numbers beyond the 12th digit. The expert stays without a checkpoint: it is not a network.
+  Two browser tests that failed now and then were reading the screen before the server's reply
+  (or the redrawn view) had arrived; they now wait for it.
+
+### 2026-11-02 — Task 5.7 Random search learner
+- Concept: gradient-free learning and the null model. Random search uses nothing but a score per
+  network and selection: each unit draws 20 fresh random networks, scores them on the training
+  track and keeps the best one so far. Every smarter search must beat it at an equal budget.
+- Key equation(s) in words: per start, fitness f = progress (as a share of 2 laps, up to 1) plus,
+  for a finisher, the share of the time limit left over; a network's fitness is the mean over
+  the 10 exam starts of the training track. Two starts, one finishing at 69 s of 92 s (1.25) and
+  one crashing at 30 % (0.30), give 0.775. With a fixed evaluation, the best so far can only rise.
+- What we observed: 2,000 networks (100 units) found a network finishing 6 of 10 training starts
+  (unit 23, fitness 0.865) and then a better-scoring one (unit 51, 0.893) that never finishes: it
+  drives at 12–14 m/s, crashes almost nowhere, and runs out of time at about 89 % of two laps on
+  every start. Selection preferred safe and slow to fast and fragile, because steady progress on
+  all 10 starts outweighs 6 finishes with a small time bonus. On the held-out tracks the slow
+  driver reaches 81 % progress (the hand-wired neuron 23 %) but completes nothing (the neuron 25 %).
+- Surprise or difficulty: most of the time went into the sensors of cars that had already
+  stopped; computing them only for running cars made a unit 9× faster with identical results.
+- Open question: is "safe but too slow" a fitness exploit? A stronger time bonus, or completion
+  counted separately, might change which networks win; Study S4 (5.10) and S6 (Phase 7) can test it.
+
+### 2026-11-02 — Task 5.8 Run launching and progress streaming
+- Concept: training as a separate process that only writes files, and a server that follows those
+  files by polling and pushes what is new over a WebSocket. Nothing about the learner is known to
+  the watcher; it reads the run folder contract, so terminal runs and every later method show up too.
+- Key equation(s) in words: tailing a growing file. With o the bytes already read and n the file's
+  size now, read the bytes from o to n, keep everything up to the last newline, and move o forward
+  by exactly that much: two 40-byte lines give o = 80; a third line with only 25 of its 40 bytes
+  written leaves o at 80 (nothing sent); once it is complete, o = 120. The browser learns of a line
+  at most one poll (0.5 s) after it is written.
+- What we observed: a launch answers in about 0.7 s (the time for the new process to create its
+  folder); a 2,000-epoch toy XOR run streams in batches of about 340 lines per poll; a random-search
+  run adds one point every 3–7 s (the exams of better networks take longer). A run launched from
+  the app equals the same run trained directly, folder for folder. Killing the server mid-run left
+  the training running; it finished all 6 units with its exam cards, and a restarted server sees it.
+- Surprise or difficulty: the first launch log held an absolute path with the user name in it,
+  because the server passed an absolute runs folder; the process now runs in the runs folder's
+  parent and is given the folder's name only. Resuming a failed run that a browser was already
+  showing would have doubled its lines, so a run whose tracking starts always gets its whole
+  history sent again. On a phone the third Experiment tab no longer fitted beside the drawer.
+- Open question: when 4 runs train at once, how much does each slow down? A parallel sweep for
+  Study S4 (5.10) would need that number.
+- Follow-up (2026-11-02, user report): the hover read-outs of the new Training chart and of the
+  toy lab's loss chart and prediction plot were still SVG text with a light outline, which smears
+  when the browser scales the chart up (about 2× on a 1917 px screen); "Compare runs" had already
+  switched to an HTML box in task 4.7b. All three now use that box (`ChartHover.tsx`), which keeps
+  its own text size and stays sharp.
+
+### 2026-11-02 — Task 5.9 Replay endpoint and run timeline
+- Concept: replay by re-simulation. A drive is not stored as a film; it is computed again from what
+  fully decides it (network, track, start positions, fixed time step), so the replay of a
+  checkpoint is its exam drive, to the last digit. And a weight diff: what learning changed, weight
+  by weight, between two checkpoints.
+- Key equation(s) in words: change of a weight = new value − old value; drawn as change ÷ (largest
+  change in the network), blue up, orange down, unchanged not drawn ([0.5, −1, 2] → [0.75, −1, 1]:
+  changes [0.25, 0, −1], drawn at [0.25, 0, 1]). New bests in random search: unit k beats all k − 1
+  earlier independent units with probability 1 ÷ k, so n units give H_n = 1 + 1/2 + … + 1/n new bests
+  on average (H_50 = 4.50; the user's 50-unit run had 6).
+- What we observed: every checkpoint of a test run, replayed on the training loop and on the
+  hairpins, ended car for car exactly as its exam card says. Between two different random-search
+  bests every line of the diagram changes (largest change 0.97 in the e2e run); between equal bests
+  nothing does: random search has no continuity from one best to the next, which later methods
+  (GA, gradient descent) will.
+- Surprise or difficulty: the planned design (a recording sent to the browser and a separate replay
+  mode) would have doubled every view's data path; loading the checkpoint as one more live driver
+  gave the timeline every existing tool (inspector, what-if, trail) for free. The first test run
+  improved only at unit 1, which is on the schedule anyway, so the new-best rule went untested
+  until the fixture used a seed with improvements at units 3 and 4.
+- Open question: random search's diffs are all-or-nothing. What will a GA's diffs look like: a few
+  strong lines (mutations), or a blend of two parents (crossover)?
+
+### 2026-11-02 — Task 5.10 Study S4: random search vs baselines
+- Concept: comparing at an equal budget, and selection overfitting. A learner is judged by the
+  exam score of what it holds after B environment steps, at many values of B, against fixed
+  baselines. Choosing the best of many candidates on one fixed test partly chooses what suits that
+  test, so its score there can rise while its score elsewhere falls; only a held-out test shows it.
+  Also the `study` field in meta.json and a `studies` table in the database (db v2) that is derived
+  from the runs and holds nothing new.
+- Key equation(s) in words: S(B) = the exam card of the unit that found the best network held
+  after the last unit whose step total is at most B (steps 140k, 160k, 185k, 205k after units
+  6–9 and best unit 7 after unit 8: at B = 200k the card of unit 7). B* = the first budget at which
+  the median over seeds is above a baseline. Grip limit: tightest circle radius = v² / a_lat
+  (17.4² / 9 = 33.6 m, more than a 30 m bend).
+- What we observed: 5 seeds × 4,000 networks (4.5 M steps each, 21 minutes in parallel). Random
+  search beats random networks from its first unit (held-out progress, paired difference +0.235).
+  Its median held-out progress passed the hand-wired neuron at 0.78 M steps, reached 0.813 at
+  1.7–3.0 M, then fell back to 0.236 (neuron 0.234): three seeds found networks that finish all 10
+  training starts (fitness above 1 thanks to the time bonus) and drive the held-out tracks almost
+  exactly like the neuron, master of the loop, crashing elsewhere. The two seeds still holding
+  slow, safe networks generalise far better (0.81 and 0.99; seed 1 finishes Monza and the mirror).
+  No network ever brakes: all are cruise controllers (speed 80 × throttle) that only lift off.
+- Surprise or difficulty: more budget made the held-out result worse; "at what budget" has no
+  single answer when the fitness rewards the wrong thing. The failure case (seed 3, unit 160 on
+  the sweeper) crashes at the same metre on all 10 starts, 3 m/s too fast for a 30 m bend; the
+  unit-60 network it replaced, 3 m/s slower, never crashes there. Writing files with Python's
+  `write_text` on Windows turned every line ending into CRLF; the patched files had to be
+  converted back.
+- Open question: would a fitness that rewards margin (or is measured on more varied roads) keep
+  the slow, general drivers? And does the GA, which builds on its best networks instead of
+  starting afresh, fall into the same trap sooner? Study S6.
+- Follow-up 2026-11-03 (10 seeds, each timed alone): seeds 5-9 changed the answer. With 10 seeds
+  the median held-out progress beats the neuron only between 0.24 M and 0.95 M steps (peak 0.354,
+  not 0.813) and ends at 0.173, below the neuron's 0.234, so H2 no longer holds. The first five
+  seeds happened to include both of the two seeds (0 and 1) whose final network generalises: a
+  small sample flattered the method. Six of ten seeds end on finishers; two slow seeds (6, 8) are
+  slow but not safe (they fail on the mirror and Monza), so slowness alone is not the reason seeds
+  0 and 1 generalise. Timing: alone a seed trains at about 12,400 steps/s (6 minutes for 4.5 M
+  steps); five side by side ran at about 4,900 each, slower per seed but about twice the total
+  throughput. Every seed retrained alone gave identical files, so parallel running changes only
+  the clock, and the clock also moved with other load on the machine (seeds 5-8's first times).
+
+### 2026-11-03 — Phase 5 complete (tag `phase-5`)
+- What was built: a track set (the training loop, its mirror and three held-out tracks); driving
+  metrics per car (`experiment/metrics.py`); a scripted pure-pursuit expert (`env/experts.py`);
+  the Driving Exam v1 (`experiment/exam.py`: 10 starts per track, 2 laps, one exam card per
+  checkpoint); learner contract v1 and runner v1 with budgets, exams at checkpoints and exact
+  resume; the SQLite mirror of the run folders (db v2, rebuildable, never stops a run); baselines
+  as run folders (random networks, a hand-wired neuron, the expert); random search as the first
+  driving learner; training runs launched, followed and stopped from the app (`/ws/runs`); a run
+  timeline that replays any checkpoint as a live driver in every view, with weight diffs; and
+  study S4. 1,687 Python tests (one PyTorch test skipped without PyTorch), 156 web unit tests,
+  70 browser tests.
+- What was learned: a yardstick must be fixed before the thing it measures (same starts, same
+  tracks, held-out tracks the learner never sees); a learner is compared at equal budget, in
+  environment steps, against baselines that cost nothing; the score a learner optimises
+  (fitness on the training starts) and the score that matters (held-out progress) can drift
+  apart, which is selection overfitting; and a median over five seeds can flatter a method that
+  ten seeds do not (S4: with 10 seeds random search beats the hand-wired neuron on held-out
+  tracks only briefly, between 0.24 M and 0.95 M steps, and ends below it).
+- Decisions: ADR-034 to ADR-043 (track set; the expert as a live driver; lap times per track;
+  learner, run folder and runner v1; the mirror as built; baseline runs; random search; launching
+  and streaming runs; replaying checkpoints; studies in the run folders and db v2).
+- Fixed along the way: CRLF line endings after writing files from Python on Windows; hover text
+  on the Training and loss charts (now sharp HTML boxes). During this phase's closing checks one
+  browser test (neuron view, random-start checkbox) failed once in a full run and passed alone
+  and in the next full run; treated as a timing flake, not investigated further.
+- Open questions: would a fitness that rewards margin, or a wider set of training starts, keep
+  the slow, general drivers that random search found early? Does the genetic algorithm (Phase 7),
+  which builds on its best networks, fall into the same trap sooner? What causes the neuron-view
+  browser test to fail once in a while?

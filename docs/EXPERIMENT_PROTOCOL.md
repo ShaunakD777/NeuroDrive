@@ -27,34 +27,61 @@
 5. **Seeds:** at least 5, and 10 for headline studies. Report the median and interquartile range
    (IQR). Never report a single best run as the result.
 6. **Baselines are always shown:** random network, random search, hand-wired neuron, scripted expert.
+   Since task 5.6 (ADR-039) `nd baseline --runs-dir <folder>` makes the three fixed ones as run folders
+   with exam cards: the random network for seeds 0–9 (one sweep; report the median and IQR), the
+   hand-wired neuron (`configs/baselines/hand_neuron.yaml`) and the scripted expert (deterministic, one
+   run each). Random search is a learner (5.7) and is run like any other method.
 7. **Held-out tracks** are never used for training, tuning or checkpoint selection.
 8. **Checkpoint selection** uses the training track only (or a validation track), never the
    held-out tracks.
 9. **Failure analysis is required:** every study inspects at least one failure in the linked views.
-10. **Reproducibility:** each study lists its configs, seeds, run IDs and the git commit.
+10. **Reproducibility:** each study lists its configs, seeds, run IDs and the git commit. Since
+    task 5.10 (ADR-043) every run made for a study carries `"study": "<ID>"` in its meta.json
+    (`--study` on `nd train`, `nd sweep`, `nd baseline`), including its own baseline runs, so the
+    study's runs are found with one query (`experiment/db.py: runs_of_study`).
 
 ## 3. Driving Exam v1
 
-- **Tracks:** `train_loop_01` (reported separately) + every track with `split: heldout`.
+- **Tracks:** `train_loop_01` (reported separately) + every track with `split: heldout`. Since
+  task 5.1 (ADR-034) the held-out tracks are `hairpins_01` (two 13 m hairpins, 1,540 m, 193 s),
+  `sweeper_01` (a 70 m bend held for 240 m, 856 m, 107 s), `train_loop_01_mirror` (the training
+  loop reflected left to right, 731 m, 92 s) and `monza_ccw` (half-size Monza driven
+  counter-clockwise, 2,900 m, 363 s). `monza_cw` has split `train` and is not examined; studies may
+  train on it as a long road. Exam v1 fixes this list (`experiment/exam.py: EXAM_V1`, task 5.4);
+  a test fails if a held-out track file is added, so a new track means a new exam version.
 - **Starts per track:** 5 positions at 0 %, 20 %, 40 %, 60 % and 80 % of the track length,
   centred and aligned with the tangent, plus the same 5 with a +1.5 m lateral offset → 10 episodes
   per track.
 - **Limits:** target 2 laps; time limit per track, ceil(2 × track length / 16 m/s) (ADR-022:
-  92 s on `train_loop_01`, 363 s on the Monza tracks); stall rule as in ARCHITECTURE §6.6. (Until
+  92 s on `train_loop_01`, 363 s on the Monza tracks; every track's ideal 2-lap time, from the
+  grip-limited speed profile, is at most 0.75 of its limit, `tests/env/test_track_set.py`); stall
+  rule as in ARCHITECTURE §6.6. (Until
   2026-10-18 this read "90 s"; it changed before the exam was first implemented, and Study S1
   used 90 s.)
 - **Policy mode:** deterministic (RL policies use their mean action).
-- **Per-episode metrics:**
-  - `progress_m`: cumulative forward progress
-  - `progress_frac`: progress ÷ (2 × track length), capped at 1
-  - `completed`: the target laps were reached
+- **Per-episode metrics** (exact definitions in `experiment/metrics.py`, task 5.2; only the steps
+  a car took before its episode ended count, never its frozen frames or later actions):
+  - `progress_m`: cumulative forward progress at the end
+  - `progress_frac`: progress ÷ (2 × track length), capped at 1 and, since task 5.2, at 0 below
+    (driving backwards scores 0)
+  - `completed`: the target laps were reached (status finished)
   - `crashed`: the episode ended by leaving the road
-  - `lap_time_s`: time of each completed lap
-  - `mean_speed`: m/s while alive
+  - `lap_time_s` (`lap_times_s`, plus `best_lap_s`): time of each completed lap; a lap ends at the
+    first moment progress reaches k × track length, found by linear interpolation between frames;
+    laps are counted from each car's own start position
+  - `mean_speed`: m/s while alive, the mean of the speeds after each step taken (= distance
+    driven ÷ time driven)
   - `smoothness`: mean absolute change in steering per step (lower is smoother)
   - `time_to_crash_s`: if crashed
-- **Aggregates per track and overall:** completion rate, crash rate, median and IQR of
-  `progress_frac`, median best lap time (completed episodes only), median smoothness.
+  - Added in task 5.2, before the exam was first implemented: `status` (finished, crashed,
+    stalled, timeout), `end_s_m` (where on the lap the episode ended), plus `steps`, `time_s`
+    and `laps`.
+- **Aggregates per track and overall** ("overall" = the training track on its own, plus all
+  held-out episodes pooled; each held-out track has 10 episodes, so each weighs the same):
+  completion rate, crash rate, median and IQR of
+  `progress_frac`, median best lap time (completed episodes only), median smoothness. Lap times
+  are never pooled across tracks (they compare only within a track, ADR-022): the held-out
+  summary gives each held-out track's median best lap instead (ADR-036, 2026-11-02).
 - The exam spec version is stored with every result. Changing the exam requires an ADR and a new
   version, and old results are not compared with new ones.
 
@@ -76,10 +103,10 @@
 | S3 | 4 | How do learning rate and optimizer choice affect convergence and stability? |
 | S4 | 5 | Does random search beat the baselines, and at what budget? |
 | S5a–c | 6 | Does low imitation loss mean good driving? Where does cloning fail, and does DAgger fix it? Human vs scripted teacher? |
-| S6 | 7 | How do population size, mutation and fitness design shape evolution? Does GA beat random search? |
+| S6 | 7 | How do population size, mutation and fitness design shape evolution? Does GA beat random search? Does evolution discover a racing line (cutting bends where the centreline expert does not)? |
 | S7 | 8 | Imitation vs evolution: which learns more per unit of experience, and which generalises? |
 | S8a/b | 9 | ES vs GA; fixed vs evolving topology. |
-| S9 | 10 | RL vs GA vs imitation; how does reward design change behaviour? |
+| S9 | 10 | RL vs GA vs imitation; how does reward design change behaviour? Does RL discover a racing line? |
 | S10 | 11 | Do hybrids beat their parts? |
 | S11 | 12 | Which methods generalise and stay robust, and what does that teach about AI? |
 

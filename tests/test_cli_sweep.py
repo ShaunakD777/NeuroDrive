@@ -1,5 +1,8 @@
-"""Tests for `nd sweep` (cli.py) and parse_seeds / sweep_seeds (experiment/runner.py), task 4.7a."""
+"""Tests for `nd sweep` (cli.py) and parse_seeds / sweep_seeds (experiment/runner.py), task 4.7a;
+`--study` (task 5.10)."""
 
+import json
+from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -8,6 +11,7 @@ from typer.testing import CliRunner
 
 from neurodrive.cli import app
 from neurodrive.experiment.config import load_config
+from neurodrive.experiment.db import DB_NAME, connect, runs_of_study
 from neurodrive.experiment.runner import parse_seeds, sweep_seeds, train_toy_run
 from neurodrive.experiment.store import RunStore
 
@@ -76,10 +80,27 @@ def test_cli_sweep_prints_runs_and_summary(tmp_path):
     assert result.exit_code == 0, result.output
     assert "(5 runs)" in result.stdout
     assert "final loss: median" in result.stdout and "over 5 seeds" in result.stdout
-    folders = sorted(p.name for p in tmp_path.iterdir())
+    folders = sorted(p.name for p in tmp_path.iterdir() if p.is_dir())  # not neurodrive.db
     assert [f.rsplit("-", 1)[1] for f in folders] == ["s0", "s1", "s2", "s3", "s4"]
     sweeps = {RunStore(tmp_path / f).read_meta()["sweep"] for f in folders}
     assert len(sweeps) == 1
+    assert all("study" not in RunStore(tmp_path / f).read_meta() for f in folders)
+
+
+def test_cli_sweep_with_a_study_tags_every_run_and_fills_the_studies_table(tmp_path):
+    args = ["sweep", "--config", str(CONFIGS / "toy_sine.yaml"), "--seeds", "0-2", "--epochs", "3"]
+    result = runner.invoke(app, [*args, "--study", "S4", "--runs-dir", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+    metas = [RunStore(p).read_meta() for p in tmp_path.iterdir() if p.is_dir()]
+    assert [m["study"] for m in metas] == ["S4"] * 3
+    with closing(connect(tmp_path / DB_NAME)) as conn:
+        assert runs_of_study(conn, "S4") == sorted(m["run_id"] for m in metas)
+        row = conn.execute("SELECT n_runs, sweeps FROM studies WHERE study_id = 'S4'").fetchone()
+    assert row == (3, json.dumps([metas[0]["sweep"]]))
+    bad = tmp_path / "bad"
+    result = runner.invoke(app, [*args, "--study", "S4/x", "--runs-dir", str(bad)])
+    assert result.exit_code == 2 and "study must be letters" in result.output
+    assert not bad.exists()
 
 
 def test_cli_sweep_refuses_bad_seeds_and_configs(tmp_path):

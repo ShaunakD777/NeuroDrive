@@ -1,5 +1,6 @@
 import { useMemo, useState, type MouseEvent } from "react";
 
+import { ChartHover } from "./ChartHover";
 import { formatNumber, formatPowerOfTen, linePath, linearScale, logScale, logTicks, nearestIndex } from "./charts";
 
 const W = 440;
@@ -57,6 +58,7 @@ export function LossChart({
   return (
     <figure className="toy-figure" data-testid="loss-chart">
       <figcaption className="toy-figure-title">Loss after each epoch</figcaption>
+      <div className="cmp-plot">
       <svg
         className="toy-svg"
         viewBox={`0 0 ${W} ${H}`}
@@ -122,18 +124,16 @@ export function LossChart({
           );
         })}
         {hoverPoint !== null && (
-          <g className="toy-tooltip" pointerEvents="none">
-            <circle className="toy-hover-dot" cx={px[hoverPoint]} cy={py[hoverPoint]} r={4} />
-            <text
-              x={Math.min(px[hoverPoint] + 8, W - M.right - 4)}
-              y={Math.max(py[hoverPoint] - 8, M.top + 10)}
-              textAnchor={px[hoverPoint] > W - 150 ? "end" : "start"}
-            >
-              {`epoch ${curve.unit[hoverPoint]}: loss ${formatNumber(curve.loss[hoverPoint])}`}
-            </text>
-          </g>
+          <circle className="toy-hover-dot" pointerEvents="none" cx={px[hoverPoint]} cy={py[hoverPoint]} r={4} />
         )}
       </svg>
+      {hoverPoint !== null && (
+        <ChartHover x={px[hoverPoint]} y={M.top} width={W} height={H} testId="loss-hover">
+          <div className="cmp-hover-title">epoch {curve.unit[hoverPoint]}</div>
+          <div>loss {formatNumber(curve.loss[hoverPoint])}</div>
+        </ChartHover>
+      )}
+      </div>
     </figure>
   );
 }

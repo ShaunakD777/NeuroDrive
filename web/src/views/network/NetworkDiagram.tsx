@@ -1,7 +1,8 @@
 import { memo, useMemo, useState } from "react";
 
-import type { NetworkMessage, NetworkTrace } from "../../api/generated";
+import type { CheckpointDiff, NetworkMessage, NetworkTrace } from "../../api/generated";
 import { useSelection } from "../../state/selection";
+import { changeStroke } from "./diff";
 import {
   columnTitle,
   edgeDescription,
@@ -72,6 +73,8 @@ interface EdgesProps {
   /** The selected connection, drawn with an outline. */
   selected: Hover;
   onHover: (h: Hover) => void;
+  /** A checkpoint replay's change since the previous checkpoint (task 5.9): lines show it. */
+  change: CheckpointDiff | null;
 }
 
 /**
@@ -79,7 +82,7 @@ interface EdgesProps {
  * frame. Each weight has a visible line and a wider transparent "hit" line on top, so thin lines
  * can still be pointed at and clicked.
  */
-const Edges = memo(function Edges({ network, nodes, hover, selected, onHover }: EdgesProps) {
+const Edges = memo(function Edges({ network, nodes, hover, selected, onHover, change }: EdgesProps) {
   const toggleConnection = useSelection((s) => s.toggleConnection);
   const edges = useMemo(() => collectEdges(network), [network]);
   const layers = network.layer_sizes.length;
@@ -92,6 +95,12 @@ const Edges = memo(function Edges({ network, nodes, hover, selected, onHover }: 
         const dimmed = !isRelated(hover, e);
         const isSelected = sameEdge(selected, e);
         const ref = { layer: e.layer, from: e.from, to: e.to };
+        // Normally sign and size of the weight; in a replay with "show change", of its change.
+        const c = change?.weight_change[e.layer]?.[e.to]?.[e.from] ?? null;
+        const stroke =
+          c === null
+            ? { sign: signOf(e.weight), width: edgeWidth(e.weight), opacity: edgeOpacity(e.weight) }
+            : changeStroke(c);
         return (
           <g key={`${e.layer}-${e.from}-${e.to}`}>
             <line
@@ -99,11 +108,12 @@ const Edges = memo(function Edges({ network, nodes, hover, selected, onHover }: 
               y1={a.y}
               x2={b.x}
               y2={b.y}
-              className={`net-edge net-edge-${signOf(e.weight)}${dimmed ? " net-dim" : ""}${isSelected ? " net-edge-selected" : ""}`}
-              strokeWidth={edgeWidth(e.weight) + (isSelected ? 2 : 0)}
-              strokeOpacity={isSelected ? 1 : edgeOpacity(e.weight)}
+              className={`net-edge net-edge-${stroke.sign ?? "none"}${dimmed ? " net-dim" : ""}${isSelected ? " net-edge-selected" : ""}`}
+              strokeWidth={stroke.width + (isSelected ? 2 : 0)}
+              strokeOpacity={isSelected ? 1 : stroke.opacity}
               data-testid={`net-edge-${e.layer}-${e.from}-${e.to}`}
               data-weight={e.weight}
+              data-change={c ?? undefined}
               data-selected={isSelected}
             />
             <line
@@ -125,6 +135,28 @@ const Edges = memo(function Edges({ network, nodes, hover, selected, onHover }: 
     </g>
   );
 });
+
+function ChangeLegend({ change }: { change: CheckpointDiff }) {
+  return (
+    <div className="net-legend" data-testid="network-change-legend">
+      <span className="net-legend-item">
+        <svg width="38" height="14" aria-hidden="true">
+          <line x1="2" y1="7" x2="36" y2="7" className="net-edge net-edge-pos" strokeWidth="3" />
+        </svg>
+        weight increased since unit {change.from_unit}
+      </span>
+      <span className="net-legend-item">
+        <svg width="38" height="14" aria-hidden="true">
+          <line x1="2" y1="7" x2="36" y2="7" className="net-edge net-edge-neg" strokeWidth="3" />
+        </svg>
+        decreased
+      </span>
+      <span className="net-legend-item">
+        thicker = bigger change (largest: {change.max_abs_delta}); unchanged weights are not drawn
+      </span>
+    </div>
+  );
+}
 
 function Legend() {
   return (
@@ -175,6 +207,7 @@ export function NetworkDiagram({
   car,
   compact = false,
   atStep = null,
+  change = null,
 }: {
   network: NetworkMessage;
   trace: NetworkTrace;
@@ -182,6 +215,8 @@ export function NetworkDiagram({
   compact?: boolean;
   /** The earlier step the trace belongs to (task 2.11), or null for the present. */
   atStep?: number | null;
+  /** Draw the lines by this change since the previous checkpoint instead of by weight (task 5.9). */
+  change?: CheckpointDiff | null;
 }) {
   const [hover, setHover] = useState<Hover>(null);
   const selectedNeuron = useSelection((s) => s.neuron);
@@ -254,7 +289,7 @@ export function NetworkDiagram({
           </text>
         ))}
 
-        <Edges network={network} nodes={nodes} hover={focus} selected={selected} onHover={setHover} />
+        <Edges network={network} nodes={nodes} hover={focus} selected={selected} onHover={setHover} change={change} />
 
         {nodes.map((column, layer) =>
           column.map((p, index) => {
@@ -318,7 +353,7 @@ export function NetworkDiagram({
           <p className="net-readout" data-testid="network-readout">
             {hoverText}
           </p>
-          <Legend />
+          {change ? <ChangeLegend change={change} /> : <Legend />}
         </>
       )}
     </div>

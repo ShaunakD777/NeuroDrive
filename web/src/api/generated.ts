@@ -30,10 +30,40 @@ export interface CarColumns {
 }
 
 /**
+ * Answer to ``GET /api/runs/{id}/checkpoints/{unit}/diff?from={from_unit}``: what changed.
+ *
+ * ``weight_delta[l][j][i]`` = W_l[j, i] at ``unit`` minus the same weight at ``from_unit``
+ * (``bias_delta`` likewise); ``max_abs_delta`` = M, the largest |delta| over every weight and
+ * bias; ``weight_change`` = delta / M, so between -1 and 1: the sign says up or down, the size
+ * how strongly to draw it (all 0 when nothing changed). Rounded to 4 decimals (deltas to 6
+ * significant digits).
+ */
+export interface CheckpointDiff {
+  bias_change: number[][];
+  bias_delta: number[][];
+  from_unit: number;
+  layer_sizes: number[];
+  max_abs_delta: number;
+  run_id: string;
+  unit: number;
+  weight_change: number[][][];
+  weight_delta: number[][][];
+}
+
+/**
  * Answer to ``GET /api/runs/{id}/checkpoints``: the units that have a saved network.
  */
 export interface CheckpointList {
   run_id: string;
+  units: number[];
+}
+
+/**
+ * ``/ws/runs``: the watched run's checkpoint units, all of them, whenever the list changes.
+ */
+export interface CheckpointMessage {
+  run_id: string;
+  type: "checkpoint";
   units: number[];
 }
 
@@ -51,6 +81,14 @@ export interface CheckpointNetwork {
   run_id: string;
   unit: number;
   weights: number[][][];
+}
+
+/**
+ * A saved network: checkpoint ``unit`` of run ``run`` (a run folder name).
+ */
+export interface CheckpointRef {
+  run: string;
+  unit: number;
 }
 
 /**
@@ -149,6 +187,48 @@ export interface CompareRun {
 }
 
 /**
+ * One training config of ``GET /api/configs``: a YAML file in ``configs/`` that ``nd train``
+ * accepts.
+ *
+ * ``length_field`` names what the run's length counts (``epochs`` for toy configs, ``units``
+ * for random search) and ``length`` is the file's value (null when a random-search budget has
+ * no unit limit). ``task`` is the toy task (null for random search).
+ */
+export interface ConfigInfo {
+  length: number | null;
+  length_field: "epochs" | "units";
+  method: "toy" | "random_search";
+  name: string;
+  seed: number;
+  tag: string;
+  task: string | null;
+}
+
+/**
+ * Answer to ``GET /api/configs``: the training configs, by file name.
+ */
+export interface ConfigListResponse {
+  configs: ConfigInfo[];
+}
+/**
+ * One training config of ``GET /api/configs``: a YAML file in ``configs/`` that ``nd train``
+ * accepts.
+ *
+ * ``length_field`` names what the run's length counts (``epochs`` for toy configs, ``units``
+ * for random search) and ``length`` is the file's value (null when a random-search budget has
+ * no unit limit). ``task`` is the toy task (null for random search).
+ */
+export interface ConfigInfo {
+  length: number | null;
+  length_field: "epochs" | "units";
+  method: "toy" | "random_search";
+  name: string;
+  seed: number;
+  tag: string;
+  task: string | null;
+}
+
+/**
  * Sent once when every car has stopped; the session then pauses.
  *
  * ``status`` has one name per car: crashed, finished, stalled or timeout.
@@ -168,6 +248,47 @@ export interface EpisodeEndMessage {
 export interface ErrorMessage {
   message: string;
   type: "error";
+}
+
+/**
+ * Answer to ``GET /api/runs/{id}/exams/{unit}``: the exam card as stored (exam v1, §6.14).
+ */
+export interface ExamCardResponse {
+  card: {
+    [k: string]: unknown;
+  };
+  run_id: string;
+  unit: number;
+}
+
+/**
+ * ``/ws/runs``: an exam card of the watched run was saved (``exams/unit_<n>.json``).
+ */
+export interface ExamDoneMessage {
+  heldout: ExamHeadline;
+  run_id: string;
+  training: ExamHeadline;
+  type: "exam_done";
+  unit: number;
+}
+/**
+ * The headline of one part (training or held-out) of an exam card: completion rate, crash
+ * rate and median progress (share of the target laps), as in the card's summaries.
+ */
+export interface ExamHeadline {
+  completion_rate: number;
+  crash_rate: number;
+  progress_frac_median: number;
+}
+
+/**
+ * The headline of one part (training or held-out) of an exam card: completion rate, crash
+ * rate and median progress (share of the target laps), as in the card's summaries.
+ */
+export interface ExamHeadline {
+  completion_rate: number;
+  crash_rate: number;
+  progress_frac_median: number;
 }
 
 /**
@@ -451,21 +572,56 @@ export interface KeyState {
 }
 
 /**
+ * Body of ``POST /api/runs``: a config from ``configs/`` and the overrides of ``nd train``.
+ *
+ * Each override left out (null) keeps the file's value. ``epochs`` is for toy configs and
+ * ``units`` for random search, exactly as on the command line.
+ */
+export interface LaunchRequest {
+  config: string;
+  epochs: number | null;
+  seed: number | null;
+  tag: string | null;
+  units: number | null;
+}
+
+/**
+ * Answer to ``POST /api/runs``: the id of the run folder the new training process made.
+ */
+export interface LaunchResponse {
+  run_id: string;
+}
+
+/**
  * Load a track and a driver; the session starts paused at step 0.
  *
  * ``policy`` is ``"keyboard"`` (driven by ``key_state``), ``"constant"`` (every car holds steer 0,
- * throttle 0.3), ``"neuron"`` (one shared neuron steers; change it with ``set_param``) or
- * ``"random_networks"`` (every car is driven by its own random [7, 16, 16, 2] network).
+ * throttle 0.3), ``"neuron"`` (one shared neuron steers; change it with ``set_param``),
+ * ``"random_networks"`` (every car is driven by its own random [7, 16, 16, 2] network) or
+ * ``"expert"`` (the scripted expert of ``env/experts.py``, which reads the track; api v1.12).
  * ``seed`` None starts every car at the track's start; an integer gives a seeded random start
  * (position, sideways offset and heading). For ``"random_networks"`` the same ``seed`` also picks
  * the networks (seed 0 when None), so a seed always gives the same 20 drivers.
+ *
+ * ``"checkpoint"`` (api v1.14, task 5.9, ADR-042) replays a saved network's Driving Exam drive
+ * on ``track``: ``checkpoint`` names it, and the cars are placed at the exam's starts on that
+ * track in the exam's order (car k = exam start k, 10 cars), all driven by that one network as
+ * one batch, exactly as the exam drove them. ``n_cars`` and ``seed`` are then ignored.
  */
 export interface LoadScenario {
+  checkpoint: CheckpointRef | null;
   n_cars: number;
-  policy: "keyboard" | "constant" | "neuron" | "random_networks";
+  policy: "keyboard" | "constant" | "neuron" | "random_networks" | "expert" | "checkpoint";
   seed: number | null;
   track: string;
   type: "load_scenario";
+}
+/**
+ * A saved network: checkpoint ``unit`` of run ``run`` (a run folder name).
+ */
+export interface CheckpointRef {
+  run: string;
+  unit: number;
 }
 
 /**
@@ -678,6 +834,47 @@ export interface RunMetrics {
 }
 
 /**
+ * ``/ws/runs``: new lines of the watched run's ``metrics.jsonl``, as stored (one object per
+ * unit: ``unit``, the budget totals, ``wall_clock_s`` and the learner's own metrics).
+ *
+ * ``replace`` true: these are all the lines so far, and the browser starts the run's history
+ * again from them (after ``watch``, and when a resumed run was cut back); its exam rows then
+ * follow again as ``exam_done`` messages. Otherwise the lines are to be added.
+ */
+export interface RunMetricsMessage {
+  records: {
+    [k: string]: unknown;
+  }[];
+  replace: boolean;
+  run_id: string;
+  type: "metrics";
+}
+
+/**
+ * ``/ws/runs``: a run appeared or changed (sent to every connection).
+ *
+ * ``status`` and ``stop_reason`` come from the run's ``meta.json``; ``units_done`` is the number
+ * of metrics lines, ``budget_units`` the unit limit (null without one). ``stop_requested``: a
+ * stop request is waiting for the current unit to end. ``launched``: this server started the
+ * training process; ``exit_code`` is that process's exit code once it has ended (null while it
+ * runs, and for runs this server did not start). A run whose status is still "running" but whose
+ * process has ended was killed; ``nd resume`` can continue it (resumable methods).
+ */
+export interface RunStatusMessage {
+  budget_units: number | null;
+  exit_code: number | null;
+  launched: boolean;
+  method: string;
+  run_id: string;
+  status: "running" | "completed" | "diverged" | "failed";
+  stop_reason: string | null;
+  stop_requested: boolean;
+  tag: string;
+  type: "run_status";
+  units_done: number;
+}
+
+/**
  * One entry of ``GET /api/runs`` (api v1.11, ADR-031, ADR-033): a run folder, its state.
  *
  * ``run_id`` is the folder name (``<YYYYMMDD-HHMMSS>-<method>-<tag>``), ``status`` one of
@@ -703,13 +900,15 @@ export interface RunSummary {
  * ``dt`` is the physics step in seconds, ``ray_angles`` the sensor directions in radians
  * relative to the heading (left positive), ``ray_range`` the sensor range in metres. Track
  * geometry is not included: fetch ``GET /api/tracks/{track}``. ``trail_seconds`` is how much
- * of the drive the session remembers for the decision trail (ADR-027).
+ * of the drive the session remembers for the decision trail (ADR-027). ``checkpoint`` is the
+ * replayed network for the ``"checkpoint"`` driver (api v1.14), else null.
  */
 export interface ScenarioMessage {
   car_half_width: number;
+  checkpoint: CheckpointRef | null;
   dt: number;
   n_cars: number;
-  policy: "keyboard" | "constant" | "neuron" | "random_networks";
+  policy: "keyboard" | "constant" | "neuron" | "random_networks" | "expert" | "checkpoint";
   ray_angles: number[];
   ray_range: number;
   seed: number | null;
@@ -720,6 +919,13 @@ export interface ScenarioMessage {
   type: "scenario";
   v_max: number;
   wheelbase: number;
+}
+/**
+ * A saved network: checkpoint ``unit`` of run ``run`` (a run folder name).
+ */
+export interface CheckpointRef {
+  run: string;
+  unit: number;
 }
 
 /**
@@ -845,6 +1051,15 @@ export interface Step {
 }
 
 /**
+ * Answer to ``POST /api/runs/{id}/stop``: the stop request was written into the run folder;
+ * the run ends after its current unit.
+ */
+export interface StopResponse {
+  run_id: string;
+  stop_requested: boolean;
+}
+
+/**
  * Answer to ``GET /api/runs/{id}/checkpoints/{unit}/toy``: the toy lab's view of a checkpoint.
  *
  * ``loss`` is the loss on the run's dataset (``data_x`` rows, targets ``data_y``) for this
@@ -943,6 +1158,16 @@ export interface TrailPoints {
   steps: number[];
   x: number[];
   y: number[];
+}
+
+/**
+ * ``/ws/runs``, browser → server: follow one run (null: none). The server answers with the
+ * run's history (``metrics`` with ``replace``, ``checkpoint``, one ``exam_done`` per card) and
+ * then sends that run's new events as they appear.
+ */
+export interface WatchRun {
+  run_id: string | null;
+  type: "watch";
 }
 
 /**

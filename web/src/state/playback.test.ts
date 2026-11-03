@@ -66,6 +66,7 @@ const scenario: ScenarioMessage = {
   policy: "random_networks",
   n_cars: 2,
   seed: null,
+  checkpoint: null,
   dt: 1 / 30,
   time_limit: 92,
   target_laps: 2,

@@ -71,7 +71,11 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Imitation learning (behavioural cloning) | Supervised learning where the targets are an expert's actions. |
 | Distribution shift | The learner ends up in situations the expert never showed it, so errors compound. |
 | DAgger | Let the learner drive, ask the expert what it *should* have done there, add that to the data, retrain. |
-| Fitness | One score for a whole drive, used by evolutionary methods. |
+| Fitness | One score for a whole drive, used by evolutionary methods. Random search (task 5.7) uses, per start, progress (up to 1) plus a time bonus for finishing, averaged over fixed training-track starts. |
+| Random search | The simplest gradient-free learner: draw fresh random networks, score each, keep the best one so far. It uses no direction at all, only selection, so it is the null model for every smarter search. |
+| Gradient-free learning | Learning that uses only a score per candidate, never the gradient of a loss through the network: random search, evolution, evolution strategies. |
+| Candidate | One network a search method scores in a unit; random search draws 20 per unit by default. |
+| Null model | The simplest explanation a result must beat; here random search, which shows how far luck alone gets at a given budget. |
 | Genome | All of a network's parameters laid out as one list of numbers. |
 | Selection / crossover / mutation | Pick the better drivers / mix two parents' genomes / add small random changes. |
 | Elitism | Copy the best few drivers unchanged into the next generation. |
@@ -87,11 +91,54 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Seed | The starting number for a random generator; the same seed gives the same "random" numbers. |
 | Driving Exam | The fixed test (tracks, starts, limits, metrics) that every network takes, however it was trained. |
 | Held-out track | A track never used during training or tuning; it tests generalisation. |
+| Privileged information | Information a teacher uses that the student cannot see. The scripted expert knows its exact place on the centreline and the bends ahead; the network sees only 5 rays, its speed and its heading error. |
+| Pure pursuit | A steering rule: pick a point a little way ahead on the path (the look-ahead point) and steer along the circle that leaves the car in its current direction and passes through that point; its curvature is 2 sin α ÷ d. |
+| Look-ahead point | The point on the centreline the expert aims at, 8 m + 0.5 s × speed ahead: further when fast, so it steers smoothly; closer when slow, so it follows tight bends. |
+| Speed profile | The target speed at every metre of a track: as fast as grip allows in each bend (with a margin), lowered before each bend so the car can brake in time. |
+| Exam card | The result of one Driving Exam: every episode's metrics, each track's summary, the training track's summary and the pooled held-out summary, with the exam version and what was examined (`exams/unit_<n>.json`). |
+| Pooled | Put together into one group before summarising: the held-out summary pools the 40 held-out episodes instead of averaging four track summaries. |
+| Metric | A precise rule that turns a whole drive (or run) into one number, so different drivers can be compared fairly. The Driving Exam's metrics are defined in `experiment/metrics.py`. |
+| Linear interpolation | Estimating a value between two known points by assuming a straight line between them. Lap times use it: if progress was 90 m at one frame and 105 m at the next, 100 m was reached two thirds of the way between them. |
+| Completion rate | The fraction of episodes that reached the target laps (2 of 4 completed gives 0.5). The crash rate is the same for episodes that left the road. |
+| Smoothness | The mean absolute change in steering from one step to the next; 0 means the steering never moved, larger means jerkier driving. |
+| Hairpin | A bend that turns the car round by about 150–180° at a small radius (on `hairpins_01`, 13 m, where grip allows only about 11 m/s). |
+| Sweeper | A long bend of nearly constant radius (on `sweeper_01`, 70 m held for about 240 m): the driver must hold one small steering angle for a long time. |
+| Mirrored track | A track reflected left to right: the same bends in the same order, each turning the other way. Not the same as driving a track in reverse, where the bends also come in the opposite order. |
+| Grip speed | The fastest a car can take a bend of radius r without sliding wide: the square root of (grip limit × r), here √(9 × r) m/s, capped at the 30 m/s top speed. |
+| Ideal lap time | The lap time of a perfect driver on the centreline: every bend at its grip speed, full throttle and full braking in between. A track is called drivable here if two ideal laps take at most 0.75 of the time limit. |
 | Transfer | Using a controller or model in a setting other than the one it was built or trained for (here: a neuron tuned on one loop, driven on Monza). |
 | Spatial grid | A speed-up that sorts objects into square cells, so a query only looks at objects in nearby cells instead of all of them. The answer is unchanged; only the work is less. |
 | Per-track time limit | The episode time limit set from the track's length: 2 laps at an average of 16 m/s, rounded up to a whole second (ADR-022). |
 | Median / IQR | The middle value / the range covering the middle half of results. |
 | Checkpoint | A saved snapshot of a network at a moment during training. |
+| Resume | Continue a stopped training run from its saved state. Done exactly, the resumed run gives the same numbers as one that never stopped: the weights, counters and random generators must all be restored. |
+| Generator state | The few numbers that fully describe where a random generator is in its sequence. Saving and restoring them makes the next "random" draws the same as they would have been. |
+| Atomic write | Writing a file so that a crash leaves either the old version or the new one, never half of one: write a temporary file, then rename it over the old one. |
+| Budget | The allowance a training run may spend: units, environment steps or wall-clock seconds. Methods are compared at equal budgets. |
+| Relational table | A grid with named columns in which each row states one fact, for example "run R, unit 3, fitness −28.4". A database is a set of such tables that refer to each other through shared columns (here `run_id`). |
+| Primary key | The columns that pick out exactly one row of a table, e.g. (run, unit, name) for a metric value. The database refuses a second row with the same key. |
+| SQL query | A question written in SQL, the language of relational databases, answered across whole tables at once, e.g. "the median held-out progress over all runs of a sweep". |
+| Mirror (database) | A copy of data kept for fast searching, rebuilt from the master copy (the run folders) whenever they disagree. The folders are always written first and always win. |
+| WAL (write-ahead log) | A SQLite mode in which changes are first appended to a separate log file, so readers keep seeing a consistent database while one writer adds to it. |
+| Process | A running program with its own memory. Training runs in its own process (`nd train`), started by the server but separate from it: a long or crashing run cannot slow or stop the server, and several runs can use several CPU cores. |
+| Process group | Processes the operating system treats as one for signals such as Ctrl+C. A launched training process gets its own group, so stopping the server does not stop the training. |
+| Exit code | The number a process leaves behind when it ends: 0 for success, anything else for a failure or a kill. |
+| Polling | Looking again at regular intervals instead of being told about changes; the run watcher looks at the run folders every 0.5 s. |
+| Tailing (a file) | Following a file that keeps growing by remembering how much was already read (the offset) and reading only what came after it, complete lines only, like `tail -f`. |
+| Offset | A position in a file counted in bytes from its start; here, how much of `metrics.jsonl` has been read already. |
+| Broadcast | Sending the same message to every connected browser; run status news goes to all, a run's metrics only to the browsers watching that run. |
+| Stop request | The empty file `stop_requested` in a run folder: the runner sees it after the current unit and ends the run cleanly, with a checkpoint and an exam of the last unit (stop reason "stopped"). |
+| Replay (re-simulation) | Watching a drive again by computing it again from what fully decides it: the network, the track, the start positions and the fixed time step. Nothing is filmed; the same inputs give the same drive to the last digit. |
+| Weight diff | The change of every weight between two checkpoints, Δw = new − old. Drawn as change ÷ (largest change), so the most-changed weight is drawn at full strength and unchanged ones not at all. |
+| Record (new best) | A value better than every one before it. In random search each unit's best is a fresh independent draw, so unit k is a record with probability 1 ÷ k. |
+| Harmonic number | H_n = 1 + 1/2 + … + 1/n, about ln n + 0.58. The expected number of records among n independent draws: H_50 = 4.50, H_100 = 5.19. |
+| Study | A planned experiment that answers one question from the protocol (S1, S2a, …): its hypotheses written first, its runs tagged with its id (`"study": "S4"` in meta.json, since task 5.10), its report in `docs/studies/`. |
+| Derived table | A table whose rows are computed from other tables and hold nothing new; the `studies` table summarises the runs that carry each study id, so it can always be recomputed. |
+| Budget (comparison at equal budget) | How much a learner has spent, here counted in environment steps. Methods are compared at the same budget, not after the same number of their own units, because a unit costs different amounts in different methods. |
+| Budget-to-beat (B*) | The smallest budget at which a learner's median exam score (across seeds) is above a baseline's; "not within the budget" if it never is. |
+| Selection overfitting | Picking, among many candidates, the one that scores best on a fixed test, and so partly picking the one that happens to suit that test: its score there rises while its score elsewhere does not. |
+| Wall-clock time | Time as a clock on the wall measures it, in seconds. It depends on the machine and on what else runs on it, so studies count budget in environment steps and report wall-clock time only as a second currency. |
+| Throughput | Work done per second, here environment steps per second. Several runs side by side are each slower, but together can do more per second than one run alone. |
 | Package | A folder of Python files that can be imported by name (`import neurodrive`). |
 | Virtual environment (venv) | A private copy of Python and libraries for one project (`.venv/`), so projects cannot break each other. |
 | Dependency | A library our code needs; listed in `pyproject.toml`. |
@@ -188,7 +235,9 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Central difference | Measuring a slope by nudging an input up by a small step h and down by h, then dividing the change in the output by 2h. Its error shrinks like h squared. |
 | Activation curve | A graph of an activation function: the weighted sum z along the bottom and the neuron's output up the side; a dot marks where the neuron is right now. |
 | Selection linking | Clicking something in one view (a car, a neuron) highlights the related thing in another view. |
-| Baseline | A simple reference controller every later method is compared against; here the hand-wired neuron. |
+| Baseline | A simple reference controller every later method is compared against. Since task 5.6 three are stored as runs with exam cards: a random network (the floor), the hand-wired neuron (a cheap hand-tuned solution) and the scripted expert (the ceiling). |
+| Control | In an experiment, a condition that differs from the one tested only in the thing being studied, so a difference can be blamed on it. A baseline is the control for "did learning help?". |
+| Floor and ceiling | The score with no skill at all (an untrained random network) and the best score reachable (an expert that reads the track). A learned method is placed between them. |
 | Positive feedback | An effect that makes its own cause bigger: with flipped weights the car steers towards the nearer wall, which makes that wall nearer still. |
 | Negative control | A run deliberately set up to fail (zero weights, flipped signs) to show that the success was caused by the thing being tested. |
 | Driving Exam (preview) | The fixed set of starts and limits every controller is judged on: 10 starts, 2 laps, 90 s. Built properly in Phase 5. |

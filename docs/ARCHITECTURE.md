@@ -72,6 +72,14 @@ Status: v1 (planning). Changes to §6 contracts require an ADR in `DECISIONS.md`
   trips.
 - **Training** runs in separate processes, launched from the CLI or the UI. They only write files.
   The server watches the files and pushes progress to the browser.
+  *As built (task 5.8, ADR-041):* `POST /api/runs` starts `python -m neurodrive train --config
+  configs/<name> [overrides] --runs-dir <runs>` in its own process group (stopping the server does
+  not stop the training; tested by killing the server mid-run), its printed output going to
+  `<runs dir>/.launches/<time>.log`; `nd train` prints `run folder: runs/<id>` as soon as the folder
+  exists, which is how the server learns the id. The run watcher (`server/runs_watch.py`) polls the
+  run folders every 0.5 s and tails each running run's `metrics.jsonl` by byte offset (complete
+  lines only); it follows runs started from a terminal too. Stopping writes a stop request into the
+  run folder (§6.13), so the server never needs to signal a process.
 
 ## 4. Repository layout
 
@@ -138,7 +146,7 @@ neurodrive/
 │  │  ├─ schemas.py              Pydantic message models (source for TS types)
 │  │  ├─ live.py                 live sessions over WebSocket
 │  │  ├─ runs.py                 run folders as REST answers (read-only, api v1.10)
-│  │  └─ runs_watch.py           progress streaming for active runs
+│  │  └─ runs_watch.py           launching training processes, watching run folders, /ws/runs
 │  └─ cli.py                     `nd serve | train | sweep | exam | demo-record | ...`
 ├─ tests/                        mirrors src/neurodrive (core/, env/, learn/, experiment/, explain/, server/)
 ├─ reference/                    optional PyTorch cross-checks (never imported by src)
@@ -151,7 +159,7 @@ neurodrive/
 │  ├─ src/state/                 selection store, layout store (Page/Split/All, drawers), playback clock
 │  ├─ src/views/environment/     canvas renderer, trails, HUD, population mode
 │  ├─ src/views/network/         SVG diagram, output inspector, what-if panel, diff
-│  ├─ src/views/experiment/      toy lab (ToyLab, LossChart, PredictionPlot, ToyNetwork); later run list, timeline, comparison
+│  ├─ src/views/experiment/      toy lab (ToyLab, LossChart, ...), Compare runs (CompareRuns, RunList, CompareChart), Training (TrainingRuns, LiveChart; task 5.8); later timeline
 │  └─ src/components/            shared UI pieces
 └─ docs/                         concept, architecture, roadmap, checklist, protocol, journal ...
 ```
@@ -244,6 +252,13 @@ ADR and a new version.
     ℓ = 8 m + 0.5·v ahead.
   - Throttle: target speed = min(v_max, sqrt(a_lat_max / κ_ahead)), where κ is the curvature and
     a_lat_max = 9 m/s². Accelerate or brake proportionally toward the target.
+  - *As built (task 5.3, `env/experts.py`):* "κ ahead" is a speed profile computed once per
+    track: bend speed min(v_max, sqrt(0.8 · a_lat_max / κ)) with κ averaged over 9 m, then a
+    backward pass so the car brakes in time at 0.7 · a_brk (11.2 m/s²); throttle =
+    0.5 · (v_ref(s) − v), clipped. Steering: κ = 2 sin α / d to the look-ahead point,
+    steer = −atan(κ·Lw) / δ_max. The settings are `ExpertParams`. `ScriptedExpert(world)` reads
+    the privileged state from the world it is bound to: `label()` is the teacher label for the
+    current state of every car. It laps all six tracks from all 10 exam starts.
 - **Step reward** (reward v1): r_t = 0.1·Δs_t (metres of forward progress this step); add −5 on
   the crash step. Revised in Phase 10 via ADR.
 - **Episode summary** (summary v1): total progress P, laps, crashed (yes/no), steps alive, lap
@@ -276,6 +291,10 @@ observation row per network. `env/sensors.py: observe(world, segments)` is the o
 builds a world's observation; the action contract has `ACTION_VERSION`, `ACTION_NAMES` and
 `ACTION_SIZE` in `env/car.py`.
 
+*Expert (task 5.3):* `env/experts.py: ScriptedExpert` satisfies the protocol but is bound to one
+`World` at construction, because the 7 observations do not hold the privileged state it drives
+by. Its `act` checks the observations' shape and ignores their values; build one expert per world.
+
 ### 6.11 Episode Recording (recording v1)
 Metadata: track, seed, dt, policy reference (run, unit, car indices), physics/observation versions.
 Per step, per car: x, y, ψ, v, alive, P, rays(5), observation(7), action(2).
@@ -294,6 +313,8 @@ rebuilds the same world. Replaying the actions reproduces every array bit for bi
 ### 6.12 Learner contract (learner v1)
 *Version 0 (task 3.7, ADR-030): `learn/base.py` without save/restore; wall-clock time measured by the runner; `experiment/runner.py` v0 owns a minimal loop.*
 
+*Version 1 (task 5.5, ADR-037):* save/restore is the optional `Resumable` protocol: `state()` → `LearnerState` (named NumPy arrays + a JSON-friendly `info` dict holding counters and every generator's state, `generator_state`), `restore(state)`. A learner without it trains but cannot resume. `experiment/runner.py` v1: `run(learner, store, budget, exams)` and `resume(learner, store)`; `Budget(units, env_steps, wall_clock_s)`, any limit stops the run after the unit that reaches it (overshoot ≤ 1 unit); checkpoint schedule 0, 1, 2, 5, 10, 20, 50, … plus the last unit; at every checkpoint the Driving Exam runs when exams are on and the network drives (7 → 2), its time kept out of the training clock (`exam_wall_clock_s`). Order within a unit: train → metrics line → checkpoint + exam → state (last). Resume cuts the folder back to the state's unit and continues; a killed run (status running) or a failed one can be resumed, identically except for wall-clock times. Since task 5.5b (ADR-038) the wall-clock limit is compared with the training time recorded in the last metrics line, like the step totals, so a run stops after the first unit whose line reaches the limit; the database mirror's time, like exam time, is kept out of the training clock. Since task 5.8 (ADR-041) the runner also stops before the next unit when the run folder holds a stop request (the file `stop_requested`): stop reason `stopped`, status `completed`, the last unit checkpointed and examined like any last unit; the request is removed before the final status is written, and `resume` removes an old one before continuing. `train_toy_run` and `train_random_search_run` take `on_start(store)`, called as soon as the folder exists. Since task 5.9 (ADR-042) `UnitResult` has an optional `new_best` flag: a unit that reports a new best network (`current_networks()[0]`) is checkpointed, and examined, even when it is not on the schedule, so the run timeline shows every improvement; random search sets it when it improves (expected number of such units in n units: the harmonic number H_n, about 5 per 100), the toy learner never does.
+
 Every learning method provides:
 - `name` and `feedback_kind` ∈ {`labels`, `episode_score`, `step_reward`, `none`}
 - set-up from (config, seeded generator)
@@ -309,11 +330,16 @@ stop conditions (max env steps, max wall-clock, max units).
 ### 6.13 Run folder (run v1)
 *Version 0 (task 3.7, ADR-030): a strict subset (no `exams/`, `run_version: 0` in meta.json, `extra/dataset.npz` for toy runs), written by `experiment/store.py`.*
 
+*Task 5.8 (ADR-041), additions without a version change:* the empty file `stop_requested` exists only while another process asks the run to stop; `stop_reason` gains `stopped`. Launched runs leave their printed output in `<runs dir>/.launches/<time>.log` (not a run folder: no `meta.json`, ignored by every reader and by the database).
+
+*Version 1 (task 5.5, ADR-037), as built:* `run_version: 1`; `exams/unit_<n>.json` (exam cards); `state/latest.npz` (the learner's state after the latest unit plus the runner's unit, totals and clocks; replaced atomically: written as `latest.tmp.npz`, then renamed); meta.json adds `budget`, `exams`, `stop_reason` (units, env_steps, wall_clock, diverged, error), `resumed_at` (UTC times) and `exam_wall_clock_s`. Version-0 folders are still read.
+
 ```
 runs/<YYYYMMDD-HHMMSS>-<method>-<tag>/
   config.yaml        fully resolved config, including seed
   meta.json          git commit + dirty flag, Python/NumPy versions, start/end, status,
-                     sweep (only for runs made by `nd sweep`: the sweep id, ADR-033)
+                     sweep (only for runs made by `nd sweep`: the sweep id, ADR-033),
+                     study (only for runs made for a study: the study id, ADR-043)
   metrics.jsonl      one JSON object per unit: unit, env_steps_total, demo_frames_total,
                      wall_clock_s, native metrics (loss / fitness stats / return ...)
   checkpoints/       unit_<n>.npz (+ index.json listing units and what each holds)
@@ -324,14 +350,34 @@ runs/<YYYYMMDD-HHMMSS>-<method>-<tag>/
 Mirror: `runs/neurodrive.db` (ADR-007). Folders are the master copy; the database can always be
 rebuilt from them with `nd db rebuild`. All of `runs/` is git-ignored.
 
+*Mirror db v1 (task 5.5b, ADR-038), as built (`experiment/db.py`):* `<runs dir>/neurodrive.db`, SQLite in WAL mode (`synchronous=NORMAL`, 5 s busy timeout), schema version in `PRAGMA user_version` (1). Tables (key columns first): `runs` (run_id; meta fields as columns: run_version, method, tag, status, stop_reason, started_at, ended_at, seed, sweep, git_commit, git_dirty, budget (JSON), exams, exam_wall_clock_s, resumes; plus the whole config and meta as JSON), `metrics` (run_id, unit, name → value; one row per value of a metrics line, booleans 0/1, a list `x` as `x[0]`, `x[1]`, …), `checkpoints` (run_id, unit → layer_sizes, n_parameters, `weights` = the `.npz` file's bytes), `exams` (run_id, unit → exam_version, env_steps, policy, training and held-out completion rate, crash rate and median progress, both summaries as JSON), `exam_episodes` (run_id, unit, track, start_index → split, start and every episode metric). The runner writes the folder first and then, per unit, one transaction with that unit's rows (`Mirror.add_unit`); on start and resume it re-copies the run from its folder (`Mirror.sync_run`). A mirror that cannot be written warns once and stops for that run; the run goes on. Mirror time is kept out of the training clock. `nd db check` builds a copy from the folders in memory and lists differences per table and run (exit 1). No `studies` table yet (5.10).
+
+*Studies and mirror db v2 (task 5.10, ADR-043):* a run made for a study has `"study": "<ID>"` in `meta.json` (letters, digits, `_`, `-`; written by `--study` on `nd train`, `nd sweep`, `nd baseline`, or by a study script such as `scripts/study_s4.py`); other runs are unchanged (no field), and the run folder version stays 1. Mirror **db v2** (`PRAGMA user_version` 2): `runs` gains a `study` column (indexed, after `sweep`), and the new table `studies` (study_id → n_runs, methods, sweeps, git_commits as sorted JSON lists, started_at = the earliest start, ended_at = the latest end or NULL while any run of the study has none) is *derived* from `runs`: its row is recomputed whenever a run row of that study is written or deleted, so rebuild, check and incremental mirroring treat it like every other table. `db.runs_of_study(conn, id)` lists a study's runs. A v1 file is refused with the "rebuild" message (a training run warns and goes on, ADR-038); `nd db rebuild` upgrades it.
+
+*Baseline runs (task 5.6, ADR-039, `experiment/baselines.py`):* run folders v1 with methods `random_network`, `hand_neuron`, `scripted_expert` and tag `baseline` (`baseline-s<k>` for the random network's seeds, which share a `sweep` id): budget 0 units, empty `metrics.jsonl`, status completed, stop reason units, one exam card `exams/unit_0.json`. `config.yaml` describes the policy completely (`baseline_policy(config)` rebuilds it): the random network's spec, init scheme and seed; the neuron's weights, bias, activation and throttle; the expert's `ExpertParams`. The random network and, since the 5.6 follow-up, the neuron (written as a 7 → 2 tanh network: steering weights −12 / +12 on observation entries 0 / 4, throttle bias atanh(0.24), `hand_neuron_network`) are saved as `checkpoints/unit_0.npz` and examined from it; the expert is not a network and has no checkpoint.
+
 ### 6.14 Exam result (exam v1)
 Exam spec version, list of tracks, per-episode metrics (track, start index, progress, laps,
-crashed, lap times, mean speed, smoothness, time to crash), and aggregates per track and overall
-(median, IQR, completion rate). See `EXPERIMENT_PROTOCOL.md`.
+crashed, lap times, mean speed, smoothness, time to crash; since task 5.2 also status, end
+position, steps and time: `experiment/metrics.py` `EpisodeMetrics`), and aggregates per track and
+overall (median, IQR, completion rate: `Aggregate`). See `EXPERIMENT_PROTOCOL.md`.
 
-### 6.15 Config file (toy: config v1, ADR-032)
-A YAML file; `method` picks the model in `experiment/config.py` (only `toy` so far; later methods
-add their own model). Unknown fields, wrong types, unknown names and out-of-range numbers are
+*As built (task 5.4, `experiment/exam.py`):* `run_exam(policy_for, policy_ref)` → `ExamResult`,
+saved as JSON (`exams/unit_<n>.json` in a run folder, written by `nd exam`): `exam_version` 1,
+`spec` (tracks, start fractions, lateral offsets, target laps; `EXAM_V1`), `policy` (what was
+examined), `tracks` (per track: split, length, time limit, 10 episodes with `start_index`,
+`start_s0_m`, `start_lateral_m` and the `EpisodeMetrics` fields, and its aggregate), `training`
+and `heldout` (pooled) aggregates (the held-out one has `median_best_lap_s_by_track` instead of
+a pooled `median_best_lap_s`, ADR-036), `env_steps`, `extra`. `policy_for(world)` builds the policy
+for each track's world (the expert needs it). `policy` is `{"kind": "checkpoint", "run", "unit"}` for a
+network checkpoint, or, since task 5.6 (ADR-039), `{"kind": "baseline", "name", "run"}` for a baseline
+that is not a network (the policy is then rebuilt from the run's config). Each track's 10 starts are always driven as one
+batch in start order: a network's output differs by about 1e-16 between batch sizes, so a
+recording matches a card only when made the same way.
+
+### 6.15 Config file (toy and random_search: config v1, ADR-032, ADR-040)
+A YAML file; `method` picks the model in `experiment/config.py` (`toy`, and since task 5.7
+`random_search`; later methods add their own model). Unknown fields, wrong types, unknown names and out-of-range numbers are
 refused, every problem listed as `field.path: message`. A toy config:
 
 ```yaml
@@ -362,7 +408,8 @@ Only the named optimizer's own settings are allowed; their defaults are those of
 `nd train --config FILE [--seed S] [--tag T] [--epochs E] [--runs-dir D]` overrides `seed`, `tag`
 and `training.epochs`; an invalid config exits with status 2 and creates no run folder.
 
-## 7. Server API (api v1.11, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033)
+*Random search (task 5.7, ADR-040, `configs/random_search.yaml`):* `method: random_search`, `seed`, `tag`; `network` (a driving network: 7 inputs first, 2 outputs last; default [7, 16, 16, 2], tanh / tanh, xavier); `search.candidates_per_unit` (≥ 1, default 20); `fitness` (`track`, which must have split `train`, default `train_loop_01`; `start_fractions` in [0, 1) and `lateral_offsets`, default the Driving Exam's 5 × 2 starts; `target_laps`, default 2); `budget` (`units`, `env_steps`, `wall_clock_s`: at least one); `exams` (default true). `nd train` and `nd sweep` pick the method from the file; `--units` overrides `budget.units` (`--epochs` is for toy configs only, and the other way round). `nd resume --run <folder>` rebuilds the learner from the run's resolved `config.yaml` (`runner.learner_from_config`) and continues it with `runner.resume`; it refuses runs whose learner saves no state (toy) and finished runs (status 2).
+## 7. Server API (api v1.14, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033, ADR-035, ADR-041, ADR-042)
 
 REST (`/api/...`):
 - `GET health` → `{status: "ok", version}` (`version` is the NeuroDrive package version)
@@ -393,8 +440,29 @@ REST (`/api/...`):
   `skipped` = runs without the metric. Unknown or malformed id → 404; no ids, more than 64 or an
   unknown metric → 422. Shown in the Experiment page's "Compare runs" tab.
 - `GET runs/{id}/checkpoints/{unit}/diff?from={unit}`: per-weight change
+  *As built (task 5.9, ADR-042, api v1.14):* → `{run_id, unit, from_unit, layer_sizes, weight_delta,
+  bias_delta, max_abs_delta, weight_change, bias_change}`: delta = w(unit) − w(from) (6 significant
+  digits), M = `max_abs_delta` = the largest |delta| over every weight and bias, change = delta / M
+  in [−1, 1] (4 decimals; all 0 when M = 0). 400 when the layer sizes differ, 404 for an unknown
+  run or checkpoint, 422 without `from`. `GET runs/{id}/exams/{unit}` → `{run_id, unit, card}`, the
+  stored exam card (404 when there is none).
 - `POST runs` (launch from a config), `POST runs/{id}/stop`
+  *As built (task 5.8, ADR-041, api v1.13):* `GET configs` → `{configs: [{name, method, task,
+  seed, tag, length_field, length}]}`: every `*.yaml` directly in `configs/` that `nd train`
+  accepts (`length_field` is `epochs` for toy configs, `units` for random search; `length` the
+  file's value or null). `POST runs` with body `{config, seed, tag, epochs, units}` (a listed file
+  name and the `nd train` overrides; null keeps the file's value; unknown fields refused) →
+  `{run_id}` once the new process has created its folder. 422 (with the config's problems as a
+  list) for an unknown config or a config that does not validate with the overrides, and nothing
+  is started; 409 when 4 launched runs are already training; 500 when the process ends before
+  creating its folder or takes more than 60 s. `POST runs/{id}/stop` → `{run_id, stop_requested:
+  true}`: writes the run folder's stop request (any running run, also one started in a terminal);
+  404 unknown run; 409 when the run has already ended, or when this server launched it and its
+  process has gone (killed: `nd resume` continues it).
 - `POST replay` {run, unit, track, seed, focus_cars} → Episode Recording
+  *Not built (task 5.9, ADR-042):* a checkpoint is replayed in the live session instead (the
+  `"checkpoint"` driver below), so every view and tool works on it; `POST replay` stays planned
+  for when a recording is needed as data (for example population replays, Phase 7).
 - `POST explain/forward` {network ref, observation} → ForwardTrace + contributions + sensitivity
   (deferred to Phase 5, when checkpoints give networks a reference; live what-if uses the
   `what_if` WebSocket command instead, ADR-025)
@@ -403,13 +471,24 @@ REST (`/api/...`):
 
 WebSocket `/ws/live` (one independent session per connection):
 - `hello` is sent first, on connect: `{type: "hello", version, api}` (`api` is the message-contract
-  version, currently `"v1.9"`).
+  version, currently `"v1.14"`).
 - client → server (each has a `type` field):
   - `load_scenario {track, policy, n_cars, seed}`: `policy` is `"keyboard"`, `"constant"`,
-    `"neuron"` or `"random_networks"` (every car is driven by its own random [7,16,16,2] network;
-    the seed also picks the networks, seed 0 when null; more arrive with later tasks); `n_cars`
+    `"neuron"`, `"random_networks"` (every car is driven by its own random [7,16,16,2] network;
+    the seed also picks the networks, seed 0 when null) or, since api v1.12 (ADR-035),
+    `"expert"` (the scripted expert of `env/experts.py`, bound to the session's world; it has no
+    network, so no network messages, readout or `what_if`); `n_cars`
     1 to 100 (default 1); `seed` is an integer for a seeded random start or null for the track's
     fixed start. Loads paused at step 0.
+    Since api v1.14 (task 5.9, ADR-042) also `"checkpoint"` with `checkpoint {run, unit}` (null for
+    every other driver): the saved network replays its Driving Exam drive on `track`. The cars are
+    placed at the exam's starts in the exam's order (car k = exam start k, 10 cars; `n_cars` and
+    `seed` are ignored), all driven by that one network as one batch (`MLPPolicy`), with the
+    exam's 2 target laps, so the session's step loop reproduces the exam drive exactly: every car
+    ends with the card's status and progress to the last digit (tested). It sends `network` and
+    traces, explanations, `what_if`, trail and `inspect_step` like the random-networks driver. An
+    unknown run or unit, a network that is not 7 → 2, or a run without checkpoints (the expert
+    baseline) is refused with `error`, and the loaded scenario stays.
   - `play`, `pause`, `step` (exactly one physics step, even while paused), `reset` (back to
     step 0 with the same scenario and seed; stays paused or playing as before),
     `set_speed {speed}` (0.1 to 8, default 1), `select_car {index}` (default 0),
@@ -435,6 +514,7 @@ WebSocket `/ws/live` (one independent session per connection):
   - `scenario {track, policy, n_cars, seed, dt, time_limit, target_laps, v_max, wheelbase,
     car_half_width, ray_angles, ray_range, trail_seconds}`: no geometry (use
     `GET tracks/{name}`). `trail_seconds` (60) is how much of the drive the session remembers.
+    Since api v1.14 also `checkpoint` (the replayed `{run, unit}`, else null).
   - `frame {step, time, playing, speed, cars, selected}`: `cars` holds one array per quantity, one
     entry per car: `x`, `y`, `psi`, `v`, `alive`, `progress`, `status` (0 running, 1 crashed,
     2 finished, 3 stalled, 4 timeout), `action` (a [steer, throttle] pair per car; the last action
@@ -496,6 +576,24 @@ WebSocket `/ws/live` (one independent session per connection):
   forwards `/api` and `/ws` to the Python server on port 8000 (ADR-015).
 
 WebSocket `/ws/runs`: `metrics`, `checkpoint`, `exam_done`, `run_status` events.
+*As built (task 5.8, ADR-041, api v1.13), `server/runs_watch.py`:*
+- On connect: `hello` (as on `/ws/live`), then a `run_status` for every running run and every run
+  this server launched.
+- client → server: `watch {run_id}` (null: none) follows one run. Answer: its history, `metrics`
+  with `replace: true` (every line so far), `checkpoint`, one `exam_done` per card; then that run's
+  new events. Unknown run or command → `error {message}`.
+- server → client: `run_status {run_id, method, tag, status, stop_reason, units_done,
+  budget_units, stop_requested, launched, exit_code}` to every connection when a run appears or
+  any field changes (so about every 0.5 s while it trains); `exit_code` is the launched process's
+  once it has ended (a run still "running" with an exit code was killed). For the watched run only:
+  `metrics {run_id, replace, records}` (records = metrics lines as stored; `replace` true = the
+  whole history again, also when a resumed run was cut back, and its exam rows then follow again),
+  `checkpoint {run_id, units}` (all units), `exam_done {run_id, unit, training, heldout}` (each
+  `{completion_rate, crash_rate, progress_frac_median}` from the card).
+- Every message goes into a per-connection queue on the event loop and one writer sends it, so a
+  history is never overtaken by later news. The watcher polls only while a browser is connected; it
+  re-reads `meta.json` only when its time or size changes, and reads a half-written file again on
+  the next poll.
 
 All message shapes are Pydantic models in `server/schemas.py`. TypeScript types are generated from
 them (`npm run gen:types`), so the two sides cannot drift apart.
@@ -542,6 +640,18 @@ ray k; the neuron driver's selected neuron gives its two rays.
 | Pause and drag a what-if slider | Ghost car shows the alternative action (built: 2 s of held action, ADR-026) | Recompute activations (server `what_if`, ADR-025) | — |
 | Click a point on the trail | Jump to that step (built: show the car's pose and rays then, the simulation stays put, ADR-027) | Show the trace at that step (server `inspect_step`) | — |
 | Select a run and scrub the timeline | Replay that checkpoint's exam drive | Weights at that checkpoint, changes highlighted | Cursor on all charts |
+
+*As built (task 5.9, ADR-042):* the Experiment page's "Timeline" tab (`Timeline.tsx`) picks a driving
+run (any run with checkpoints that is not a toy run) and an exam track; its history (metrics,
+checkpoints, exam headlines) comes over `/ws/runs` `watch`, so a training run grows there too.
+Moving the checkpoint slider (or clicking a ringed dot on the chart) sends `load_scenario` with the
+`"checkpoint"` driver, so the replay *is* the live scenario: the selection store's planned
+`mode`/`runId`/`unit` are the live store's `scenario.checkpoint`. The Environment view drives the 10
+exam starts (the Driver menu shows the checkpoint; cars and random start are fixed); the Network
+view shows a replay banner and, by default, colours every line by its change since the previous
+checkpoint (`changeStroke` in `views/network/diff.ts`: blue up, orange down, strength |change|,
+unchanged lines not drawn); the chart has a cursor; the card's 10 per-car results for the track are
+listed, the selected car's row highlighted, and clicking a row selects that car.
 
 ### 8.3 Output-neuron inspector (built up over phases)
 1. Readout: the value plus its physical meaning ("−0.93 = hard left").

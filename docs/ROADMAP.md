@@ -383,8 +383,11 @@ click still selects; Follow car / Whole track / double-click return.
 timeline replays any checkpoint with the network view linked.
 
 **5.1 Track set:** `scripts/make_tracks.py`, `tracks/` with 1 training track and 3 held-out tracks
-(tighter hairpins, a long sweeper, the mirrored training track). Verify: all pass the track tests;
-the expert completes each.
+(tighter hairpins, a long sweeper, the mirrored training track); `monza_ccw` is a fourth held-out
+exam track (ADR-034, the user's choice). Verify: all pass the track tests, including a
+drivability check (the ideal 2-lap time from the grip-limited speed profile is at most 0.75 of the
+time limit, `tests/env/test_track_set.py`). That the expert completes each is verified in 5.3,
+which comes after this task (the user's choice).
 **5.2 Driving metrics:** `experiment/metrics.py` (definitions in EXPERIMENT_PROTOCOL §3), tests
 on synthetic recordings.
 **5.3 Scripted expert:** `env/experts.py` (pure pursuit + curvature speed control), tests.
@@ -398,17 +401,21 @@ Verify: a dummy learner produces a valid run folder; killing and resuming contin
 `tests/experiment/test_db.py`. Concept: relational tables, and why one store is the master copy and
 the other a mirror. Verify: a database rebuilt from folders equals the incremental one; deleting
 and rebuilding loses nothing; one example query (median exam score across seeds) gives the same
-answer as computing it from the folders.
+answer as computing it from the folders. (ADR-038: the `studies` table of ADR-007 arrives in 5.10, with a
+`study` field in meta.json; `runs` has a `sweep` column meanwhile.)
 **5.6 Baselines:** random network, hand-wired neuron, scripted expert — each examined and stored
 as a baseline run. Verify: exam cards exist.
 **5.7 Random search learner:** `learn/evolution/random_search.py`, `configs/random_search.yaml`.
-Concept: the simplest gradient-free learner (try, keep the best). Verify: best-so-far fitness never decreases.
+Concept: the simplest gradient-free learner (try, keep the best). Also `nd resume --run <folder>` (it is the first
+resumable method; ADR-037 moved the command here from 5.5). Verify: best-so-far fitness never decreases; a killed
+random-search run resumed with `nd resume` equals an uninterrupted one.
 **5.8 Run launching and progress streaming:** `server/runs_watch.py`, `POST runs`, `/ws/runs`,
 process spawning. Verify: launching from the UI creates a run; charts grow live.
 **5.9 Replay endpoint and run timeline:** `POST replay`, `checkpoints/{unit}/diff`,
 `web/src/views/experiment/Timeline.tsx`, Network-view diff colouring. Verify: scrubbing changes all
 three views consistently (Playwright test).
-**5.10 Study S4:** random search vs baselines (5 seeds). Study report.
+**5.10 Study S4:** random search vs baselines (5 seeds). Study report. Also the mirror's `studies` table and a
+`study` field in meta.json for runs made by a study (ADR-038).
 
 ---
 
@@ -469,7 +476,10 @@ weight distance).
 **7.8 Lineage and mutation diff:** `extra/lineage.jsonl`; the champion's ancestry; the Network
 view highlights the weights mutated since the parent.
 **7.9 Study S6:** population size and mutation sweeps; fitness design ablations (progress only,
-no time bonus, ...); GA vs random search at equal env steps; held-out tracks. Study report.
+no time bonus, ...); GA vs random search at equal env steps; held-out tracks. Also: **does
+evolution discover a racing line?** The scripted expert keeps to the centreline on purpose (task 5.3
+follow-up), so compare the best finishers' sideways offset through each bend with the expert's: do
+they swing wide, cut the apex, and does the time bonus make the difference? Study report.
 
 ---
 
@@ -532,7 +542,8 @@ standard deviation, sampling, log-probability and its gradient); gradient check.
 **10.8 RL views:** a reward trace along the trail, a value estimate overlay, the policy's standard
 deviation over training.
 **10.9 Study S9:** reward shaping, discount and entropy ablations; RL vs GA vs imitation under the
-protocol.
+protocol. Also: **does RL discover a racing line** (the S6 question, with the same offset-through-
+the-bends comparison against the centreline expert), and does reward design change it?
 
 ---
 

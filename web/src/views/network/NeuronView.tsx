@@ -186,10 +186,18 @@ export function NeuronView({
   } else if (n === null) {
     body = (
       <div className="neuron-empty" data-testid="neuron-empty">
-        <p>
-          This scenario is driven by the {scenario.policy} driver, which has no neuron to show.
-          Choose the neuron driver to see and change it.
-        </p>
+        {scenario.policy === "expert" ? (
+          <p data-testid="expert-note">
+            The expert has no network: it reads its exact place on the track, aims at a point
+            ahead on the centreline and slows down in time for each bend. A network sees only
+            the 5 rays, its speed and its heading error. Choose the neuron driver to see one.
+          </p>
+        ) : (
+          <p>
+            This scenario is driven by the {scenario.policy} driver, which has no neuron to show.
+            Choose the neuron driver to see and change it.
+          </p>
+        )}
         <button type="button" data-testid="use-neuron" onClick={() => loadScenario({ policy: "neuron" })}>
           Use the neuron driver
         </button>

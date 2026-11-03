@@ -1,6 +1,7 @@
 import { useMemo, useState, type MouseEvent } from "react";
 
 import type { ToyCheckpointResponse } from "../../api/generated";
+import { ChartHover } from "./ChartHover";
 import { divergingMix, extent, formatNumber, linePath, linearScale, nearestIndex, niceTicks } from "./charts";
 
 const W = 440;
@@ -47,6 +48,7 @@ function Curve({ toy, curve }: { toy: ToyCheckpointResponse; curve: number[] }) 
 
   return (
     <>
+      <div className="cmp-plot">
       <svg
         className="toy-svg"
         viewBox={`0 0 ${W} ${H}`}
@@ -89,19 +91,18 @@ function Curve({ toy, curve }: { toy: ToyCheckpointResponse; curve: number[] }) 
           onMouseLeave={() => setHover(null)}
         />
         {hover !== null && (
-          <g className="toy-tooltip" pointerEvents="none">
+          <g pointerEvents="none">
             <line className="toy-crosshair" x1={x(toy.grid_x[hover])} x2={x(toy.grid_x[hover])} y1={M.top} y2={H - M.bottom} />
             <circle className="toy-hover-dot" cx={x(toy.grid_x[hover])} cy={y(curve[hover])} r={4} />
-            <text
-              x={x(toy.grid_x[hover]) + (x(toy.grid_x[hover]) > W - 160 ? -8 : 8)}
-              y={M.top + 12}
-              textAnchor={x(toy.grid_x[hover]) > W - 160 ? "end" : "start"}
-            >
-              {`x ${formatNumber(toy.grid_x[hover])} → network ${formatNumber(curve[hover])}`}
-            </text>
           </g>
         )}
       </svg>
+      {hover !== null && (
+        <ChartHover x={x(toy.grid_x[hover])} y={M.top} width={W} height={H} testId="prediction-hover">
+          x {formatNumber(toy.grid_x[hover])} → network {formatNumber(curve[hover])}
+        </ChartHover>
+      )}
+      </div>
       <div className="toy-legend">
         <span className="toy-legend-item">
           <span className="toy-swatch-dot" /> data (targets)
@@ -137,6 +138,7 @@ function PlaneMap({ toy }: { toy: ToyCheckpointResponse }) {
 
   return (
     <>
+      <div className="cmp-plot">
       <svg
         className="toy-svg"
         viewBox={`0 0 ${W} ${H}`}
@@ -176,14 +178,15 @@ function PlaneMap({ toy }: { toy: ToyCheckpointResponse }) {
         <text className="toy-axis-title" transform={`translate(${left - 10} ${M.top + side / 2}) rotate(-90)`} textAnchor="middle">
           input x2 →
         </text>
-        {hover && (
-          <text className="toy-map-readout" x={left + side + 8} y={M.top + 12}>
-            <tspan x={left + side + 8}>{`x1 ${formatNumber(toy.grid_x[hover[1]])}`}</tspan>
-            <tspan x={left + side + 8} dy={16}>{`x2 ${formatNumber(gy[hover[0]])}`}</tspan>
-            <tspan x={left + side + 8} dy={16}>{`→ ${formatNumber(grid[hover[0]][hover[1]])}`}</tspan>
-          </text>
-        )}
       </svg>
+      {hover && (
+        <ChartHover x={left + hover[1] * cell + cell / 2} y={M.top} width={W} height={H} testId="prediction-map-hover">
+          <div>x1 {formatNumber(toy.grid_x[hover[1]])}</div>
+          <div>x2 {formatNumber(gy[hover[0]])}</div>
+          <div>→ network {formatNumber(grid[hover[0]][hover[1]])}</div>
+        </ChartHover>
+      )}
+      </div>
       <div className="toy-legend">
         <span className="toy-legend-item">
           network output: <span className="toy-ramp" aria-hidden="true" /> {formatNumber(lo)} ·{" "}

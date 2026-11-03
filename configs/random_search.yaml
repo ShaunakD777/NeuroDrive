@@ -1,0 +1,25 @@
+# Random search (task 5.7, ADR-040): each unit draws fresh random networks, scores them on the
+# training track and keeps the best one so far. The null model every later learner must beat.
+# Train:   uv run python -m neurodrive train --config configs/random_search.yaml
+# Resume:  uv run python -m neurodrive resume --run runs/<run_id>
+# Format: docs/ARCHITECTURE.md section 6.15 (config v1).
+method: random_search
+seed: 0
+tag: default
+network:                    # a driving network: 7 observation inputs, 2 outputs (steer, throttle)
+  layer_sizes: [7, 16, 16, 2]
+  hidden_activation: tanh
+  output_activation: tanh
+  init_scheme: xavier       # every candidate is a fresh draw from this initialisation
+search:
+  candidates_per_unit: 20   # networks drawn and scored in one unit
+fitness:                    # f = progress (up to 1) + a time bonus for finishing; mean over starts
+  track: train_loop_01      # a training track; held-out tracks are refused
+  start_fractions: [0.0, 0.2, 0.4, 0.6, 0.8]   # the Driving Exam's starts on this track ...
+  lateral_offsets: [0.0, 1.5]                  # ... centred and 1.5 m to the left
+  target_laps: 2
+budget:                     # any limit reached stops the run after that unit
+  units: 100                # 2,000 networks, about 5 minutes plus exams
+  env_steps: null
+  wall_clock_s: null
+exams: true                 # the Driving Exam at every checkpoint (0, 1, 2, 5, 10, 20, 50, 100)

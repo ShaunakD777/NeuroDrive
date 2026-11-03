@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
-API_VERSION = "v1.11"
+API_VERSION = "v1.14"
 
 
 class WireModel(BaseModel):
@@ -80,22 +80,38 @@ class CommandModel(WireModel):
     model_config = ConfigDict(json_schema_serialization_defaults_required=True, extra="forbid")
 
 
+class CheckpointRef(CommandModel):
+    """A saved network: checkpoint ``unit`` of run ``run`` (a run folder name)."""
+
+    run: str
+    unit: int = Field(ge=0)
+
+
 class LoadScenario(CommandModel):
     """Load a track and a driver; the session starts paused at step 0.
 
     ``policy`` is ``"keyboard"`` (driven by ``key_state``), ``"constant"`` (every car holds steer 0,
-    throttle 0.3), ``"neuron"`` (one shared neuron steers; change it with ``set_param``) or
-    ``"random_networks"`` (every car is driven by its own random [7, 16, 16, 2] network).
+    throttle 0.3), ``"neuron"`` (one shared neuron steers; change it with ``set_param``),
+    ``"random_networks"`` (every car is driven by its own random [7, 16, 16, 2] network) or
+    ``"expert"`` (the scripted expert of ``env/experts.py``, which reads the track; api v1.12).
     ``seed`` None starts every car at the track's start; an integer gives a seeded random start
     (position, sideways offset and heading). For ``"random_networks"`` the same ``seed`` also picks
     the networks (seed 0 when None), so a seed always gives the same 20 drivers.
+
+    ``"checkpoint"`` (api v1.14, task 5.9, ADR-042) replays a saved network's Driving Exam drive
+    on ``track``: ``checkpoint`` names it, and the cars are placed at the exam's starts on that
+    track in the exam's order (car k = exam start k, 10 cars), all driven by that one network as
+    one batch, exactly as the exam drove them. ``n_cars`` and ``seed`` are then ignored.
     """
 
     type: Literal["load_scenario"] = "load_scenario"
     track: str
-    policy: Literal["keyboard", "constant", "neuron", "random_networks"] = "keyboard"
+    policy: Literal["keyboard", "constant", "neuron", "random_networks", "expert", "checkpoint"] = (
+        "keyboard"
+    )
     n_cars: int = Field(default=1, ge=1, le=100)
     seed: int | None = Field(default=None, ge=0)
+    checkpoint: CheckpointRef | None = None
 
 
 class Play(CommandModel):
@@ -207,14 +223,16 @@ class ScenarioMessage(WireModel):
     ``dt`` is the physics step in seconds, ``ray_angles`` the sensor directions in radians
     relative to the heading (left positive), ``ray_range`` the sensor range in metres. Track
     geometry is not included: fetch ``GET /api/tracks/{track}``. ``trail_seconds`` is how much
-    of the drive the session remembers for the decision trail (ADR-027).
+    of the drive the session remembers for the decision trail (ADR-027). ``checkpoint`` is the
+    replayed network for the ``"checkpoint"`` driver (api v1.14), else null.
     """
 
     type: Literal["scenario"] = "scenario"
     track: str
-    policy: Literal["keyboard", "constant", "neuron", "random_networks"]
+    policy: Literal["keyboard", "constant", "neuron", "random_networks", "expert", "checkpoint"]
     n_cars: int
     seed: int | None
+    checkpoint: CheckpointRef | None = None
     dt: float
     time_limit: float
     target_laps: int
@@ -610,6 +628,170 @@ class CompareGroup(WireModel):
     n_diverged: int
 
 
+# ── launching and following training runs (api v1.13, task 5.8, ADR-041) ──────────────────────
+
+
+class ConfigInfo(WireModel):
+    """One training config of ``GET /api/configs``: a YAML file in ``configs/`` that ``nd train``
+    accepts.
+
+    ``length_field`` names what the run's length counts (``epochs`` for toy configs, ``units``
+    for random search) and ``length`` is the file's value (null when a random-search budget has
+    no unit limit). ``task`` is the toy task (null for random search).
+    """
+
+    name: str
+    method: Literal["toy", "random_search"]
+    task: str | None
+    seed: int
+    tag: str
+    length_field: Literal["epochs", "units"]
+    length: int | None
+
+
+class ConfigListResponse(WireModel):
+    """Answer to ``GET /api/configs``: the training configs, by file name."""
+
+    configs: list[ConfigInfo]
+
+
+class LaunchRequest(WireModel):
+    """Body of ``POST /api/runs``: a config from ``configs/`` and the overrides of ``nd train``.
+
+    Each override left out (null) keeps the file's value. ``epochs`` is for toy configs and
+    ``units`` for random search, exactly as on the command line.
+    """
+
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True, extra="forbid")
+
+    config: str
+    seed: int | None = None
+    tag: str | None = None
+    epochs: int | None = None
+    units: int | None = None
+
+
+class LaunchResponse(WireModel):
+    """Answer to ``POST /api/runs``: the id of the run folder the new training process made."""
+
+    run_id: str
+
+
+class StopResponse(WireModel):
+    """Answer to ``POST /api/runs/{id}/stop``: the stop request was written into the run folder;
+    the run ends after its current unit."""
+
+    run_id: str
+    stop_requested: bool = True
+
+
+class WatchRun(CommandModel):
+    """``/ws/runs``, browser → server: follow one run (null: none). The server answers with the
+    run's history (``metrics`` with ``replace``, ``checkpoint``, one ``exam_done`` per card) and
+    then sends that run's new events as they appear."""
+
+    type: Literal["watch"] = "watch"
+    run_id: str | None
+
+
+class RunStatusMessage(WireModel):
+    """``/ws/runs``: a run appeared or changed (sent to every connection).
+
+    ``status`` and ``stop_reason`` come from the run's ``meta.json``; ``units_done`` is the number
+    of metrics lines, ``budget_units`` the unit limit (null without one). ``stop_requested``: a
+    stop request is waiting for the current unit to end. ``launched``: this server started the
+    training process; ``exit_code`` is that process's exit code once it has ended (null while it
+    runs, and for runs this server did not start). A run whose status is still "running" but whose
+    process has ended was killed; ``nd resume`` can continue it (resumable methods).
+    """
+
+    type: Literal["run_status"] = "run_status"
+    run_id: str
+    method: str
+    tag: str
+    status: Literal["running", "completed", "diverged", "failed"]
+    stop_reason: str | None
+    units_done: int
+    budget_units: int | None
+    stop_requested: bool
+    launched: bool
+    exit_code: int | None
+
+
+class RunMetricsMessage(WireModel):
+    """``/ws/runs``: new lines of the watched run's ``metrics.jsonl``, as stored (one object per
+    unit: ``unit``, the budget totals, ``wall_clock_s`` and the learner's own metrics).
+
+    ``replace`` true: these are all the lines so far, and the browser starts the run's history
+    again from them (after ``watch``, and when a resumed run was cut back); its exam rows then
+    follow again as ``exam_done`` messages. Otherwise the lines are to be added.
+    """
+
+    type: Literal["metrics"] = "metrics"
+    run_id: str
+    replace: bool
+    records: list[dict[str, Any]]
+
+
+class CheckpointMessage(WireModel):
+    """``/ws/runs``: the watched run's checkpoint units, all of them, whenever the list changes."""
+
+    type: Literal["checkpoint"] = "checkpoint"
+    run_id: str
+    units: list[int]
+
+
+class ExamHeadline(WireModel):
+    """The headline of one part (training or held-out) of an exam card: completion rate, crash
+    rate and median progress (share of the target laps), as in the card's summaries."""
+
+    completion_rate: float
+    crash_rate: float
+    progress_frac_median: float
+
+
+class ExamDoneMessage(WireModel):
+    """``/ws/runs``: an exam card of the watched run was saved (``exams/unit_<n>.json``)."""
+
+    type: Literal["exam_done"] = "exam_done"
+    run_id: str
+    unit: int
+    training: ExamHeadline
+    heldout: ExamHeadline
+
+
+# ── replay and the run timeline (api v1.14, task 5.9, ADR-042) ─────────────────────────────────
+
+
+class CheckpointDiff(WireModel):
+    """Answer to ``GET /api/runs/{id}/checkpoints/{unit}/diff?from={from_unit}``: what changed.
+
+    ``weight_delta[l][j][i]`` = W_l[j, i] at ``unit`` minus the same weight at ``from_unit``
+    (``bias_delta`` likewise); ``max_abs_delta`` = M, the largest |delta| over every weight and
+    bias; ``weight_change`` = delta / M, so between -1 and 1: the sign says up or down, the size
+    how strongly to draw it (all 0 when nothing changed). Rounded to 4 decimals (deltas to 6
+    significant digits).
+    """
+
+    run_id: str
+    unit: int
+    from_unit: int
+    layer_sizes: list[int]
+    weight_delta: list[list[list[float]]]
+    bias_delta: list[list[float]]
+    max_abs_delta: float
+    weight_change: list[list[list[float]]]
+    bias_change: list[list[float]]
+
+
+class ExamCardResponse(WireModel):
+    """Answer to ``GET /api/runs/{id}/exams/{unit}``: the exam card as stored (exam v1, §6.14)."""
+
+    run_id: str
+    unit: int
+    card: dict[str, Any]
+
+
 class CompareResponse(WireModel):
     """Answer to ``GET /api/runs/compare?ids=a,b,...&metric=loss|val_loss`` (api v1.11, ADR-033).
 
@@ -666,4 +848,18 @@ WIRE_MODELS: tuple[type[WireModel], ...] = (
     CheckpointList,
     CheckpointNetwork,
     ToyCheckpointResponse,
+    ConfigInfo,
+    ConfigListResponse,
+    LaunchRequest,
+    LaunchResponse,
+    StopResponse,
+    WatchRun,
+    RunStatusMessage,
+    RunMetricsMessage,
+    CheckpointMessage,
+    ExamHeadline,
+    ExamDoneMessage,
+    CheckpointRef,
+    CheckpointDiff,
+    ExamCardResponse,
 )

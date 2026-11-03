@@ -2,6 +2,7 @@ import { create } from "zustand";
 
 import type {
   ActivationCurves,
+  CheckpointRef,
   EpisodeEndMessage,
   ErrorMessage,
   ExplanationMessage,
@@ -99,13 +100,18 @@ export function updateTrail(trail: Trail | null, car: number, points: TrailPoint
 /** What a `load_scenario` message asks for. */
 export interface ScenarioRequest {
   track: string;
-  policy: "keyboard" | "constant" | "neuron" | "random_networks";
+  policy: "keyboard" | "constant" | "neuron" | "random_networks" | "expert" | "checkpoint";
   n_cars: number;
   /**
    * null: every car starts at the track's start line; a number: a seeded random start. With
    * "random_networks" the seed also picks the networks (seed 0 when null).
    */
   seed: number | null;
+  /**
+   * The "checkpoint" driver only (task 5.9, ADR-042): the saved network to replay. The server then
+   * places 10 cars at the Driving Exam's starts and ignores `n_cars` and `seed`.
+   */
+  checkpoint: CheckpointRef | null;
 }
 
 /** The neuron driver's settings, as the server last reported them. */
@@ -264,15 +270,20 @@ export const useLive = create<LiveState & LiveActions>()((set, get) => ({
             policy: scenario.policy,
             n_cars: scenario.n_cars,
             seed: scenario.seed,
+            checkpoint: scenario.checkpoint,
           });
     const fallback = tracks.find((t) => t.name === DEFAULT_TRACK)?.name ?? tracks[0]?.name;
     const track = changes.track ?? base.track ?? fallback;
     if (track === undefined) return; // nothing to load yet
+    const policy = changes.policy ?? base.policy ?? "keyboard";
+    const checkpoint = changes.checkpoint ?? base.checkpoint;
     const request: ScenarioRequest = {
       track,
-      policy: changes.policy ?? base.policy ?? "keyboard",
+      policy,
       n_cars: changes.n_cars ?? base.n_cars ?? 1,
       seed: changes.seed !== undefined ? changes.seed : (base.seed ?? null),
+      // Only a replay names a checkpoint; another track keeps replaying the same one.
+      checkpoint: policy === "checkpoint" ? (checkpoint ?? null) : null,
     };
     set({ wanted: request });
     get().send({ type: "load_scenario", ...request });

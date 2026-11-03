@@ -166,3 +166,47 @@ def test_validation_example_config():
     toy = to_toy_config(load_config(CONFIGS / "toy_sine_val.yaml"))
     assert (toy.task, toy.val_fraction, toy.batch_size) == ("sine", 0.25, 16)
     assert (toy.optimizer, toy.learning_rate, toy.tag) == ("adam", 0.01, "val")
+
+
+# ── random search (task 5.7) ────────────────────────────────────────────────────────────────
+
+
+def test_the_random_search_config_loads_and_converts():
+    from neurodrive.experiment.config import RandomSearchRunConfig, to_random_search_settings
+
+    config = load_config(CONFIGS / "random_search.yaml")
+    assert isinstance(config, RandomSearchRunConfig)
+    assert config.budget.units == 100 and config.exams is True
+    settings = to_random_search_settings(config)
+    assert settings.spec.layer_sizes == (7, 16, 16, 2) and settings.candidates == 20
+    assert settings.start_fractions == (0.0, 0.2, 0.4, 0.6, 0.8)
+    assert settings.lateral_offsets == (0.0, 1.5) and settings.target_laps == 2
+    again = parse_config(resolved(config))  # the run folder's config re-creates the run
+    assert again == config
+    assert load_config(CONFIGS / "random_search.yaml", units=7, seed=4).budget.units == 7
+
+
+@pytest.mark.parametrize(
+    ("change", "problem"),
+    [
+        ({"fitness": {"track": "hairpins_01"}}, "fitness.track: 'hairpins_01' is a held-out track"),
+        ({"fitness": {"track": "nowhere"}}, "fitness.track: no track 'nowhere'"),
+        ({"search": {"candidates_per_unit": 0}}, "search.candidates_per_unit"),
+        ({"network": {"layer_sizes": [2, 4, 1]}}, "a driving network needs 7 inputs"),
+        ({"budget": {}}, "budget: give at least one of units"),
+        ({"fitness": {"start_fractions": [1.0]}}, "fitness.start_fractions.0"),
+        ({"surprise": 1}, "surprise: unknown field"),
+    ],
+)
+def test_broken_random_search_configs_name_the_field(change, problem):
+    data = {**resolved(load_config(CONFIGS / "random_search.yaml")), **change}
+    with pytest.raises(ConfigError) as err:
+        parse_config(data)
+    assert any(p.startswith(problem) or problem in p for p in err.value.problems), err.value
+
+
+def test_epochs_and_units_belong_to_their_own_method():
+    with pytest.raises(ConfigError, match="--epochs is for toy configs"):
+        load_config(CONFIGS / "random_search.yaml", epochs=5)
+    with pytest.raises(ConfigError, match="--units is for random_search configs"):
+        load_config(CONFIGS / "toy_xor.yaml", units=5)

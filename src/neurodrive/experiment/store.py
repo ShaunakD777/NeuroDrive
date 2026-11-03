@@ -1,23 +1,31 @@
-"""Run folders, version 0 (ADR-030): everything one training run leaves on disk.
+"""Run folders, version 1 (ADR-030, ADR-037): everything one training run leaves on disk.
 
-A run folder is the master record of a run (ADR-007). Version 0 is a strict subset of run v1
-(docs/ARCHITECTURE.md §6.13), so v1 only adds files and fields:
+A run folder is the master record of a run (ADR-007). Version 1 (task 5.5) adds ``exams/``,
+``state/`` and the meta fields ``budget``, ``exams``, ``stop_reason``, ``resumed_at`` and
+``exam_wall_clock_s`` to version 0 (ADR-030), which is a strict subset and is still read:
 
     runs/<YYYYMMDD-HHMMSS>-<method>-<tag>/
       config.yaml        the fully resolved config, including the seed
       meta.json          run_version, status, start/end time (UTC), git commit + dirty flag,
-                         Python / NumPy / NeuroDrive versions, and ``sweep`` (the sweep id)
-                         for runs made by ``nd sweep``
+                         Python / NumPy / NeuroDrive versions, ``sweep`` (the sweep id)
+                         for runs made by ``nd sweep``, and ``study`` (the study id, e.g. S4)
+                         for runs made for a study (task 5.10, ADR-043)
       metrics.jsonl      one JSON object per unit (unit, budget totals, wall_clock_s, the
                          learner's native metrics)
       checkpoints/       unit_<n>.npz (network files, core/nn/io.py) + index.json {"units": [...]}
+      exams/             unit_<n>.json: Driving Exam cards of examined checkpoints (exam v1)
+      state/             latest.npz: the learner's state after the latest unit, for resuming
       extra/             method-specific arrays, e.g. the toy dataset (extra/dataset.npz)
+      stop_requested     (only while asked to stop, task 5.8) an empty file: the runner ends
+                         the run cleanly after the unit in progress
 
-``status`` is one of running, completed, diverged, failed. Nothing personal is stored: no
-absolute paths, no user names. ``runs/`` is git-ignored.
+``status`` is one of running, completed, diverged, failed. The state file is replaced
+atomically (written to ``latest.tmp.npz``, then renamed), so a kill never leaves half a state.
+Nothing personal is stored: no absolute paths, no user names. ``runs/`` is git-ignored.
 """
 
 import json
+import os
 import platform
 import subprocess
 from datetime import UTC, datetime
@@ -30,15 +38,23 @@ import yaml
 import neurodrive
 from neurodrive.core.nn.io import load_network, save_network
 from neurodrive.core.nn.network import Network
+from neurodrive.experiment.exam import ExamResult
+from neurodrive.learn.base import LearnerState
 
-RUN_VERSION = 0
+RUN_VERSION = 1
 STATUSES = ("running", "completed", "diverged", "failed")
+STOP_FILE = "stop_requested"  # task 5.8, ADR-041: another process asks a run to stop
 _NAME_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
 
 
 def _check_name(kind: str, value: str) -> None:
     if not value or not set(value) <= _NAME_CHARS:
         raise ValueError(f"{kind} must be letters, digits, '_' or '-', got {value!r}")
+
+
+def check_study(study: str) -> None:
+    """Raise ``ValueError`` unless ``study`` is a valid study id (letters, digits, '_', '-')."""
+    _check_name("study", study)
 
 
 def _git_info() -> dict[str, Any]:
@@ -87,10 +103,13 @@ class RunStore:
 
         ``when`` (default: now, UTC) sets the timestamp in the name. If that folder already
         exists, ``-2``, ``-3``, ... is appended. The run starts with status "running".
-        ``extra_meta`` adds fields to ``meta.json``, e.g. ``{"sweep": <sweep id>}`` (ADR-033).
+        ``extra_meta`` adds fields to ``meta.json``, e.g. ``{"sweep": <sweep id>}`` (ADR-033)
+        or ``{"study": "S4"}`` (ADR-043; checked like a tag).
         """
         _check_name("method", method)
         _check_name("tag", tag)
+        if extra_meta and "study" in extra_meta:
+            check_study(extra_meta["study"])
         when = when or datetime.now(UTC)
         base = Path(runs_dir) / f"{when:%Y%m%d-%H%M%S}-{method}-{tag}"
         path, n = base, 1
@@ -129,13 +148,31 @@ class RunStore:
             raise FileNotFoundError(f"not a run folder (no meta.json): {store.path.name}")
         return store
 
-    def finish(self, status: str) -> None:
-        """Record the final status and the end time."""
+    def finish(self, status: str, stop_reason: str | None = None) -> None:
+        """Record the final status, why the run stopped (run v1) and the end time."""
         if status not in STATUSES or status == "running":
             raise ValueError(f"final status must be one of {STATUSES[1:]}, got {status!r}")
         meta = self.read_meta()
         meta["status"], meta["ended_at"] = status, _now()
+        if stop_reason is not None:
+            meta["stop_reason"] = stop_reason
         self._write_json("meta.json", meta)
+
+    def update_meta(self, **fields: Any) -> None:
+        """Set (or replace) fields of meta.json."""
+        self._write_json("meta.json", {**self.read_meta(), **fields})
+
+    # --- asking a run to stop (task 5.8, ADR-041) ---
+
+    def request_stop(self) -> None:
+        """Ask the process training this run to stop after its current unit (an empty file)."""
+        (self.path / STOP_FILE).touch()
+
+    def stop_requested(self) -> bool:
+        return (self.path / STOP_FILE).is_file()
+
+    def clear_stop_request(self) -> None:
+        (self.path / STOP_FILE).unlink(missing_ok=True)
 
     # --- writing during the run ---
 
@@ -151,6 +188,55 @@ class RunStore:
         save_network(network, self.path / "checkpoints" / f"unit_{unit}.npz")
         units = sorted(set(self.checkpoint_units()) | {unit})
         self._write_json("checkpoints/index.json", {"units": units})
+
+    def save_exam(self, unit: int, result: ExamResult) -> None:
+        """Save a checkpoint's exam card as exams/unit_<unit>.json."""
+        result.save(self.path / "exams" / f"unit_{unit}.json")
+
+    def save_state(self, state: LearnerState, runner: dict[str, Any]) -> None:
+        """Replace state/latest.npz with the learner's ``state`` and the runner's bookkeeping.
+
+        Arrays are stored under their own names with an ``a_`` prefix; ``state.info`` and
+        ``runner`` (unit, budget totals, clocks) go into one JSON text entry. The file is written
+        under a temporary name and then renamed over the old one: a rename is all-or-nothing, so
+        a kill leaves either the old state or the new one, never half of one.
+        """
+        folder = self.path / "state"
+        folder.mkdir(exist_ok=True)
+        text = json.dumps({"learner": state.info, "runner": runner}, allow_nan=False)
+        arrays = {f"a_{name}": value for name, value in state.arrays.items()}
+        tmp = folder / "latest.tmp.npz"
+        np.savez(tmp, __info__=np.array(text), **arrays)
+        os.replace(tmp, folder / "latest.npz")
+
+    def load_state(self) -> tuple[LearnerState, dict[str, Any]] | None:
+        """The saved learner state and runner bookkeeping, or None if no unit saved one yet."""
+        path = self.path / "state" / "latest.npz"
+        if not path.is_file():
+            return None
+        with np.load(path, allow_pickle=False) as data:
+            info = json.loads(str(data["__info__"]))
+            arrays = {key[2:]: data[key] for key in data.files if key.startswith("a_")}
+        return LearnerState(arrays=arrays, info=info["learner"]), info["runner"]
+
+    def cut_back(self, unit: int) -> None:
+        """Forget everything after ``unit``: later metrics lines, checkpoints and exam cards, and a
+        state file a kill left half-written. Used before resuming from a state of ``unit``."""
+        kept = [m for m in self.read_metrics() if m["unit"] <= unit]
+        text = "".join(json.dumps(m, allow_nan=False) + "\n" for m in kept)
+        tmp = self.path / "metrics.tmp.jsonl"
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, self.path / "metrics.jsonl")
+        later = [u for u in self.checkpoint_units() if u > unit]
+        for u in later:
+            (self.path / "checkpoints" / f"unit_{u}.npz").unlink(missing_ok=True)
+        self._write_json(
+            "checkpoints/index.json", {"units": [u for u in self.checkpoint_units() if u <= unit]}
+        )
+        for u in self.exam_units():
+            if u > unit:
+                (self.path / "exams" / f"unit_{u}.json").unlink()
+        (self.path / "state" / "latest.tmp.npz").unlink(missing_ok=True)
 
     def save_extra(self, name: str, **arrays: np.ndarray) -> None:
         """Save named arrays to extra/<name>.npz."""
@@ -178,6 +264,16 @@ class RunStore:
         if unit not in self.checkpoint_units():
             raise KeyError(f"no checkpoint for unit {unit}")
         return load_network(self.path / "checkpoints" / f"unit_{unit}.npz")
+
+    def exam_units(self) -> list[int]:
+        """Units that have an exam card, in order."""
+        folder = self.path / "exams"
+        if not folder.is_dir():
+            return []
+        return sorted(int(p.stem.removeprefix("unit_")) for p in folder.glob("unit_*.json"))
+
+    def load_exam(self, unit: int) -> ExamResult:
+        return ExamResult.load(self.path / "exams" / f"unit_{unit}.json")
 
     def load_extra(self, name: str) -> dict[str, np.ndarray]:
         with np.load(self.path / "extra" / f"{name}.npz") as data:
