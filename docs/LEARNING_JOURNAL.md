@@ -1387,3 +1387,33 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   steps); five side by side ran at about 4,900 each, slower per seed but about twice the total
   throughput. Every seed retrained alone gave identical files, so parallel running changes only
   the clock, and the clock also moved with other load on the machine (seeds 5-8's first times).
+
+### 2026-11-03 — Phase 5 complete (tag `phase-5`)
+- What was built: a track set (the training loop, its mirror and three held-out tracks); driving
+  metrics per car (`experiment/metrics.py`); a scripted pure-pursuit expert (`env/experts.py`);
+  the Driving Exam v1 (`experiment/exam.py`: 10 starts per track, 2 laps, one exam card per
+  checkpoint); learner contract v1 and runner v1 with budgets, exams at checkpoints and exact
+  resume; the SQLite mirror of the run folders (db v2, rebuildable, never stops a run); baselines
+  as run folders (random networks, a hand-wired neuron, the expert); random search as the first
+  driving learner; training runs launched, followed and stopped from the app (`/ws/runs`); a run
+  timeline that replays any checkpoint as a live driver in every view, with weight diffs; and
+  study S4. 1,687 Python tests (one PyTorch test skipped without PyTorch), 156 web unit tests,
+  70 browser tests.
+- What was learned: a yardstick must be fixed before the thing it measures (same starts, same
+  tracks, held-out tracks the learner never sees); a learner is compared at equal budget, in
+  environment steps, against baselines that cost nothing; the score a learner optimises
+  (fitness on the training starts) and the score that matters (held-out progress) can drift
+  apart, which is selection overfitting; and a median over five seeds can flatter a method that
+  ten seeds do not (S4: with 10 seeds random search beats the hand-wired neuron on held-out
+  tracks only briefly, between 0.24 M and 0.95 M steps, and ends below it).
+- Decisions: ADR-034 to ADR-043 (track set; the expert as a live driver; lap times per track;
+  learner, run folder and runner v1; the mirror as built; baseline runs; random search; launching
+  and streaming runs; replaying checkpoints; studies in the run folders and db v2).
+- Fixed along the way: CRLF line endings after writing files from Python on Windows; hover text
+  on the Training and loss charts (now sharp HTML boxes). During this phase's closing checks one
+  browser test (neuron view, random-start checkbox) failed once in a full run and passed alone
+  and in the next full run; treated as a timing flake, not investigated further.
+- Open questions: would a fitness that rewards margin, or a wider set of training starts, keep
+  the slow, general drivers that random search found early? Does the genetic algorithm (Phase 7),
+  which builds on its best networks, fall into the same trap sooner? What causes the neuron-view
+  browser test to fail once in a while?
