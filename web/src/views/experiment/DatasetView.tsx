@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { type CSSProperties, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 
 import type { DatasetDetail, DatasetHistogram, DatasetMap, DatasetSummary, TrackGeometry } from "../../api/generated";
 import { fetchDataset, fetchDatasets, fetchTrack } from "../../api/rest";
@@ -6,7 +6,7 @@ import { drawScene, readTheme } from "../environment/draw";
 import { type Camera, fitCamera, panBy, scaleLimits, type Size, wheelFactor, worldToScreen, zoomAt } from "../environment/geometry";
 import { ChartHover } from "./ChartHover";
 import { formatNumber, linearScale, niceTicks } from "./charts";
-import { colourScale, formatShare, type MapPalette, nearestPoint, parseHex, pointColour } from "./datasetMap";
+import { barSpan, denseStretches, formatShare, type MapPalette, nearestPoint, parseHex, pointColour, sharedColourScale } from "./datasetMap";
 
 /** What each quantity means, in words, for the axis titles. */
 const MEANING: Record<string, string> = {
@@ -30,41 +30,82 @@ interface Episode {
   frames: number;
 }
 
+/** The two datasets of the comparator (6.2 follow-up, ADR-046) and their series colours. */
+type Side = "a" | "b";
+const SERIES: Record<Side, CSSProperties> = {
+  a: { "--series": "var(--series-1)" } as CSSProperties,
+  b: { "--series": "var(--series-2)" } as CSSProperties,
+};
+
+function Swatch({ side }: { side: Side }) {
+  return <span className="cmp-swatch" style={SERIES[side]} aria-label={side === "a" ? "A" : "B"} />;
+}
+
+/** One dataset's histogram of a quantity, with that dataset's frame count. */
+interface Hist {
+  h: DatasetHistogram;
+  frames: number;
+}
+
 /**
  * One quantity's histogram (task 6.2): a bar per bin over the quantity's whole contract range, so
- * empty bins show what the dataset never contains. The thin line under the axis marks the range
- * the values actually reach (min to max). The bins and counts come from the server; hovering a
- * bar shows its bin, count and share of the frames.
+ * empty bins show what the dataset never contains. Under the axis, a thin line marks the range
+ * the values reach (min to max) and a thick line the stretches where the dataset is dense: bins
+ * holding at least τ = 1 % of the frames (6.2 follow-up, ADR-046); the dashed line is that 1 %
+ * bar height. With a second dataset `b`, each bin holds two bars, A's and B's, each the share of
+ * its own dataset's frames, and each dataset gets its own reach and dense line. Every number
+ * comes from the server; hovering a bin shows its counts and shares.
  */
-function HistogramChart({ h, frames, big = false }: { h: DatasetHistogram; frames: number; big?: boolean }) {
+function HistogramChart({ a, b = null, big = false }: { a: Hist; b?: Hist | null; big?: boolean }) {
   const [hover, setHover] = useState<number | null>(null);
+  const { h } = a;
+  const sides: [Side, Hist][] = b ? [["a", a], ["b", b]] : [["a", a]];
   const W = big ? 420 : 300;
-  const H = big ? 190 : 150;
-  const M = { left: 44, right: 10, top: 10, bottom: 38 };
-  // The share axis runs from 0 to the first round tick at or above the tallest bar.
-  const tallest = Math.max(...h.counts, 1) / Math.max(frames, 1);
+  const H = big ? 196 : 156;
+  const M = { left: 44, right: 10, top: 10, bottom: 44 };
+  const share = (s: Hist, c: number) => (s.frames > 0 ? c / s.frames : 0);
+  const tau = a.frames > 0 ? h.dense_threshold / a.frames : 0;
+  // The share axis runs from 0 to the first round tick at or above the tallest bar (or τ).
+  const tallest = Math.max(...sides.map(([, s]) => Math.max(...s.h.counts, 1) / Math.max(s.frames, 1)), tau);
   const rough = niceTicks(0, tallest, 3);
   const step = rough.length > 1 ? rough[1] - rough[0] : tallest;
   const yMax = Math.max(Math.ceil(tallest / step - 1e-9) * step, 1e-9);
   const yTicks = Array.from({ length: Math.round(yMax / step) + 1 }, (_, i) => Number((i * step).toPrecision(6)));
   const x = linearScale(h.lo, h.hi, M.left, W - M.right);
   const y = linearScale(0, yMax, H - M.bottom, M.top);
-  const share = (c: number) => (frames > 0 ? c / frames : 0);
   const base = H - M.bottom;
   const label = MEANING[h.name] ?? h.name;
+  const stretches = sides.map(([, s]) => denseStretches(s.h.edges, s.h.counts, s.h.dense_threshold, s.h.min, s.h.max));
+  const drawnDense = stretches[0].reduce((sum, [lo, hi]) => sum + hi - lo, 0) / (h.hi - h.lo);
 
   return (
-    <figure className="toy-figure ds-hist" data-testid="dataset-histogram" data-name={h.name}>
+    <figure
+      className="toy-figure ds-hist"
+      data-testid="dataset-histogram"
+      data-name={h.name}
+      data-dense-drawn={drawnDense}
+      data-bars-b={b ? b.h.counts.filter((c) => c > 0).length : 0}
+    >
       <figcaption className="toy-figure-title">
         {h.name.replaceAll("_", " ")}
-        <span className="ds-covered" data-testid="dataset-covered" data-covered={h.covered}>
+        <span className="ds-covered" data-testid="dataset-covered" data-covered={h.covered} data-dense={h.dense} data-dense-b={b?.h.dense}>
           {" "}
-          · covers {formatShare(h.covered)} of its range
-          {h.min !== null && h.max !== null && ` (${formatNumber(h.min)} to ${formatNumber(h.max)})`}
+          ·{" "}
+          {b ? (
+            <>
+              densely covers <Swatch side="a" /> {formatShare(h.dense)} · <Swatch side="b" /> {formatShare(b.h.dense)} of its range (reaches{" "}
+              {formatShare(h.covered)} · {formatShare(b.h.covered)})
+            </>
+          ) : (
+            <>
+              densely covers {formatShare(h.dense)} of its range (reaches {formatShare(h.covered)}
+              {h.min !== null && h.max !== null && `: ${formatNumber(h.min)} to ${formatNumber(h.max)}`})
+            </>
+          )}
         </span>
       </figcaption>
       <div className="cmp-plot">
-        <svg className="toy-svg" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Histogram of ${label} over ${frames} frames`}>
+        <svg className="toy-svg" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Histogram of ${label}`}>
           {yTicks.map((t) => (
             <g key={t}>
               <line className="toy-grid" x1={M.left} x2={W - M.right} y1={y(t)} y2={y(t)} />
@@ -74,42 +115,65 @@ function HistogramChart({ h, frames, big = false }: { h: DatasetHistogram; frame
             </g>
           ))}
           {[h.lo, (h.lo + h.hi) / 2, h.hi].map((t) => (
-            <text key={`x${t}`} className="toy-tick" x={x(t)} y={base + 22} textAnchor="middle">
+            <text key={`x${t}`} className="toy-tick" x={x(t)} y={base + 28} textAnchor="middle">
               {formatNumber(t)}
             </text>
           ))}
           <text className="toy-axis-title" x={(M.left + W - M.right) / 2} y={H - 3} textAnchor="middle">
             {label}
           </text>
-          {h.counts.map((c, b) => {
-            if (c === 0) return null;
-            const x0 = x(h.edges[b]) + 1; // a 2 px gap between neighbouring bars
-            const x1 = x(h.edges[b + 1]) - 1;
-            const yTop = Math.min(y(share(c)), base - 1); // a non-empty bin is always visible
-            return (
-              <rect
-                key={b}
-                className={b === hover ? "ds-bar ds-bar-hover" : "ds-bar"}
-                x={x0}
-                y={yTop}
-                width={Math.max(x1 - x0, 1)}
-                height={base - yTop}
-                rx={1.5}
-              />
-            );
-          })}
-          {h.min !== null && h.max !== null && (
-            <line className="ds-range" data-testid="dataset-range" x1={x(h.min)} x2={Math.max(x(h.max), x(h.min) + 2)} y1={base + 6} y2={base + 6} />
-          )}
-          {h.counts.map((_, b) => (
+          {sides.map(([side, s], i) => (
+            <g key={side} className={b ? `ds-side ds-side-${side}` : "ds-side"}>
+              {s.h.counts.map((c, bin) => {
+                if (c === 0) return null;
+                const [x0, x1] = barSpan(x(h.edges[bin]), x(h.edges[bin + 1]), i, sides.length);
+                const yTop = Math.min(y(share(s, c)), base - 1); // a non-empty bin is always visible
+                return (
+                  <rect
+                    key={bin}
+                    className={bin === hover ? "ds-bar ds-bar-hover" : "ds-bar"}
+                    data-bin={bin}
+                    x={x0}
+                    y={yTop}
+                    width={x1 - x0}
+                    height={base - yTop}
+                    rx={1.5}
+                  />
+                );
+              })}
+              {s.h.min !== null && s.h.max !== null && (
+                <line
+                  className="ds-range"
+                  data-testid="dataset-range"
+                  x1={x(s.h.min)}
+                  x2={Math.max(x(s.h.max), x(s.h.min) + 2)}
+                  y1={base + 7 + 7 * i}
+                  y2={base + 7 + 7 * i}
+                />
+              )}
+              {stretches[i].map(([lo, hi]) => (
+                <line
+                  key={lo}
+                  className="ds-dense"
+                  data-testid="dataset-dense"
+                  x1={x(lo)}
+                  x2={Math.max(x(hi), x(lo) + 2)}
+                  y1={base + 7 + 7 * i}
+                  y2={base + 7 + 7 * i}
+                />
+              ))}
+            </g>
+          ))}
+          {tau > 0 && <line className="ds-threshold" data-testid="dataset-threshold" x1={M.left} x2={W - M.right} y1={y(tau)} y2={y(tau)} />}
+          {h.counts.map((_, bin) => (
             <rect
-              key={`hit${b}`}
+              key={`hit${bin}`}
               className="toy-hit"
-              x={x(h.edges[b])}
+              x={x(h.edges[bin])}
               y={M.top}
-              width={x(h.edges[b + 1]) - x(h.edges[b])}
+              width={x(h.edges[bin + 1]) - x(h.edges[bin])}
               height={base - M.top + 8}
-              onMouseEnter={() => setHover(b)}
+              onMouseEnter={() => setHover(bin)}
               onMouseLeave={() => setHover(null)}
             />
           ))}
@@ -119,9 +183,12 @@ function HistogramChart({ h, frames, big = false }: { h: DatasetHistogram; frame
             <div className="cmp-hover-title">
               {formatNumber(h.edges[hover])} to {formatNumber(h.edges[hover + 1])}
             </div>
-            <div>
-              {h.counts[hover]} frames ({formatShare(share(h.counts[hover]))})
-            </div>
+            {sides.map(([side, s]) => (
+              <div key={side}>
+                {b && <Swatch side={side} />} {s.h.counts[hover]} frames ({formatShare(share(s, s.h.counts[hover]))})
+                {s.h.counts[hover] > 0 && s.h.counts[hover] >= s.h.dense_threshold ? ", dense" : ""}
+              </div>
+            ))}
           </ChartHover>
         )}
       </div>
@@ -131,25 +198,52 @@ function HistogramChart({ h, frames, big = false }: { h: DatasetHistogram; frame
 
 const MAP_HEIGHT = 440;
 
+/** What the map's points are coloured by; "dataset" only while comparing on one track. */
+type ColourBy = "steer" | "throttle" | "dataset";
+
+interface MapColours extends MapPalette {
+  a: string;
+  b: string;
+}
+
 /**
  * The map's colours from the current theme (light or dark): the diverging chart pair, and as the
  * neutral midpoint the muted text grey, which stays visible on the white (or dark) road where the
- * charts' pale midpoint would vanish.
+ * charts' pale midpoint would vanish; for colouring by dataset, the series pair of the comparator.
  */
-function readPalette(el: Element): MapPalette {
+function readPalette(el: Element): MapColours {
   const style = getComputedStyle(el);
   const get = (name: string, fallback: [number, number, number]) => parseHex(style.getPropertyValue(name)) ?? fallback;
-  return { pos: get("--chart-pos", [37, 99, 235]), neg: get("--chart-neg", [180, 83, 9]), mid: get("--text-muted", [91, 100, 114]) };
+  const css = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback;
+  return {
+    pos: get("--chart-pos", [37, 99, 235]),
+    neg: get("--chart-neg", [180, 83, 9]),
+    mid: get("--text-muted", [91, 100, 114]),
+    a: css("--series-1", "#2a78d6"),
+    b: css("--series-2", "#eb6834"),
+  };
 }
 
 /**
  * The track map (task 6.2, ADR-045): the road, and on it every k-th frame of the dataset at the
  * position it was recorded, coloured by its label on a symmetric scale −m..+m (`colourScale`):
- * blue = steer right / throttle, orange = steer left / brake, grey = 0. The wheel zooms around
- * the mouse, dragging moves the map, and hovering a point shows that frame's labels. Drawn on a
- * canvas, since a dataset has thousands of points.
+ * blue = steer right / throttle, orange = steer left / brake, grey = 0. With a second dataset on
+ * the same track (6.2 follow-up, ADR-046), its points are drawn too: coloured by dataset (A and
+ * B in their series colours), or by a label on one scale for both, B as rings. The wheel zooms
+ * around the mouse, dragging moves the map, and hovering a point shows that frame's labels.
+ * Drawn on a canvas, since a dataset has thousands of points.
  */
-function TrackMap({ geometry, map, colourBy }: { geometry: TrackGeometry | null; map: DatasetMap; colourBy: "steer" | "throttle" }) {
+function TrackMap({
+  geometry,
+  map,
+  mapB,
+  colourBy,
+}: {
+  geometry: TrackGeometry | null;
+  map: DatasetMap;
+  mapB: DatasetMap | null;
+  colourBy: ColourBy;
+}) {
   const box = useRef<HTMLDivElement | null>(null);
   const canvas = useRef<HTMLCanvasElement | null>(null);
   const [width, setWidth] = useState(600);
@@ -157,8 +251,11 @@ function TrackMap({ geometry, map, colourBy }: { geometry: TrackGeometry | null;
   const [hover, setHover] = useState<number | null>(null);
   const drag = useRef<{ x: number; y: number } | null>(null);
   const size: Size = useMemo(() => ({ w: width, h: MAP_HEIGHT }), [width]);
-  const values = colourBy === "steer" ? map.steer : map.throttle;
-  const scale = useMemo(() => colourScale(values), [values]);
+  const label = colourBy === "throttle" ? "throttle" : "steer";
+  const values = map[label];
+  const valuesB = mapB ? mapB[label] : null;
+  const scale = useMemo(() => sharedColourScale(values, valuesB ?? []), [values, valuesB]);
+  const nA = map.x.length;
 
   useEffect(() => {
     const el = box.current;
@@ -172,17 +269,20 @@ function TrackMap({ geometry, map, colourBy }: { geometry: TrackGeometry | null;
   useEffect(() => setCamera(null), [geometry, width]); // a new track or size shows the whole track again
   const cam = camera ?? fit;
 
+  // A's points first, then B's: index i < nA is A's row i, otherwise B's row i − nA.
   const screen = useMemo(() => {
     if (!cam) return { xs: [] as number[], ys: [] as number[] };
     const xs: number[] = [];
     const ys: number[] = [];
-    for (let i = 0; i < map.x.length; i++) {
-      const [px, py] = worldToScreen(cam, size, map.x[i], map.y[i]);
-      xs.push(px);
-      ys.push(py);
+    for (const m of mapB ? [map, mapB] : [map]) {
+      for (let i = 0; i < m.x.length; i++) {
+        const [px, py] = worldToScreen(cam, size, m.x[i], m.y[i]);
+        xs.push(px);
+        ys.push(py);
+      }
     }
     return { xs, ys };
-  }, [cam, size, map]);
+  }, [cam, size, map, mapB]);
 
   useEffect(() => {
     const el = canvas.current;
@@ -209,13 +309,24 @@ function TrackMap({ geometry, map, colourBy }: { geometry: TrackGeometry | null;
     });
     const palette = readPalette(el);
     const r = Math.max(2, Math.min(4, cam.scale * 0.4));
+    ctx.lineWidth = 1.5;
     for (let i = 0; i < screen.xs.length; i++) {
-      ctx.fillStyle = pointColour(values[i], -scale, scale, palette);
+      const isB = i >= nA;
+      const v = isB ? valuesB![i - nA] : values[i];
+      const colour = colourBy === "dataset" ? (isB ? palette.b : palette.a) : pointColour(v, -scale, scale, palette);
+      const radius = i === hover ? r + 2 : r;
       ctx.beginPath();
-      ctx.arc(screen.xs[i], screen.ys[i], i === hover ? r + 2 : r, 0, 2 * Math.PI);
-      ctx.fill();
+      if (isB && colourBy !== "dataset") {
+        ctx.strokeStyle = colour; // B as rings, so both datasets stay apart on one colour scale
+        ctx.arc(screen.xs[i], screen.ys[i], radius, 0, 2 * Math.PI);
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = colour;
+        ctx.arc(screen.xs[i], screen.ys[i], radius, 0, 2 * Math.PI);
+        ctx.fill();
+      }
     }
-  }, [cam, size, geometry, values, scale, screen, hover]);
+  }, [cam, size, geometry, values, valuesB, nA, colourBy, scale, screen, hover]);
 
   // The wheel zooms around the cursor. Registered by hand, as in the Environment view, because
   // React's wheel listener cannot stop the page from scrolling.
@@ -250,12 +361,21 @@ function TrackMap({ geometry, map, colourBy }: { geometry: TrackGeometry | null;
     setHover(nearestPoint(screen.xs, screen.ys, px, py));
   }
 
-  const h = hover !== null && hover < map.x.length ? hover : null;
+  const h = hover !== null && hover < screen.xs.length ? hover : null;
+  const hoverMap = h !== null && h >= nA ? mapB! : map;
+  const hoverRow = h !== null && h >= nA ? h - nA : h;
+  const every = (m: DatasetMap) => `every ${m.stride === 1 ? "" : `${m.stride}th `}frame (${m.x.length} points)`;
   return (
-    <figure className="toy-figure ds-map" data-testid="dataset-map" data-points={map.x.length} data-colour={colourBy}>
+    <figure
+      className="toy-figure ds-map"
+      data-testid="dataset-map"
+      data-points={nA}
+      data-points-b={mapB ? mapB.x.length : 0}
+      data-colour={colourBy}
+    >
       <figcaption className="toy-figure-title">
-        Where the frames were recorded: every {map.stride === 1 ? "" : `${map.stride}th `}frame ({map.x.length} points),
-        coloured by its {colourBy} label
+        Where the frames were recorded: {mapB ? <>A&apos;s {every(map)} and B&apos;s {every(mapB)}</> : every(map)}, coloured by{" "}
+        {colourBy === "dataset" ? "dataset" : `the ${colourBy} label`}
       </figcaption>
       <div className="cmp-plot" ref={box}>
         <canvas
@@ -273,21 +393,44 @@ function TrackMap({ geometry, map, colourBy }: { geometry: TrackGeometry | null;
             setHover(null);
           }}
         />
-        {h !== null && (
+        {h !== null && hoverRow !== null && (
           <ChartHover x={screen.xs[h]} y={screen.ys[h]} width={size.w} height={size.h} testId="dataset-map-hover">
-            <div className="cmp-hover-title">episode {map.episode[h]}</div>
-            <div>steer {formatNumber(map.steer[h])}</div>
-            <div>throttle {formatNumber(map.throttle[h])}</div>
+            <div className="cmp-hover-title">
+              {mapB && (
+                <>
+                  <Swatch side={h >= nA ? "b" : "a"} /> {h >= nA ? "B" : "A"},{" "}
+                </>
+              )}
+              episode {hoverMap.episode[hoverRow]}
+            </div>
+            <div>steer {formatNumber(hoverMap.steer[hoverRow])}</div>
+            <div>throttle {formatNumber(hoverMap.throttle[hoverRow])}</div>
           </ChartHover>
         )}
       </div>
       <div className="toy-legend" data-testid="dataset-map-legend" data-scale={scale}>
-        <span className="toy-legend-item">
-          {colourBy === "steer" ? "steer left" : "brake"} −{formatNumber(scale)}
-          <span className="ds-ramp" />
-          {colourBy === "steer" ? "steer right" : "full throttle"} +{formatNumber(scale)}
-        </span>
-        <span className="toy-legend-item ds-legend-note">grey = 0; the largest |{colourBy}| in the dataset is full colour</span>
+        {colourBy === "dataset" ? (
+          <>
+            <span className="toy-legend-item">
+              <Swatch side="a" /> A
+            </span>
+            <span className="toy-legend-item">
+              <Swatch side="b" /> B
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="toy-legend-item">
+              {colourBy === "steer" ? "steer left" : "brake"} −{formatNumber(scale)}
+              <span className="ds-ramp" />
+              {colourBy === "steer" ? "steer right" : "full throttle"} +{formatNumber(scale)}
+            </span>
+            <span className="toy-legend-item ds-legend-note">
+              grey = 0; the largest |{colourBy}| in {mapB ? "either dataset" : "the dataset"} is full colour
+              {mapB && "; dots = A, rings = B"}
+            </span>
+          </>
+        )}
         {camera !== null && (
           <button type="button" className="ds-reset" onClick={() => setCamera(null)} data-testid="dataset-map-reset">
             Show the whole track
@@ -298,46 +441,109 @@ function TrackMap({ geometry, map, colourBy }: { geometry: TrackGeometry | null;
   );
 }
 
+function episodesOf(detail: DatasetDetail): Episode[] {
+  return (detail.meta.episodes as Episode[] | undefined) ?? [];
+}
+
+/** The header line of one dataset: teacher, track, frames, episodes, the share steering straight. */
+function SummaryLine({ detail, side, testId }: { detail: DatasetDetail; side: Side | null; testId: string }) {
+  const frames = Number(detail.meta.demo_frames);
+  const episodes = episodesOf(detail);
+  const finished = episodes.filter((e) => e.status === "finished").length;
+  const teacher = String((detail.meta.teacher as { kind?: string } | undefined)?.kind ?? "?");
+  return (
+    <p className="toylab-summary" data-testid={testId} data-frames={frames}>
+      {side && (
+        <>
+          <Swatch side={side} /> <strong>{side.toUpperCase()}</strong> <code>{detail.dataset_id}</code>:{" "}
+        </>
+      )}
+      Teacher <strong>{teacher}</strong> on <strong>{String(detail.meta.track)}</strong>: {frames} frames from {episodes.length} episodes (
+      {finished} finished). {formatShare(Number(detail.meta.straight_share))} of the frames steer nearly straight (|steer| &lt; 0.1).
+    </p>
+  );
+}
+
+/** A dataset's episodes: where each drive started, how it ended and how many frames it gave. */
+function EpisodesTable({ detail, caption, testId }: { detail: DatasetDetail; caption: string; testId: string }) {
+  return (
+    <table className="compare-table" data-testid={testId}>
+      <caption>{caption}</caption>
+      <thead>
+        <tr>
+          <th scope="col">Episode</th>
+          <th scope="col">Start</th>
+          <th scope="col">Start (m along, m left)</th>
+          <th scope="col">Ends</th>
+          <th scope="col">Frames</th>
+        </tr>
+      </thead>
+      <tbody>
+        {episodesOf(detail).map((e) => (
+          <tr key={e.index} data-testid={`${testId}-row`}>
+            <td>{e.index}</td>
+            <td>{e.start_kind ?? "?"}</td>
+            <td>
+              {e.start_s0_m === undefined ? "?" : formatNumber(e.start_s0_m)}, {e.start_lateral_m === undefined ? "?" : formatNumber(e.start_lateral_m)}
+            </td>
+            <td>{e.status}</td>
+            <td>{e.frames}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+/** Fetches one dataset's detail whenever `id` changes; null while loading or when `id` is null. */
+function useDataset(id: string | null, onError: (message: string) => void): DatasetDetail | null {
+  const [detail, setDetail] = useState<DatasetDetail | null>(null);
+  useEffect(() => {
+    if (id === null) return;
+    let live = true;
+    fetchDataset(id)
+      .then((d) => live && setDetail(d))
+      .catch((e: Error) => live && onError(e.message));
+    return () => {
+      live = false;
+    };
+  }, [id, onError]);
+  return detail !== null && detail.dataset_id === id ? detail : null;
+}
+
 /**
  * The dataset inspector (task 6.2, ADR-045): pick a demonstration dataset from `data/demos/` and
  * see what the teacher did (label histograms), what the student will get to see (a histogram of
- * every observation over its whole range, with the share of the range covered) and where on the
- * track the frames were recorded. The page only draws: every number comes from the server.
+ * every observation over its whole range, with the share of the range covered densely and
+ * reached) and where on the track the frames were recorded. "Compare with" (6.2 follow-up,
+ * ADR-046) adds a second dataset B to every chart. The page only draws: every number comes from
+ * the server.
  */
 export function DatasetView({ headerExtra }: { headerExtra?: ReactNode }) {
   const [list, setList] = useState<DatasetSummary[] | null>(null);
   const [datasetId, setDatasetId] = useState<string | null>(null);
-  const [detail, setDetail] = useState<DatasetDetail | null>(null);
+  const [compareId, setCompareId] = useState<string | null>(null);
   const [geometry, setGeometry] = useState<TrackGeometry | null>(null);
-  const [colourBy, setColourBy] = useState<"steer" | "throttle">("steer");
+  const [colourBy, setColourBy] = useState<ColourBy>("steer");
   const [error, setError] = useState<string | null>(null);
 
   function loadList() {
     fetchDatasets()
       .then((answer) => {
+        const known = (id: string | null) => id !== null && answer.datasets.some((d) => d.dataset_id === id);
         setList(answer.datasets);
-        setDatasetId((current) =>
-          current && answer.datasets.some((d) => d.dataset_id === current) ? current : (answer.datasets[0]?.dataset_id ?? null),
-        );
+        setDatasetId((current) => (known(current) ? current : (answer.datasets[0]?.dataset_id ?? null)));
+        setCompareId((current) => (known(current) ? current : null));
       })
       .catch((e: Error) => setError(e.message));
   }
   useEffect(loadList, []);
+  useEffect(() => setError(null), [datasetId, compareId]);
 
-  useEffect(() => {
-    if (datasetId === null) return;
-    let live = true;
-    setError(null);
-    fetchDataset(datasetId)
-      .then((d) => live && setDetail(d))
-      .catch((e: Error) => live && setError(e.message));
-    return () => {
-      live = false;
-    };
-  }, [datasetId]);
-
-  const shown = detail !== null && detail.dataset_id === datasetId ? detail : null;
+  const shown = useDataset(datasetId, setError);
+  const shownB = useDataset(compareId, setError);
   const trackName = shown ? String(shown.meta.track) : null;
+  const sameTrack = shownB !== null && String(shownB.meta.track) === trackName;
   useEffect(() => {
     if (trackName === null) return;
     let live = true;
@@ -348,11 +554,12 @@ export function DatasetView({ headerExtra }: { headerExtra?: ReactNode }) {
       live = false;
     };
   }, [trackName]);
+  // Comparing on one track colours the map by dataset; without a second dataset that is not offered.
+  useEffect(() => setColourBy((c) => (sameTrack ? "dataset" : c === "dataset" ? "steer" : c)), [sameTrack]);
 
   const frames = shown ? Number(shown.meta.demo_frames) : 0;
-  const episodes = (shown?.meta.episodes as Episode[] | undefined) ?? [];
-  const finished = episodes.filter((e) => e.status === "finished").length;
-  const teacher = shown ? String((shown.meta.teacher as { kind?: string } | undefined)?.kind ?? "?") : "";
+  const framesB = shownB ? Number(shownB.meta.demo_frames) : 0;
+  const colourChoices: ColourBy[] = sameTrack ? ["dataset", "steer", "throttle"] : ["steer", "throttle"];
 
   return (
     <section className="view toylab" data-testid="datasets">
@@ -364,7 +571,15 @@ export function DatasetView({ headerExtra }: { headerExtra?: ReactNode }) {
       <div className="toylab-controls">
         <label className="picker">
           <span>Dataset </span>
-          <select data-testid="dataset-select" value={datasetId ?? ""} onChange={(e) => setDatasetId(e.target.value)} disabled={!list?.length}>
+          <select
+            data-testid="dataset-select"
+            value={datasetId ?? ""}
+            onChange={(e) => {
+              if (e.target.value === compareId) setCompareId(null);
+              setDatasetId(e.target.value);
+            }}
+            disabled={!list?.length}
+          >
             {(list ?? []).map((d) => (
               <option key={d.dataset_id} value={d.dataset_id}>
                 {d.dataset_id} ({d.demo_frames} frames)
@@ -372,11 +587,29 @@ export function DatasetView({ headerExtra }: { headerExtra?: ReactNode }) {
             ))}
           </select>
         </label>
+        <label className="picker">
+          <span>Compare with </span>
+          <select
+            data-testid="dataset-compare"
+            value={compareId ?? ""}
+            onChange={(e) => setCompareId(e.target.value === "" ? null : e.target.value)}
+            disabled={(list?.length ?? 0) < 2}
+          >
+            <option value="">nothing</option>
+            {(list ?? [])
+              .filter((d) => d.dataset_id !== datasetId)
+              .map((d) => (
+                <option key={d.dataset_id} value={d.dataset_id}>
+                  {d.dataset_id} ({d.demo_frames} frames)
+                </option>
+              ))}
+          </select>
+        </label>
         <button type="button" onClick={loadList} data-testid="dataset-refresh">
           Refresh list
         </button>
         <div className="segmented" role="group" aria-label="Colour the map by">
-          {(["steer", "throttle"] as const).map((c) => (
+          {colourChoices.map((c) => (
             <button key={c} type="button" aria-pressed={c === colourBy} onClick={() => setColourBy(c)} data-testid={`dataset-colour-${c}`}>
               Colour by {c}
             </button>
@@ -393,58 +626,47 @@ export function DatasetView({ headerExtra }: { headerExtra?: ReactNode }) {
 
       {shown && (
         <>
-          <p className="toylab-summary" data-testid="dataset-summary" data-frames={frames}>
-            Teacher <strong>{teacher}</strong> on <strong>{trackName}</strong>: {frames} frames from {episodes.length} episodes ({finished}{" "}
-            finished). {formatShare(Number(shown.meta.straight_share))} of the frames steer nearly straight (|steer| &lt; 0.1).
-          </p>
+          <SummaryLine detail={shown} side={shownB ? "a" : null} testId="dataset-summary" />
+          {shownB && <SummaryLine detail={shownB} side="b" testId="dataset-summary-b" />}
+          {shownB && (
+            <p className="hint">
+              Each bar is the share of its own dataset&apos;s frames, so datasets of different sizes compare fairly.
+            </p>
+          )}
 
           <h3 className="ds-heading">What the teacher did: the labels</h3>
           <div className="ds-grid ds-grid-big">
-            {shown.labels.map((h) => (
-              <HistogramChart key={h.name} h={h} frames={frames} big />
+            {shown.labels.map((h, i) => (
+              <HistogramChart key={h.name} a={{ h, frames }} b={shownB ? { h: shownB.labels[i], frames: framesB } : null} big />
             ))}
           </div>
 
           <h3 className="ds-heading">What the student will see: the observations</h3>
           <p className="hint">
-            Each histogram spans the input's whole range. Empty stretches are situations the dataset holds no example of, so a network
-            trained on it has to guess there.
+            Each histogram spans the input&apos;s whole range. Under the axis, the thin line is the range the values reach and the thick
+            line where they are dense: bins holding at least 1 % of the frames (the dashed line), enough for training to take them
+            into account. Outside the thick line a network trained on the dataset has seen few or no examples, so it has to guess there.
           </p>
           <div className="ds-grid">
-            {shown.observations.map((h) => (
-              <HistogramChart key={h.name} h={h} frames={frames} />
+            {shown.observations.map((h, i) => (
+              <HistogramChart key={h.name} a={{ h, frames }} b={shownB ? { h: shownB.observations[i], frames: framesB } : null} />
             ))}
           </div>
 
           <h3 className="ds-heading">Where the frames were recorded</h3>
-          <TrackMap geometry={geometry} map={shown.map} colourBy={colourBy} />
+          {shownB && !sameTrack && (
+            <p className="hint" data-testid="dataset-map-other-track">
+              B was recorded on {String(shownB.meta.track)}, so the map shows A only.
+            </p>
+          )}
+          <TrackMap geometry={geometry} map={shown.map} mapB={sameTrack && shownB ? shownB.map : null} colourBy={colourBy} />
 
-          <table className="compare-table" data-testid="dataset-episodes">
-            <caption>The episodes: where each drive started, how it ended and how many frames it gave.</caption>
-            <thead>
-              <tr>
-                <th scope="col">Episode</th>
-                <th scope="col">Start</th>
-                <th scope="col">Start (m along, m left)</th>
-                <th scope="col">Ends</th>
-                <th scope="col">Frames</th>
-              </tr>
-            </thead>
-            <tbody>
-              {episodes.map((e) => (
-                <tr key={e.index} data-testid="dataset-episode-row">
-                  <td>{e.index}</td>
-                  <td>{e.start_kind ?? "?"}</td>
-                  <td>
-                    {e.start_s0_m === undefined ? "?" : formatNumber(e.start_s0_m)},{" "}
-                    {e.start_lateral_m === undefined ? "?" : formatNumber(e.start_lateral_m)}
-                  </td>
-                  <td>{e.status}</td>
-                  <td>{e.frames}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <EpisodesTable
+            detail={shown}
+            caption={`${shownB ? "A: the" : "The"} episodes: where each drive started, how it ended and how many frames it gave.`}
+            testId="dataset-episodes"
+          />
+          {shownB && <EpisodesTable detail={shownB} caption="B: the episodes." testId="dataset-episodes-b" />}
         </>
       )}
     </section>

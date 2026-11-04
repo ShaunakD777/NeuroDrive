@@ -1,5 +1,5 @@
 """Tests for the dataset inspector's numbers (task 6.2, ADR-045): histograms, covered ranges, the
-thinned map rows."""
+thinned map rows, and the dense coverage (6.2 follow-up, ADR-046)."""
 
 from pathlib import Path
 
@@ -9,10 +9,12 @@ import pytest
 from neurodrive.env.track import Track
 from neurodrive.experiment.dataset_view import (
     BINS,
+    DENSE_SHARE,
     LABEL_RANGES,
     OBSERVATION_RANGES,
     covered_range,
     dataset_view,
+    dense_coverage,
     histogram,
     thin,
 )
@@ -50,6 +52,35 @@ def test_worked_example_covered_range():
     assert covered_range(np.array([]), 0.0, 1.0) == 0.0
 
 
+def test_worked_example_dense_coverage():
+    # Follow-up Brief 4a: 4 bins on [0, 1] (w = 0.25), tau = 0.3, so a dense bin needs 1.5 frames.
+    values = np.array([0.1, 0.15, 0.2, 0.3, 0.9])
+    edges, counts = histogram(values, 0.0, 1.0, bins=4)
+    assert counts.tolist() == [3, 1, 0, 1]
+    assert covered_range(values, 0.0, 1.0) == pytest.approx(0.8)
+    # Only [0, 0.25) is dense; clipped to [0.1, 0.9] it is [0.1, 0.25].
+    assert dense_coverage(edges, counts, 0.1, 0.9, 0.0, 1.0, tau=0.3) == pytest.approx(0.15)
+
+
+def test_dense_equals_reach_when_every_bin_between_is_dense():
+    values = np.array([0.1, 0.3, 0.6, 0.9])  # one frame in each of the 4 bins
+    edges, counts = histogram(values, 0.0, 1.0, bins=4)
+    assert dense_coverage(edges, counts, 0.1, 0.9, 0.0, 1.0, tau=0.25) == pytest.approx(0.8)
+
+
+def test_a_bin_exactly_at_the_threshold_is_dense():
+    # tau·F = 0.4 × 5 = 2: the bins holding exactly 2 frames count (>=, not >).
+    values = np.array([0.1, 0.2, 0.3, 0.4, 0.9])
+    edges, counts = histogram(values, 0.0, 1.0, bins=4)
+    assert counts.tolist() == [2, 2, 0, 1]
+    assert dense_coverage(edges, counts, 0.1, 0.9, 0.0, 1.0, tau=0.4) == pytest.approx(0.4)
+
+
+def test_dense_coverage_of_nothing_is_zero():
+    edges, counts = histogram(np.array([]), 0.0, 1.0)
+    assert dense_coverage(edges, counts, 0.0, 0.0, 0.0, 1.0) == 0.0
+
+
 def test_worked_example_thinning():
     stride, rows = thin(25, max_points=10)
     assert stride == 3 and rows.tolist() == [0, 3, 6, 9, 12, 15, 18, 21, 24]
@@ -81,6 +112,13 @@ def test_view_of_a_real_dataset(expert_demo):
         assert len(h.counts) == BINS and int(h.counts.sum()) == f  # every frame in some bin
         assert h.min == column.min() and h.max == column.max()
         assert h.covered == pytest.approx((h.max - h.min) / (h.hi - h.lo))
+        # Dense coverage: never more than the reach (the dense bins are clipped to [min, max]).
+        assert h.dense_threshold == pytest.approx(DENSE_SHARE * f)
+        assert 0.0 < h.dense <= h.covered + 1e-12, h.name
+    # The heading error spans less than one bin width but straddles 0, so it touches two bins:
+    # whole bins would give 0.1, clipped they give exactly the reach.
+    heading = view.observations[-1]
+    assert heading.max - heading.min < 0.1 and heading.dense == pytest.approx(heading.covered)
     # The steer histogram agrees with straight_share: bins 9 and 10 are [-0.1, 0.1).
     steer = view.labels[0]
     assert not np.any(expert_demo.label[:, 0] == -0.1)

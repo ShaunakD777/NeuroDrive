@@ -1983,18 +1983,52 @@ body {
   color: var(--text-muted);
 }
 
+/* One dataset's bars and lines; while comparing (6.2 follow-up, ADR-046) A and B take the series
+   pair of Compare runs. */
+.ds-side {
+  --ds: var(--chart-pos);
+}
+
+.ds-side-a {
+  --ds: var(--series-1);
+}
+
+.ds-side-b {
+  --ds: var(--series-2);
+}
+
 .ds-bar {
-  fill: var(--chart-pos);
+  fill: var(--ds);
 }
 
 .ds-bar-hover {
   fill: var(--text);
 }
 
+/* The reach (min to max) as a thin line, the dense stretches as a thick one on top of it. */
 .ds-range {
   stroke: var(--text-muted);
-  stroke-width: 3;
+  stroke-width: 1.5;
   stroke-linecap: round;
+}
+
+.ds-side-a .ds-range,
+.ds-side-b .ds-range {
+  stroke: var(--ds);
+  opacity: 0.6;
+}
+
+.ds-dense {
+  stroke: var(--ds);
+  stroke-width: 5;
+}
+
+/* τ = 1 % of the frames: the bar height a bin needs to count as dense. */
+.ds-threshold {
+  stroke: var(--text-muted);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  pointer-events: none;
 }
 
 .ds-canvas {

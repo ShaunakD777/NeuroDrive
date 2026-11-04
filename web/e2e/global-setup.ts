@@ -63,21 +63,26 @@ function hasCompletedSearch(): boolean {
 // An expert demonstration dataset for the dataset inspector (task 6.2): the exam's 10 starts on
 // the training loop, no random starts (tag "e2e"), recorded into data/demos/ (git-ignored) with
 // `nd demo-record` unless one is there. The expert is deterministic, so it is always the same.
+// A second one for the comparator (6.2 follow-up): the same 10 starts plus 2 seeded random starts
+// (tag "e2ecmp"), so the two datasets share the track and most of their bins.
 export const E2E_DATASET_TAG = "e2e";
+export const E2E_COMPARE_TAG = "e2ecmp";
 const demosDir = join(repoRoot, "data", "demos");
 
-function hasDataset(): boolean {
+function hasDataset(tag: string): boolean {
   if (!existsSync(demosDir)) return false;
-  return readdirSync(demosDir).some(
-    (name) => name.endsWith(`-expert-${E2E_DATASET_TAG}`) && existsSync(join(demosDir, name, "meta.json")),
-  );
+  return readdirSync(demosDir).some((name) => name.endsWith(`-expert-${tag}`) && existsSync(join(demosDir, name, "meta.json")));
 }
 
 export default function globalSetup(): void {
-  if (!hasDataset()) {
+  for (const [tag, randomStarts] of [
+    [E2E_DATASET_TAG, "0"],
+    [E2E_COMPARE_TAG, "2"],
+  ]) {
+    if (hasDataset(tag)) continue;
     execFileSync(
       "uv",
-      ["run", "python", "-m", "neurodrive", "demo-record", "--teacher", "expert", "--random-starts", "0", "--tag", E2E_DATASET_TAG],
+      ["run", "python", "-m", "neurodrive", "demo-record", "--teacher", "expert", "--random-starts", randomStarts, "--seed", "1", "--tag", tag],
       { cwd: repoRoot, stdio: "inherit" },
     );
   }

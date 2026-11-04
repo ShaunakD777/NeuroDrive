@@ -1,4 +1,5 @@
-"""Tests for the demonstration-dataset REST endpoints (api v1.15, task 6.2, ADR-045)."""
+"""Tests for the demonstration-dataset REST endpoints (api v1.15, task 6.2, ADR-045; dense
+coverage api v1.16, ADR-046)."""
 
 import json
 from datetime import UTC, datetime
@@ -8,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from neurodrive.core.rng import make_rng
-from neurodrive.experiment.dataset_view import MAP_POINTS
+from neurodrive.experiment.dataset_view import DENSE_SHARE, MAP_POINTS, dense_coverage
 from neurodrive.learn.supervised.demos import (
     DATASET_FILE,
     DATASET_VERSION,
@@ -142,7 +143,29 @@ def test_unknown_malformed_and_broken_ids_are_refused(client, datasets_dir):
     assert client.get(f"/api/datasets/{path2.name}").status_code == 400
 
 
-def test_hello_says_v1_15(client):
-    assert API_VERSION == "v1.15"
+def test_detail_dense_coverage(client, datasets_dir):
+    # 6.2 follow-up (api v1.16, ADR-046): every histogram carries d and tau·F; d never exceeds c.
+    dataset = make_dataset()
+    path = save_dataset(dataset, datasets_dir, "dense")
+    detail = DatasetDetail.model_validate(client.get(f"/api/datasets/{path.name}").json())
+    for h in detail.labels + detail.observations:
+        assert h.dense_threshold == pytest.approx(DENSE_SHARE * 25)
+        assert 0.0 <= h.dense <= h.covered + 1e-9
+        expected = dense_coverage(np.array(h.edges), np.array(h.counts), h.min, h.max, h.lo, h.hi)
+        assert h.dense == pytest.approx(expected, abs=1e-6)
+    # 25 frames: tau·F = 0.25, so every non-empty bin is dense; an empty bin between min and max
+    # is the only thing that makes d smaller than c.
+    for h in detail.labels + detail.observations:
+        inside = [b for b in range(20) if h.edges[b + 1] > h.min and h.edges[b] < h.max]
+        if all(h.counts[b] > 0 for b in inside):
+            assert h.dense == pytest.approx(h.covered, abs=1e-6)
+        else:
+            assert h.dense < h.covered
+    throttle = detail.labels[1]  # every label exactly 1.0: nothing spanned, nothing dense
+    assert throttle.dense == throttle.covered == 0.0
+
+
+def test_hello_says_v1_16(client):
+    assert API_VERSION == "v1.16"
     with client.websocket_connect("/ws/live") as ws:
-        assert json.loads(ws.receive_text())["api"] == "v1.15"
+        assert json.loads(ws.receive_text())["api"] == "v1.16"

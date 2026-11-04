@@ -1,5 +1,5 @@
-// Display helpers for the dataset inspector (task 6.2): colours for the track map's points and
-// finding the point under the mouse. Pure functions, so they can be unit-tested. Every number
+// Display helpers for the dataset inspector (task 6.2): colours for the track map's points,
+// finding the point under the mouse, and (6.2 follow-up) placing paired bars and the dense line. Pure functions, so they can be unit-tested. Every number
 // about the dataset comes from the server; this only decides how to draw it.
 
 import { divergingMix } from "./charts";
@@ -45,6 +45,55 @@ export function colourScale(values: readonly number[]): number {
   let m = 0;
   for (const v of values) m = Math.max(m, Math.abs(v));
   return m === 0 ? 1 : Math.ceil(m * 100 - 1e-9) / 100;
+}
+
+/**
+ * One colour scale for two datasets shown together (6.2 follow-up, ADR-046): `colourScale` over
+ * the values of both, so the same colour means the same label in A and in B. Example: A's steers
+ * reach 0.29 and B's 0.6, so both are coloured on ±0.6.
+ */
+export function sharedColourScale(...lists: readonly (readonly number[])[]): number {
+  return Math.max(...lists.map((values) => (values.length === 0 ? 0 : colourScale(values))), 0) || 1;
+}
+
+/**
+ * The left and right screen x of bar `slot` (0-based) of `slots` bars side by side in the bin
+ * from x0 to x1: 1 px gap at each bin edge (2 px between bins, as with one bar) and 1 px between
+ * the bars. Example: the bin 100..141 with 2 slots gives 101..120 and 121..140.
+ */
+export function barSpan(x0: number, x1: number, slot: number, slots: number): [number, number] {
+  const inner = x1 - x0 - 2 - (slots - 1);
+  const width = Math.max(inner / slots, 1);
+  const left = x0 + 1 + slot * (width + 1);
+  return [left, left + width];
+}
+
+/**
+ * The stretches of the axis where the dataset is dense (6.2 follow-up, ADR-046): every bin whose
+ * count reaches `threshold` (tau·F, from the server), clipped to [min, max], with neighbouring
+ * stretches joined. The server's dense coverage d is their summed length / (hi − lo); this only
+ * decides where to draw the thick line. Example: edges 0, 0.25, 0.5, 0.75, 1, counts 3, 2, 0, 1,
+ * threshold 1.5, min 0.1, max 0.9 give one stretch, 0.1..0.5.
+ */
+export function denseStretches(
+  edges: readonly number[],
+  counts: readonly number[],
+  threshold: number,
+  min: number | null,
+  max: number | null,
+): [number, number][] {
+  if (min === null || max === null) return [];
+  const out: [number, number][] = [];
+  counts.forEach((c, b) => {
+    if (c === 0 || c < threshold) return;
+    const a = Math.max(edges[b], min);
+    const z = Math.min(edges[b + 1], max);
+    if (z <= a) return;
+    const last = out[out.length - 1];
+    if (last && Math.abs(last[1] - a) < 1e-12) last[1] = z;
+    else out.push([a, z]);
+  });
+  return out;
 }
 
 /**

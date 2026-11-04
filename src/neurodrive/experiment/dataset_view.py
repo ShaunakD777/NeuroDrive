@@ -13,6 +13,13 @@ situations did the student get to see?
 * **Covered range** c = (max - min) / (hi - lo): the share of the range the dataset's values
   reach. Ray readings [0.2, 0.5, 0.3] on [0, 1] give c = 0.3. A small c means the student never
   saw most of what that sensor can report.
+* **Dense coverage** d (6.2 follow-up, ADR-046): the reach is set by the two most extreme frames,
+  so a few outliers make a range look covered. A bin is *dense* when it holds at least the share
+  tau of the frames (count_b >= tau·F, tau = ``DENSE_SHARE``); d = (the summed length of every
+  dense bin's part inside [min, max]) / (hi - lo). Clipping to [min, max] keeps d <= c. Example:
+  [0.1, 0.15, 0.2, 0.3, 0.9] on [0, 1] in 4 bins with tau = 0.3 (a dense bin needs 1.5 frames):
+  only [0, 0.25) is dense (3 frames); clipped to [0.1, 0.9] it is [0.1, 0.25], so d = 0.15
+  while c = 0.8.
 * **Map**: every k-th frame, k = ceil(F / M) with M = ``MAP_POINTS``, at its recorded position
   with its label, so a dataset of any size draws as at most M points. Rows are stored episode by
   episode, so the kept frames lie evenly along every drive. Example: F = 25, M = 10 give k = 3 and
@@ -35,6 +42,7 @@ from neurodrive.learn.supervised.demos import DemoDataset
 Array = NDArray[np.float64]
 
 BINS = 20
+DENSE_SHARE = 0.01  # tau: a bin is dense when it holds at least 1 % of the frames (ADR-046)
 MAP_POINTS = 4000
 LABEL_RANGES = {"steer": (-1.0, 1.0), "throttle": (-1.0, 1.0)}
 OBSERVATION_RANGES = {
@@ -60,6 +68,8 @@ class Histogram:
     min: float | None  # None for an empty dataset
     max: float | None
     covered: float  # c = (max - min) / (hi - lo), 0 for an empty dataset
+    dense: float  # d, the dense coverage (<= covered), 0 for an empty dataset
+    dense_threshold: float  # tau·F, the frames a bin needs to be dense
 
 
 @dataclass(frozen=True)
@@ -95,6 +105,30 @@ def covered_range(values: Array, lo: float, hi: float) -> float:
     return float((values.max() - values.min()) / (hi - lo))
 
 
+def dense_coverage(
+    edges: Array,
+    counts: NDArray,
+    vmin: float,
+    vmax: float,
+    lo: float,
+    hi: float,
+    tau: float = DENSE_SHARE,
+) -> float:
+    """d = (summed length of the dense bins' parts inside [vmin, vmax]) / (hi - lo).
+
+    A bin is dense when count_b >= tau·F, F = the sum of the counts. Each dense bin
+    [edge_b, edge_b+1] is clipped to [vmin, vmax] (the values' min and max), so d never exceeds
+    the covered range c. An empty dataset gives 0.
+    """
+    counts = np.asarray(counts)
+    n_frames = int(counts.sum())
+    if n_frames == 0:
+        return 0.0
+    dense = counts >= tau * n_frames
+    overlap = np.minimum(edges[1:], vmax) - np.maximum(edges[:-1], vmin)
+    return float(np.sum(np.where(dense, np.clip(overlap, 0.0, None), 0.0)) / (hi - lo))
+
+
 def thin(n_frames: int, max_points: int = MAP_POINTS) -> tuple[int, NDArray[np.int64]]:
     """k = ceil(F / M) (at least 1) and the rows 0, k, 2k, ... below F: at most M of them."""
     stride = max(1, math.ceil(n_frames / max_points))
@@ -104,15 +138,19 @@ def thin(n_frames: int, max_points: int = MAP_POINTS) -> tuple[int, NDArray[np.i
 def _histogram(name: str, values: Array, lo: float, hi: float) -> Histogram:
     edges, counts = histogram(values, lo, hi)
     empty = len(values) == 0
+    vmin = None if empty else float(np.min(values))
+    vmax = None if empty else float(np.max(values))
     return Histogram(
         name=name,
         lo=lo,
         hi=hi,
         edges=edges,
         counts=counts,
-        min=None if empty else float(np.min(values)),
-        max=None if empty else float(np.max(values)),
+        min=vmin,
+        max=vmax,
         covered=covered_range(values, lo, hi),
+        dense=0.0 if empty else dense_coverage(edges, counts, vmin, vmax, lo, hi),
+        dense_threshold=DENSE_SHARE * len(values),
     )
 
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { colourScale, formatShare, nearestPoint, parseHex, pointColour } from "./datasetMap";
+import { barSpan, colourScale, denseStretches, formatShare, nearestPoint, parseHex, pointColour, sharedColourScale } from "./datasetMap";
 
 const palette = { pos: [0, 0, 200] as [number, number, number], neg: [200, 100, 0] as [number, number, number], mid: [100, 100, 100] as [number, number, number] };
 
@@ -38,6 +38,39 @@ describe("nearestPoint", () => {
     const ys = [0, 0, 0];
     expect(nearestPoint(xs, ys, 12, 1)).toBe(1);
     expect(nearestPoint(xs, ys, 15, 30)).toBeNull();
+  });
+});
+
+describe("sharedColourScale", () => {
+  it("covers the largest |value| of both datasets", () => {
+    expect(sharedColourScale([0.1, -0.287], [0.6, -0.2])).toBe(0.6);
+    expect(sharedColourScale([0.1, -0.287], [])).toBe(0.29);
+    expect(sharedColourScale([0], [0])).toBe(1);
+  });
+});
+
+describe("barSpan", () => {
+  it("puts paired bars side by side inside the bin", () => {
+    expect(barSpan(100, 141, 0, 2)).toEqual([101, 120]);
+    expect(barSpan(100, 141, 1, 2)).toEqual([121, 140]);
+    expect(barSpan(100, 141, 0, 1)).toEqual([101, 140]); // one bar: the 6.2 layout
+  });
+});
+
+describe("denseStretches", () => {
+  it("joins the dense bins and clips them to [min, max]", () => {
+    expect(denseStretches([0, 0.25, 0.5, 0.75, 1], [3, 2, 0, 1], 1.5, 0.1, 0.9)).toEqual([[0.1, 0.5]]);
+  });
+  it("counts a bin exactly at the threshold, and keeps separate stretches apart", () => {
+    // The follow-up Brief's worked example: only [0, 0.25) clears 1.5 frames, clipped it is 0.1..0.25.
+    expect(denseStretches([0, 0.25, 0.5, 0.75, 1], [3, 1, 0, 1], 1.5, 0.1, 0.9)).toEqual([[0.1, 0.25]]);
+    expect(denseStretches([0, 0.25, 0.5, 0.75, 1], [2, 0, 0, 2], 2, 0.1, 0.9)).toEqual([
+      [0.1, 0.25],
+      [0.75, 0.9],
+    ]);
+  });
+  it("is empty for an empty dataset", () => {
+    expect(denseStretches([0, 0.5, 1], [0, 0], 0, null, null)).toEqual([]);
   });
 });
 

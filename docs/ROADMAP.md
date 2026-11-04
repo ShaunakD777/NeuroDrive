@@ -435,7 +435,7 @@ ARCHITECTURE §6.16), `nd demo-record` (the expert: the exam's starts on a train
 seeded random starts), stored datasets with metadata in `data/demos/`. Verify: dataset shapes;
 frames counted as demonstration budget.
 **6.1b Keyboard demonstrations (ADR-044):** recording the keyboard driver in the live session
-(record commands, api v1.15), a Record button in the Environment view, the same dataset format with
+(record commands, the next api version), a Record button in the Environment view, the same dataset format with
 teacher `keyboard`. Verify: a recorded drive's frames equal the session's steps; server and browser
 tests. Needed by 6.7 at the latest.
 **6.2 Dataset inspector:** `web/src/views/experiment/DatasetView.tsx` (action histograms, the

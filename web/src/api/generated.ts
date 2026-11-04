@@ -248,10 +248,15 @@ export interface DatasetDetail {
  * number of frames in [edges[b], edges[b + 1]) (the last bin includes ``hi``), so the counts add
  * up to the dataset's frames. ``min`` and ``max`` are the smallest and largest value (null for
  * an empty dataset) and ``covered`` = (max − min) / (hi − lo), the share of the range reached.
+ * ``dense`` (api v1.16, ADR-046) is the dense coverage d ≤ ``covered``: the summed length of the
+ * bins holding at least ``dense_threshold`` = τ·F frames (τ = 1 %), each clipped to [min, max],
+ * divided by (hi − lo).
  */
 export interface DatasetHistogram {
   counts: number[];
   covered: number;
+  dense: number;
+  dense_threshold: number;
   edges: number[];
   hi: number;
   lo: number;
@@ -279,10 +284,15 @@ export interface DatasetMap {
  * number of frames in [edges[b], edges[b + 1]) (the last bin includes ``hi``), so the counts add
  * up to the dataset's frames. ``min`` and ``max`` are the smallest and largest value (null for
  * an empty dataset) and ``covered`` = (max − min) / (hi − lo), the share of the range reached.
+ * ``dense`` (api v1.16, ADR-046) is the dense coverage d ≤ ``covered``: the summed length of the
+ * bins holding at least ``dense_threshold`` = τ·F frames (τ = 1 %), each clipped to [min, max],
+ * divided by (hi − lo).
  */
 export interface DatasetHistogram {
   counts: number[];
   covered: number;
+  dense: number;
+  dense_threshold: number;
   edges: number[];
   hi: number;
   lo: number;

@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
-API_VERSION = "v1.15"
+API_VERSION = "v1.16"
 
 
 class WireModel(BaseModel):
@@ -839,6 +839,9 @@ class DatasetHistogram(WireModel):
     number of frames in [edges[b], edges[b + 1]) (the last bin includes ``hi``), so the counts add
     up to the dataset's frames. ``min`` and ``max`` are the smallest and largest value (null for
     an empty dataset) and ``covered`` = (max − min) / (hi − lo), the share of the range reached.
+    ``dense`` (api v1.16, ADR-046) is the dense coverage d ≤ ``covered``: the summed length of the
+    bins holding at least ``dense_threshold`` = τ·F frames (τ = 1 %), each clipped to [min, max],
+    divided by (hi − lo).
     """
 
     name: str
@@ -849,6 +852,8 @@ class DatasetHistogram(WireModel):
     min: float | None
     max: float | None
     covered: float
+    dense: float
+    dense_threshold: float
 
 
 class DatasetMap(WireModel):

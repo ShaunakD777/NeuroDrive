@@ -1,4 +1,5 @@
-"""Demonstration datasets as REST answers (api v1.15, task 6.2, ADR-045): the dataset inspector.
+"""Demonstration datasets as REST answers (api v1.15, task 6.2, ADR-045; dense coverage api v1.16,
+ADR-046): the dataset inspector.
 
 ``DatasetLibrary`` reads the dataset folders under one directory (``data/demos/`` by default,
 dataset v1, ARCHITECTURE §6.16) and turns them into the message models of ``schemas.py``; the
@@ -37,6 +38,8 @@ def _histogram(h: Histogram) -> DatasetHistogram:
         min=h.min,
         max=h.max,
         covered=round(h.covered, 6),
+        dense=round(h.dense, 6),
+        dense_threshold=round(h.dense_threshold, 6),
     )
 
 

@@ -147,7 +147,7 @@ neurodrive/
 │  │  ├─ schemas.py              Pydantic message models (source for TS types)
 │  │  ├─ live.py                 live sessions over WebSocket
 │  │  ├─ runs.py                 run folders as REST answers (read-only, api v1.10)
-│  │  ├─ datasets.py             demonstration datasets as REST answers (read-only, api v1.15)
+│  │  ├─ datasets.py             demonstration datasets as REST answers (read-only, api v1.15/v1.16)
 │  │  └─ runs_watch.py           launching training processes, watching run folders, /ws/runs
 │  └─ cli.py                     `nd serve | train | sweep | exam | demo-record | ...`
 ├─ tests/                        mirrors src/neurodrive (core/, env/, learn/, experiment/, explain/, server/)
@@ -438,9 +438,9 @@ data/demos/<dataset_id>/
   from the `starts` stream of `make_rng(seed)`; default 10, seed 0); episodes are numbered exam
   starts first. The same options give an identical dataset apart from `dataset_id`, `created_at`
   and provenance.
-- Shown by the dataset inspector (task 6.2, ADR-045): `GET datasets` and `GET datasets/{id}` (§7).
+- Shown by the dataset inspector (task 6.2, ADR-045; dense coverage and the comparator, ADR-046): `GET datasets` and `GET datasets/{id}` (§7).
 
-## 7. Server API (api v1.15, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033, ADR-035, ADR-041, ADR-042, ADR-045)
+## 7. Server API (api v1.16, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033, ADR-035, ADR-041, ADR-042, ADR-045, ADR-046)
 
 REST (`/api/...`):
 - `GET health` → `{status: "ok", version}` (`version` is the NeuroDrive package version)
@@ -500,10 +500,12 @@ REST (`/api/...`):
   observation v1 order) are histograms `{name, lo, hi, edges, counts, min, max, covered}` over the
   quantity's fixed range (labels [−1, 1], rays and speed [0, 1], heading error [−1, 1]) in 20 equal
   bins, `counts[b]` = frames in [edges[b], edges[b+1]) with the last bin closed, so the counts add up
-  to F; `covered` = (max − min) / (hi − lo). `map` = `{stride, x, y, steer, throttle, episode}`:
+  to F; `covered` = (max − min) / (hi − lo). *Since api v1.16 (6.2 follow-up, ADR-046):* also
+  `dense`, the dense coverage d = (summed length of the bins holding at least `dense_threshold` =
+  τ·F frames, τ = 1 %, each clipped to [min, max]) / (hi − lo) ≤ `covered`. `map` = `{stride, x, y, steer, throttle, episode}`:
   every k-th row, k = ⌈F / 4000⌉ (positions to 2 decimals, labels to 4). Unknown or malformed id →
   404; a folder that does not load as dataset v1 → 400 with the reason. Shown in the Experiment
-  page's "Datasets" tab.
+  page's "Datasets" tab, which can compare two datasets ("Compare with": it fetches both details).
 - `POST replay` {run, unit, track, seed, focus_cars} → Episode Recording
   *Not built (task 5.9, ADR-042):* a checkpoint is replayed in the live session instead (the
   `"checkpoint"` driver below), so every view and tool works on it; `POST replay` stays planned
@@ -516,7 +518,7 @@ REST (`/api/...`):
 
 WebSocket `/ws/live` (one independent session per connection):
 - `hello` is sent first, on connect: `{type: "hello", version, api}` (`api` is the message-contract
-  version, currently `"v1.15"`).
+  version, currently `"v1.16"`).
 - client → server (each has a `type` field):
   - `load_scenario {track, policy, n_cars, seed}`: `policy` is `"keyboard"`, `"constant"`,
     `"neuron"`, `"random_networks"` (every car is driven by its own random [7,16,16,2] network;

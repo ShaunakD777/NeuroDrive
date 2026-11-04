@@ -1465,3 +1465,27 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
 - Open question: should coverage count only bins that hold some minimum number of frames, so a
   handful of outliers cannot make an input look well covered? And which observations will the
   cloned network get wrong first once it drifts off the centreline (Study S5b)?
+
+### 2026-11-04 — Task 6.2 follow-up: dense coverage and a dataset comparator
+- Concept: *reaching* part of a range is not the same as *filling* it. Training minimises the
+  average error over all frames, so a stretch of the range that holds 0.3 % of the frames carries
+  0.3 % of the loss and can be fitted badly without the loss noticing. The dense coverage counts
+  only the stretches with enough frames; comparing two datasets bin by bin shows what one adds to
+  the other.
+- Key equation(s) in words: a bin is dense when it holds at least τ = 1 % of the frames;
+  d = (the summed length of the dense bins, each clipped to [min, max]) / (hi − lo), so d never
+  exceeds the reach c. Worked example: [0.1, 0.15, 0.2, 0.3, 0.9] in 4 bins with τ = 0.3 reach
+  c = 0.8 but are dense only over [0.1, 0.25], d = 0.15. Comparing: each bar is count / F of its
+  own dataset, so sizes do not matter.
+- What we observed: on the 6.1a expert dataset the left ray reaches 83 % but is dense over 30 %,
+  the right ray 45 % against 15 %, speed 98 % against 53 % (the start-up frames: 120 per bin from
+  20 drives, 0.3 % of the data), steer 28 % against 15 %. Compared with the dataset from the exam
+  starts alone, the 10 random starts double the right ray's reach (21 % → 45 %) but leave its
+  dense part the same, 15 %: the off-centre frames they add are too few to learn from.
+- Surprise or difficulty: whole bins overstate a narrow quantity. The heading error spans only
+  0.069 but straddles 0, so it touches two bins of width 0.1; counted whole they would claim
+  10 % dense against 3.4 % reached. Clipping each dense bin to [min, max] fixes it, and the planted
+  bug without the clipping failed 5 tests.
+- Open question: is 1 % the right line? It is a judgement about what training "feels"; Study S5b
+  can test it by checking whether the cloned network's errors grow where the dataset stops being
+  dense, or already where it stops reaching.
