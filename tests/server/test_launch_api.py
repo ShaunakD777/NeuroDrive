@@ -127,12 +127,22 @@ def test_configs_lists_the_training_configs_only(client):
     )
 
 
+def test_configs_lists_the_imitation_config(configs, runs):
+    # api v1.17 (task 6.3): the listing reads an imitation config instead of failing on it.
+    shutil.copy(CONFIGS / "imitation.yaml", configs / "imitation.yaml")
+    with TestClient(create_app(runs_dir=runs, configs_dir=configs)) as client:
+        answer = client.get("/api/configs").json()["configs"]
+    (imitation,) = [c for c in answer if c["name"] == "imitation.yaml"]
+    assert (imitation["method"], imitation["task"]) == ("imitation", None)
+    assert (imitation["length_field"], imitation["length"]) == ("epochs", 100)
+
+
 def test_bad_launches_are_refused_and_start_nothing(client, runs):
     cases = [
         ({"config": "missing.yaml"}, "unknown config"),
         ({"config": "broken.yaml"}, "unknown config"),
         ({"config": "../configs/toy_xor.yaml"}, "unknown config"),
-        ({"config": "small_search.yaml", "epochs": 5}, "--epochs is for toy configs"),
+        ({"config": "small_search.yaml", "epochs": 5}, "--epochs is for toy and imitation configs"),
         ({"config": "toy_xor.yaml", "units": 5}, "--units is for random_search configs"),
         ({"config": "toy_xor.yaml", "seed": -1}, "seed"),
         ({"config": "toy_xor.yaml", "tag": "a b"}, "tag"),

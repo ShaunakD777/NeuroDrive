@@ -36,7 +36,12 @@ from typing import Any
 from pydantic import ValidationError
 
 from neurodrive import __version__
-from neurodrive.experiment.config import ConfigError, ToyRunConfig, load_config
+from neurodrive.experiment.config import (
+    ConfigError,
+    RandomSearchRunConfig,
+    ToyRunConfig,
+    load_config,
+)
 from neurodrive.experiment.store import STOP_FILE, RunStore
 from neurodrive.server.runs import RUN_ID
 from neurodrive.server.schemas import (
@@ -118,15 +123,16 @@ class Launcher:
             except ConfigError:
                 continue
             toy = isinstance(config, ToyRunConfig)
+            by_units = isinstance(config, RandomSearchRunConfig)
             found.append(
                 ConfigInfo(
                     name=path.name,
-                    method="toy" if toy else "random_search",
+                    method=config.method,
                     task=config.task if toy else None,
                     seed=config.seed,
                     tag=config.tag,
-                    length_field="epochs" if toy else "units",
-                    length=config.training.epochs if toy else config.budget.units,
+                    length_field="units" if by_units else "epochs",
+                    length=config.budget.units if by_units else config.training.epochs,
                 )
             )
         return found

@@ -190,14 +190,15 @@ export interface CompareRun {
  * One training config of ``GET /api/configs``: a YAML file in ``configs/`` that ``nd train``
  * accepts.
  *
- * ``length_field`` names what the run's length counts (``epochs`` for toy configs, ``units``
- * for random search) and ``length`` is the file's value (null when a random-search budget has
- * no unit limit). ``task`` is the toy task (null for random search).
+ * ``length_field`` names what the run's length counts (``epochs`` for toy and imitation
+ * configs, ``units`` for random search) and ``length`` is the file's value (null when a
+ * random-search budget has no unit limit). ``task`` is the toy task (null for the others).
+ * ``imitation`` was added in api v1.17 (task 6.3).
  */
 export interface ConfigInfo {
   length: number | null;
   length_field: "epochs" | "units";
-  method: "toy" | "random_search";
+  method: "toy" | "random_search" | "imitation";
   name: string;
   seed: number;
   tag: string;
@@ -214,14 +215,15 @@ export interface ConfigListResponse {
  * One training config of ``GET /api/configs``: a YAML file in ``configs/`` that ``nd train``
  * accepts.
  *
- * ``length_field`` names what the run's length counts (``epochs`` for toy configs, ``units``
- * for random search) and ``length`` is the file's value (null when a random-search budget has
- * no unit limit). ``task`` is the toy task (null for random search).
+ * ``length_field`` names what the run's length counts (``epochs`` for toy and imitation
+ * configs, ``units`` for random search) and ``length`` is the file's value (null when a
+ * random-search budget has no unit limit). ``task`` is the toy task (null for the others).
+ * ``imitation`` was added in api v1.17 (task 6.3).
  */
 export interface ConfigInfo {
   length: number | null;
   length_field: "epochs" | "units";
-  method: "toy" | "random_search";
+  method: "toy" | "random_search" | "imitation";
   name: string;
   seed: number;
   tag: string;

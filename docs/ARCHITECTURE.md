@@ -315,7 +315,7 @@ rebuilds the same world. Replaying the actions reproduces every array bit for bi
 ### 6.12 Learner contract (learner v1)
 *Version 0 (task 3.7, ADR-030): `learn/base.py` without save/restore; wall-clock time measured by the runner; `experiment/runner.py` v0 owns a minimal loop.*
 
-*Version 1 (task 5.5, ADR-037):* save/restore is the optional `Resumable` protocol: `state()` → `LearnerState` (named NumPy arrays + a JSON-friendly `info` dict holding counters and every generator's state, `generator_state`), `restore(state)`. A learner without it trains but cannot resume. `experiment/runner.py` v1: `run(learner, store, budget, exams)` and `resume(learner, store)`; `Budget(units, env_steps, wall_clock_s)`, any limit stops the run after the unit that reaches it (overshoot ≤ 1 unit); checkpoint schedule 0, 1, 2, 5, 10, 20, 50, … plus the last unit; at every checkpoint the Driving Exam runs when exams are on and the network drives (7 → 2), its time kept out of the training clock (`exam_wall_clock_s`). Order within a unit: train → metrics line → checkpoint + exam → state (last). Resume cuts the folder back to the state's unit and continues; a killed run (status running) or a failed one can be resumed, identically except for wall-clock times. Since task 5.5b (ADR-038) the wall-clock limit is compared with the training time recorded in the last metrics line, like the step totals, so a run stops after the first unit whose line reaches the limit; the database mirror's time, like exam time, is kept out of the training clock. Since task 5.8 (ADR-041) the runner also stops before the next unit when the run folder holds a stop request (the file `stop_requested`): stop reason `stopped`, status `completed`, the last unit checkpointed and examined like any last unit; the request is removed before the final status is written, and `resume` removes an old one before continuing. `train_toy_run` and `train_random_search_run` take `on_start(store)`, called as soon as the folder exists. Since task 5.9 (ADR-042) `UnitResult` has an optional `new_best` flag: a unit that reports a new best network (`current_networks()[0]`) is checkpointed, and examined, even when it is not on the schedule, so the run timeline shows every improvement; random search sets it when it improves (expected number of such units in n units: the harmonic number H_n, about 5 per 100), the toy learner never does.
+*Version 1 (task 5.5, ADR-037):* save/restore is the optional `Resumable` protocol: `state()` → `LearnerState` (named NumPy arrays + a JSON-friendly `info` dict holding counters and every generator's state, `generator_state`), `restore(state)`. A learner without it trains but cannot resume. `experiment/runner.py` v1: `run(learner, store, budget, exams)` and `resume(learner, store)`; `Budget(units, env_steps, wall_clock_s)`, any limit stops the run after the unit that reaches it (overshoot ≤ 1 unit); checkpoint schedule 0, 1, 2, 5, 10, 20, 50, … plus the last unit; at every checkpoint the Driving Exam runs when exams are on and the network drives (7 → 2), its time kept out of the training clock (`exam_wall_clock_s`). Order within a unit: train → metrics line → checkpoint + exam → state (last). Resume cuts the folder back to the state's unit and continues; a killed run (status running) or a failed one can be resumed, identically except for wall-clock times. Since task 5.5b (ADR-038) the wall-clock limit is compared with the training time recorded in the last metrics line, like the step totals, so a run stops after the first unit whose line reaches the limit; the database mirror's time, like exam time, is kept out of the training clock. Since task 5.8 (ADR-041) the runner also stops before the next unit when the run folder holds a stop request (the file `stop_requested`): stop reason `stopped`, status `completed`, the last unit checkpointed and examined like any last unit; the request is removed before the final status is written, and `resume` removes an old one before continuing. `train_toy_run` and `train_random_search_run` take `on_start(store)`, called as soon as the folder exists. Since task 5.9 (ADR-042) `UnitResult` has an optional `new_best` flag: a unit that reports a new best network (`current_networks()[0]`) is checkpointed, and examined, even when it is not on the schedule, so the run timeline shows every improvement; random search sets it when it improves (expected number of such units in n units: the harmonic number H_n, about 5 per 100), the toy learner never does. Since task 6.3 (ADR-047) `run(..., checkpoint_every=k)` also checkpoints (and examines) every unit that is a multiple of k (`runner.checkpoint_due`; k = 5 over 20 units gives 0, 1, 2, 5, 10, 15, 20; None, the default, keeps the schedule alone); k is kept in `meta.json` and `resume` reads it back. The imitation learner (`learn/supervised/imitation.py`, name `imitation`, feedback `labels`, resumable) is behavioural cloning: one unit is one epoch of minibatch gradient descent on the MSE between the network's outputs and the dataset's labels, with whole episodes held back for validation; it reports `demo_frames` = F (every frame of the dataset, validation frames included) in unit 1 only, and 0 environment steps and teacher queries.
 
 Every learning method provides:
 - `name` and `feedback_kind` ∈ {`labels`, `episode_score`, `step_reward`, `none`}
@@ -335,6 +335,8 @@ stop conditions (max env steps, max wall-clock, max units).
 *Task 5.8 (ADR-041), additions without a version change:* the empty file `stop_requested` exists only while another process asks the run to stop; `stop_reason` gains `stopped`. Launched runs leave their printed output in `<runs dir>/.launches/<time>.log` (not a run folder: no `meta.json`, ignored by every reader and by the database).
 
 *Version 1 (task 5.5, ADR-037), as built:* `run_version: 1`; `exams/unit_<n>.json` (exam cards); `state/latest.npz` (the learner's state after the latest unit plus the runner's unit, totals and clocks; replaced atomically: written as `latest.tmp.npz`, then renamed); meta.json adds `budget`, `exams`, `stop_reason` (units, env_steps, wall_clock, diverged, error), `resumed_at` (UTC times) and `exam_wall_clock_s`. Version-0 folders are still read.
+
+*Task 6.3 (ADR-047), additions without a version change:* meta.json gains `checkpoint_every` (k, or null; absent in older folders, read as null), and imitation runs gain `dataset` = `{id, sha256, demo_frames, train_frames, val_episodes}`: the exact dataset learned from, the SHA-256 checksum of its `dataset.npz`, its frame count F, the training frames and the held-back episode numbers. Imitation metrics lines hold `loss`, `loss_steer`, `loss_throttle`, `val_loss`, `val_loss_steer`, `val_loss_throttle` (the last three only with a validation set), `loss_before` and `grad_norm`.
 
 ```
 runs/<YYYYMMDD-HHMMSS>-<method>-<tag>/
@@ -377,7 +379,7 @@ that is not a network (the policy is then rebuilt from the run's config). Each t
 batch in start order: a network's output differs by about 1e-16 between batch sizes, so a
 recording matches a card only when made the same way.
 
-### 6.15 Config file (toy and random_search: config v1, ADR-032, ADR-040)
+### 6.15 Config file (toy, random_search and imitation: config v1, ADR-032, ADR-040, ADR-047)
 A YAML file; `method` picks the model in `experiment/config.py` (`toy`, and since task 5.7
 `random_search`; later methods add their own model). Unknown fields, wrong types, unknown names and out-of-range numbers are
 refused, every problem listed as `field.path: message`. A toy config:
@@ -411,6 +413,8 @@ Only the named optimizer's own settings are allowed; their defaults are those of
 and `training.epochs`; an invalid config exits with status 2 and creates no run folder.
 
 *Random search (task 5.7, ADR-040, `configs/random_search.yaml`):* `method: random_search`, `seed`, `tag`; `network` (a driving network: 7 inputs first, 2 outputs last; default [7, 16, 16, 2], tanh / tanh, xavier); `search.candidates_per_unit` (≥ 1, default 20); `fitness` (`track`, which must have split `train`, default `train_loop_01`; `start_fractions` in [0, 1) and `lateral_offsets`, default the Driving Exam's 5 × 2 starts; `target_laps`, default 2); `budget` (`units`, `env_steps`, `wall_clock_s`: at least one); `exams` (default true). `nd train` and `nd sweep` pick the method from the file; `--units` overrides `budget.units` (`--epochs` is for toy configs only, and the other way round). `nd resume --run <folder>` rebuilds the learner from the run's resolved `config.yaml` (`runner.learner_from_config`) and continues it with `runner.resume`; it refuses runs whose learner saves no state (toy) and finished runs (status 2).
+
+*Imitation (task 6.3, ADR-047, `configs/imitation.yaml`):* `method: imitation`, `seed`, `tag`; `network` (a driving network, as for random search); `data` (`dataset`: a dataset id, or a selector `<teacher>-<tag>` meaning the newest dataset of that teacher and tag, `learn/supervised/demos.find_dataset`; `sha256`: 64 lowercase hexadecimal digits or null, default null; `val_fraction` in [0, 1), default 0.2: the share of whole episodes held back, round(v · E), at least 1); `training` (`epochs` required ≥ 1, `loss` mse | huber, default mse, `batch_size` ≥ 1, default 256); `optimizer` (as for toys); `checkpoint_every` (≥ 1 or null, default null); `exams` (default true). Validation does not look for the dataset. The runner (`runner.pin_dataset`) finds it in `--datasets-dir` (default `<repo>/data/demos`), refuses it when `sha256` is given and differs, and writes the run folder's config with the exact id and the checksum, so `nd train --config runs/<id>/config.yaml` and `nd resume` learn from the very same frames or refuse. `--epochs` overrides `training.epochs`; `--units` is refused. `nd train`, `nd sweep` and `nd resume` take `--datasets-dir`; `nd sweep` pins the dataset once for all seeds and summarises the final validation loss.
 ### 6.16 Demonstration dataset (dataset v1, task 6.1, ADR-044)
 A folder `data/demos/<YYYYMMDD-HHMMSS>-<teacher>-<tag>/` (git-ignored; `-2`, `-3`, … when the name
 exists), written and read by `learn/supervised/demos.py` (`save_dataset`, `DemoDataset.load`):
@@ -440,7 +444,7 @@ data/demos/<dataset_id>/
   and provenance.
 - Shown by the dataset inspector (task 6.2, ADR-045; dense coverage and the comparator, ADR-046): `GET datasets` and `GET datasets/{id}` (§7).
 
-## 7. Server API (api v1.16, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033, ADR-035, ADR-041, ADR-042, ADR-045, ADR-046)
+## 7. Server API (api v1.17, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033, ADR-035, ADR-041, ADR-042, ADR-045, ADR-046, ADR-047)
 
 REST (`/api/...`):
 - `GET health` → `{status: "ok", version}` (`version` is the NeuroDrive package version)
@@ -489,7 +493,9 @@ REST (`/api/...`):
   creating its folder or takes more than 60 s. `POST runs/{id}/stop` → `{run_id, stop_requested:
   true}`: writes the run folder's stop request (any running run, also one started in a terminal);
   404 unknown run; 409 when the run has already ended, or when this server launched it and its
-  process has gone (killed: `nd resume` continues it).
+  process has gone (killed: `nd resume` continues it). *Since api v1.17 (task 6.3, ADR-047):*
+  `method` may also be `imitation` (`length_field` `epochs`, `task` null); a launched imitation run
+  finds its dataset in the default `<repo>/data/demos`.
 - `GET datasets`, `GET datasets/{id}`: demonstration datasets (dataset v1, §6.16)
   *As built (task 6.2, ADR-045, api v1.15):* the server reads the dataset folders in `nd serve
   --datasets-dir` (default `<repo>/data/demos`). `GET datasets` → `{datasets: [{dataset_id, teacher,
@@ -518,7 +524,7 @@ REST (`/api/...`):
 
 WebSocket `/ws/live` (one independent session per connection):
 - `hello` is sent first, on connect: `{type: "hello", version, api}` (`api` is the message-contract
-  version, currently `"v1.16"`).
+  version, currently `"v1.17"`).
 - client → server (each has a `type` field):
   - `load_scenario {track, policy, n_cars, seed}`: `policy` is `"keyboard"`, `"constant"`,
     `"neuron"`, `"random_networks"` (every car is driven by its own random [7,16,16,2] network;

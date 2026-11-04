@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
-API_VERSION = "v1.16"
+API_VERSION = "v1.17"
 
 
 class WireModel(BaseModel):
@@ -635,13 +635,14 @@ class ConfigInfo(WireModel):
     """One training config of ``GET /api/configs``: a YAML file in ``configs/`` that ``nd train``
     accepts.
 
-    ``length_field`` names what the run's length counts (``epochs`` for toy configs, ``units``
-    for random search) and ``length`` is the file's value (null when a random-search budget has
-    no unit limit). ``task`` is the toy task (null for random search).
+    ``length_field`` names what the run's length counts (``epochs`` for toy and imitation
+    configs, ``units`` for random search) and ``length`` is the file's value (null when a
+    random-search budget has no unit limit). ``task`` is the toy task (null for the others).
+    ``imitation`` was added in api v1.17 (task 6.3).
     """
 
     name: str
-    method: Literal["toy", "random_search"]
+    method: Literal["toy", "random_search", "imitation"]
     task: str | None
     seed: int
     tag: str

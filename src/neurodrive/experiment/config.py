@@ -1,7 +1,8 @@
 """Config files: the written recipe of an experiment, validated before anything runs (ADR-032).
 
 A config file is YAML. Its ``method`` field says which kind of run it describes: ``toy`` (task
-4.6b) or ``random_search`` (task 5.7, ``configs/random_search.yaml``). A toy config (config v1,
+4.6b), ``random_search`` (task 5.7, ``configs/random_search.yaml``) or ``imitation`` (task 6.3,
+``configs/imitation.yaml``). A toy config (config v1,
 docs/ARCHITECTURE.md §6.15) looks like::
 
     method: toy
@@ -33,6 +34,13 @@ A random-search config has the sections ``network`` (a driving network: 7 inputs
 held-out track is refused, EXPERIMENT_PROTOCOL rule 7), ``budget`` (units, env_steps,
 wall_clock_s: at least one) and ``exams``.
 
+An imitation config (behavioural cloning, ADR-047) has the sections ``network`` (a driving
+network), ``data`` (the demonstration dataset: an id or a ``<teacher>-<tag>`` selector, its
+optional ``sha256`` checksum, and the share of episodes held back for validation), ``training``
+(epochs, loss, batch size), ``optimizer`` (as for toys), ``checkpoint_every`` (also checkpoint and
+examine every k-th epoch) and ``exams``. Validation does not look for the dataset: the runner
+finds it, and the run folder's config then names the exact dataset and its checksum.
+
 The learners keep their own plain settings (``learn/`` does not use Pydantic); this module
 converts between the file and them. Every list of valid names comes from the module that owns it.
 """
@@ -62,6 +70,7 @@ from neurodrive.env.sensors import OBSERVATION_SIZE
 from neurodrive.env.track import Track
 from neurodrive.experiment.exam import DEFAULT_TRACKS_DIR, EXAM_V1, TRAINING_TRACK
 from neurodrive.learn.evolution.random_search import RandomSearchSettings
+from neurodrive.learn.supervised.imitation import ImitationSettings
 from neurodrive.learn.supervised.toy_tasks import TOY_TASKS, make_toy_dataset
 from neurodrive.learn.supervised.train_toy import LOSSES, ToyConfig
 
@@ -283,8 +292,54 @@ class RandomSearchRunConfig(_Section):
     exams: bool = True
 
 
-RunConfig = ToyRunConfig | RandomSearchRunConfig
-METHODS = ("toy", "random_search")
+Name = Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]+$")]
+
+
+class DataSection(_Section):
+    """Imitation: which demonstration dataset, and the share of its episodes held back.
+
+    ``dataset`` is a dataset id or a ``<teacher>-<tag>`` selector (the newest such dataset);
+    ``sha256`` (optional) is the checksum the dataset must have, filled in by the runner.
+    """
+
+    dataset: Name
+    sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | None = None
+    val_fraction: float = Field(0.2, ge=0.0, lt=1.0)
+
+
+class ImitationTrainingSection(_Section):
+    """Imitation: how many epochs, the loss and the minibatch size."""
+
+    epochs: Annotated[StrictInt, Field(ge=1)]
+    loss: str = "mse"
+    batch_size: Annotated[StrictInt, Field(ge=1)] = 256
+
+    @field_validator("loss")
+    @classmethod
+    def _loss(cls, v: str) -> str:
+        return _one_of(v, LOSSES, "loss")
+
+
+class ImitationRunConfig(_Section):
+    """A complete behavioural-cloning run (task 6.3)."""
+
+    method: Literal["imitation"]
+    seed: Annotated[StrictInt, Field(ge=0)] = 0
+    tag: str = Field("default", pattern=r"^[A-Za-z0-9_-]+$")
+    network: DrivingNetworkSection = Field(default_factory=DrivingNetworkSection)
+    data: DataSection
+    training: ImitationTrainingSection
+    optimizer: OptimizerSection
+    checkpoint_every: Annotated[StrictInt, Field(ge=1)] | None = None
+    exams: bool = True
+
+
+RunConfig = ToyRunConfig | RandomSearchRunConfig | ImitationRunConfig
+METHODS = ("toy", "random_search", "imitation")
+_MODELS: dict[str, type[_Section]] = {
+    "random_search": RandomSearchRunConfig,
+    "imitation": ImitationRunConfig,
+}
 
 
 # --- reading ---
@@ -328,8 +383,8 @@ def parse_config(
 ) -> RunConfig:
     """Validate ``data`` (a parsed YAML mapping) and return the config.
 
-    ``seed``, ``tag``, ``epochs`` (toy: training.epochs) and ``units`` (random search:
-    budget.units) override the file's values when given. A Phase 3 flat config is converted
+    ``seed``, ``tag``, ``epochs`` (toy and imitation: training.epochs) and ``units`` (random
+    search: budget.units) override the file's values when given. A Phase 3 flat config is converted
     first. Raises ``ConfigError`` listing every problem.
     """
     if not isinstance(data, dict):
@@ -347,7 +402,7 @@ def parse_config(
     method = data.get("method")
     if epochs is not None:
         if method == "random_search":
-            raise ConfigError(["--epochs is for toy configs; use --units"], source)
+            raise ConfigError(["--epochs is for toy and imitation configs; use --units"], source)
         training = data.get("training")
         data["training"] = (
             {**training, "epochs": epochs} if isinstance(training, dict) else training
@@ -359,9 +414,9 @@ def parse_config(
         data["budget"] = (
             {**budget, "units": units} if isinstance(budget, dict) else {"units": units}
         )
-    # Anything but random_search is read as a toy config, so a missing or unknown method gets
-    # the same message as before random search existed.
-    model = RandomSearchRunConfig if method == "random_search" else ToyRunConfig
+    # Any other method is read as a toy config, so a missing or unknown method gets the same
+    # message as before random search existed.
+    model = _MODELS.get(method, ToyRunConfig) if isinstance(method, str) else ToyRunConfig
     try:
         return model.model_validate(data)
     except ValidationError as exc:
@@ -439,6 +494,26 @@ def to_random_search_settings(config: RandomSearchRunConfig) -> RandomSearchSett
         start_fractions=tuple(config.fitness.start_fractions),
         lateral_offsets=tuple(config.fitness.lateral_offsets),
         target_laps=config.fitness.target_laps,
+    )
+
+
+def to_imitation_settings(config: ImitationRunConfig) -> ImitationSettings:
+    """The learner's ``ImitationSettings`` for this config."""
+    net, opt = config.network, config.optimizer
+    settings = {k: v for k, v in opt.model_dump().items() if k not in ("name", "learning_rate")}
+    return ImitationSettings(
+        spec=NetworkSpec(
+            layer_sizes=tuple(net.layer_sizes),
+            hidden_activation=net.hidden_activation,
+            output_activation=net.output_activation,
+        ),
+        init_scheme=net.init_scheme,
+        batch_size=config.training.batch_size,
+        loss=config.training.loss,
+        optimizer=opt.name,
+        learning_rate=opt.learning_rate,
+        optimizer_settings=settings,
+        val_fraction=config.data.val_fraction,
     )
 
 

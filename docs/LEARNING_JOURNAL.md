@@ -1489,3 +1489,29 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
 - Open question: is 1 % the right line? It is a judgement about what training "feels"; Study S5b
   can test it by checking whether the cloned network's errors grow where the dataset stops being
   dense, or already where it stops reaching.
+
+### 2026-11-04 — Task 6.3 Imitation learner
+- Concept: behavioural cloning is plain supervised learning on a teacher's driving: the inputs are
+  the 7 sensor readings it saw and the targets its (steer, throttle). The loss only measures how
+  well the network copies the teacher on the teacher's own frames; driving then puts the network
+  in states of its own making, where small errors can carry it to places the data never covered.
+  Validation holds back whole drives, because frames 1/30 s apart are near-copies (data leakage).
+- Key equation(s) in words: L = (1 / 2N) · Σ over frames and both outputs of (output − label)²,
+  so L = (L_steer + L_throttle) / 2. Worked example: labels (0.1, 1.0), (−0.2, 0.5), outputs
+  (0.0, 0.8), (−0.2, 0.9) give L = 0.21 / 4 = 0.0525, L_steer = 0.005, L_throttle = 0.1. One epoch is
+  ⌈N / B⌉ Adam steps: ⌈31,455 / 256⌉ = 123. Held back: round(0.2 · 20) = 4 whole episodes.
+- What we observed: the real `configs/imitation.yaml` run (seed 0, 100 epochs, an exam after
+  each) brought the training loss from 0.110 to 0.0070 and the validation loss with it (0.0070:
+  the held-back drives were on the same track, so they were nearly as easy). The network lapped
+  its training track from all 10 starts after a single epoch, and at epoch 2 also finished 3 of
+  the 4 held-out tracks; but as the loss kept falling the driving got worse: full laps in 36 of
+  the first 45 epochs and only 12 of the last 55, and the epoch-100 network, the best by loss,
+  crashes from every start of its own training track 10-33 s in, at normal speed. The loss is
+  dominated by throttle late on (0.014 against 0.00015 for steer).
+- Surprise or difficulty: my scratch trial (another split, another seed) kept lapping the training
+  track to epoch 300, so I predicted that in the Brief; this run did not. One run is one seed: 6.4
+  must look at several before saying how often this happens. Also, the exam is 45 times the cost
+  of training (424 s against 9.6 s), so how often to examine is now the main cost of a run.
+- Open question: what does the late network do wrong where the early one did not, given that its
+  steering loss is lower? Study S5a (6.4) asks whether lower validation loss ever means better
+  driving across seeds; S5b (6.5) opens a crash in the Network view to find out.

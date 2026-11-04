@@ -16,6 +16,7 @@ from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnec
 
 from neurodrive import __version__
 from neurodrive.core.activations import ACTIVATIONS
+from neurodrive.learn.supervised.demos import DEFAULT_DATASETS_DIR
 from neurodrive.server.datasets import DatasetLibrary
 from neurodrive.server.live import LiveSession, TrackLibrary
 from neurodrive.server.runs import RunLibrary
@@ -47,7 +48,6 @@ from neurodrive.server.schemas import (
 DEFAULT_TRACKS_DIR = Path(__file__).resolve().parents[3] / "tracks"  # <repository>/tracks
 DEFAULT_RUNS_DIR = Path(__file__).resolve().parents[3] / "runs"  # <repository>/runs (git-ignored)
 DEFAULT_CONFIGS_DIR = Path(__file__).resolve().parents[3] / "configs"  # what the app may launch
-DEFAULT_DATASETS_DIR = Path(__file__).resolve().parents[3] / "data" / "demos"  # git-ignored
 MAX_COMPARE_RUNS = 64  # runs per comparison request (8 groups of 8 seeds)
 TICK_SECONDS = 1.0 / 120.0  # timer period; Windows rounds it up to about 15 ms, which is still fine
 

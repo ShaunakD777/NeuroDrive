@@ -59,6 +59,22 @@ def serve(
 
 
 _STUDY_HELP = "Study id written into each run's meta.json, e.g. S4 (ADR-043)."
+_EPOCHS_HELP = "Override training.epochs (toy and imitation configs)."
+_DATASETS_HELP = "Folder of demonstration datasets for imitation (default: data/demos/)."
+
+
+def _datasets_dir(datasets_dir: str | None) -> Path:
+    from neurodrive.learn.supervised.demos import DEFAULT_DATASETS_DIR
+
+    return Path(datasets_dir) if datasets_dir else DEFAULT_DATASETS_DIR
+
+
+def _loss_line(result) -> str:
+    """One line on an imitation run's last training and validation loss."""
+    if result.end_loss is None:
+        return "loss: none (diverged at once)"
+    val = f", validation {result.end_val_loss:.6g}" if result.end_val_loss is not None else ""
+    return f"loss after the last finite epoch: training {result.end_loss:.6g}{val}"
 
 
 def _check_study_option(study: str | None) -> None:
@@ -76,21 +92,35 @@ def train(
     ),
     seed: int | None = typer.Option(None, help="Override the config's seed."),
     tag: str | None = typer.Option(None, help="Override the config's tag (run folder label)."),
-    epochs: int | None = typer.Option(None, help="Override training.epochs (toy configs)."),
+    epochs: int | None = typer.Option(None, help=_EPOCHS_HELP),
     units: int | None = typer.Option(None, help="Override budget.units (random_search configs)."),
     runs_dir: str = typer.Option("runs", help="Folder to create the run folder in."),
     study: str | None = typer.Option(None, help=_STUDY_HELP),
+    datasets_dir: str | None = typer.Option(None, help=_DATASETS_HELP),
 ) -> None:
-    """Train from a config file (toy or random_search) and write a run folder."""
+    """Train from a config file (toy, random_search or imitation) and write a run folder."""
     import sys
 
-    from neurodrive.experiment.config import ConfigError, ToyRunConfig, load_config
-    from neurodrive.experiment.runner import train_random_search_run, train_toy_run
+    from neurodrive.experiment.config import (
+        ConfigError,
+        ImitationRunConfig,
+        ToyRunConfig,
+        load_config,
+    )
+    from neurodrive.experiment.runner import (
+        pin_dataset,
+        train_imitation_run,
+        train_random_search_run,
+        train_toy_run,
+    )
 
+    demos = _datasets_dir(datasets_dir)
     try:
         _check_study_option(study)
         run_config = load_config(Path(config), seed=seed, tag=tag, epochs=epochs, units=units)
-    except (ConfigError, ValueError) as exc:
+        if isinstance(run_config, ImitationRunConfig):
+            run_config, _ = pin_dataset(run_config, demos)  # refuse a missing dataset up front
+    except (ConfigError, FileNotFoundError, ValueError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=2) from None
     meta = {"study": study} if study is not None else None
@@ -101,6 +131,14 @@ def train(
         typer.echo(f"run folder: {store.path.as_posix()}")
         sys.stdout.flush()
 
+    if isinstance(run_config, ImitationRunConfig):
+        typer.echo(f"dataset: {run_config.data.dataset}")
+        cloned = train_imitation_run(
+            run_config, runs_dir, meta, on_start=announce, datasets_dir=demos
+        )
+        typer.echo(f"status: {cloned.status} after {cloned.epochs_done} epochs")
+        typer.echo(_loss_line(cloned))
+        return
     if not isinstance(run_config, ToyRunConfig):
         found = train_random_search_run(run_config, runs_dir, meta, on_start=announce)
         typer.echo(f"status: {found.status} after {found.units_done} units")
@@ -122,6 +160,7 @@ def _best_line(found) -> str:
 @app.command()
 def resume(
     run: str = typer.Option(..., "--run", help="Run folder to continue, e.g. runs/<run_id>."),
+    datasets_dir: str | None = typer.Option(None, help=_DATASETS_HELP),
 ) -> None:
     """Continue a killed or failed run exactly where it stopped (resumable methods only)."""
     from neurodrive.experiment.config import ConfigError
@@ -132,7 +171,7 @@ def resume(
 
     try:
         store = RunStore.open(run)
-        learner = learner_from_config(store.read_config())
+        learner = learner_from_config(store.read_config(), datasets_dir=_datasets_dir(datasets_dir))
         if not isinstance(learner, Resumable):
             raise ValueError(
                 f"{learner.name} runs cannot be resumed (the learner saves no state); "
@@ -149,6 +188,8 @@ def resume(
     last = metrics[-1] if metrics else {}
     if "best_fitness" in last:
         typer.echo(f"best fitness: {last['best_fitness']:.4f} (found in unit {last['best_unit']})")
+    if last.get("val_loss") is not None:
+        typer.echo(f"loss: training {last['loss']:.6g}, validation {last['val_loss']:.6g}")
 
 
 @app.command()
@@ -158,25 +199,50 @@ def sweep(
     ),
     seeds: str = typer.Option(..., help="Seeds to run, e.g. 0-4 or 0,2,7."),
     tag: str | None = typer.Option(None, help="Override the config's tag; runs get <tag>-s<seed>."),
-    epochs: int | None = typer.Option(None, help="Override training.epochs (toy configs)."),
+    epochs: int | None = typer.Option(None, help=_EPOCHS_HELP),
     units: int | None = typer.Option(None, help="Override budget.units (random_search configs)."),
     runs_dir: str = typer.Option("runs", help="Folder to create the run folders in."),
     study: str | None = typer.Option(None, help=_STUDY_HELP),
+    datasets_dir: str | None = typer.Option(None, help=_DATASETS_HELP),
 ) -> None:
     """Train one config once per seed; summarise the final loss or best fitness (median, IQR)."""
-    from neurodrive.experiment.config import ConfigError, ToyRunConfig, load_config
-    from neurodrive.experiment.runner import parse_seeds, sweep_seeds
+    from neurodrive.experiment.config import (
+        ConfigError,
+        ImitationRunConfig,
+        ToyRunConfig,
+        load_config,
+    )
+    from neurodrive.experiment.runner import parse_seeds, pin_dataset, sweep_seeds
     from neurodrive.experiment.stats import summarise
 
+    demos = _datasets_dir(datasets_dir)
     try:
         _check_study_option(study)
         seed_list = parse_seeds(seeds)
         run_config = load_config(Path(config), tag=tag, epochs=epochs, units=units)
-    except (ConfigError, ValueError) as exc:
+        if isinstance(run_config, ImitationRunConfig):
+            run_config, _ = pin_dataset(run_config, demos)
+    except (ConfigError, FileNotFoundError, ValueError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=2) from None
-    sweep_id, results = sweep_seeds(run_config, seed_list, runs_dir, study=study)
+    sweep_id, results = sweep_seeds(
+        run_config, seed_list, runs_dir, study=study, datasets_dir=demos
+    )
     typer.echo(f"sweep: {sweep_id} ({len(results)} runs)")
+    if isinstance(run_config, ImitationRunConfig):
+        finals = []
+        for seed, cloned in zip(seed_list, results, strict=True):
+            final = cloned.end_val_loss if cloned.status == "completed" else None
+            finals.append(float("inf") if final is None else final)
+            typer.echo(
+                f"  seed {seed}: {cloned.store.path.name}  {cloned.status}  {_loss_line(cloned)}"
+            )
+        s = summarise(finals)
+        typer.echo(
+            f"final validation loss: median {s.median:.6g} [IQR {s.q1:.6g} to {s.q3:.6g}] over "
+            f"{s.n} seeds (a diverged run, or one without a validation set, counts as inf)"
+        )
+        return
     if not isinstance(run_config, ToyRunConfig):
         for seed, found in zip(seed_list, results, strict=True):
             typer.echo(

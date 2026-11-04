@@ -24,8 +24,14 @@ A dataset is a folder ``<out_dir>/<YYYYMMDD-HHMMSS>-<teacher>-<tag>/`` with
 
 The expert records from the Driving Exam's starts on a training track plus seeded random starts
 (ADR-044), so the data is not tied to the ten starts the exam measures.
+
+Finding a dataset by name (task 6.3, ADR-047): :func:`find_dataset` accepts a dataset id (the
+folder name) or a selector ``<teacher>-<tag>``, meaning the newest dataset of that teacher and
+tag; :func:`dataset_sha256` fingerprints ``dataset.npz`` so a run can tell whether the frames it
+learned from have changed since.
 """
 
+import hashlib
 import json
 import re
 from dataclasses import asdict, dataclass
@@ -48,6 +54,7 @@ from neurodrive.env.world import Status, World, WorldConfig
 Array = NDArray[np.float64]
 
 DATASET_VERSION = 1
+DEFAULT_DATASETS_DIR = Path(__file__).resolve().parents[4] / "data" / "demos"  # git-ignored
 DATASET_FILE = "dataset.npz"
 META_FILE = "meta.json"
 RANDOM_START_LATERAL = 1.0  # metres: random starts are shifted sideways by up to this (live server)
@@ -314,3 +321,58 @@ def save_dataset(
         }
     )
     return dataset.save(path)
+
+
+def _is_dataset_folder(path: Path) -> bool:
+    return (path / META_FILE).is_file() and (path / DATASET_FILE).is_file()
+
+
+def find_dataset(datasets_dir: str | Path, name: str) -> Path:
+    """The dataset folder ``name`` refers to in ``datasets_dir``.
+
+    1. If a dataset folder is called exactly ``name``, that is the one (a dataset id).
+    2. Otherwise ``name`` is a selector ``<teacher>-<tag>``: among the folders named
+       ``<YYYYMMDD-HHMMSS>-<teacher>-<tag>``, or with ``-2``, ``-3``, ... after it (two recordings
+       in the same second), the newest one: latest time first, then highest suffix.
+    3. Nothing matches: ``FileNotFoundError`` listing the datasets that are there.
+
+    Example: ``expert-default`` with folders ``20261104-084617-expert-default`` and
+    ``20261105-090000-expert-default`` gives the second.
+    """
+    if not _NAME.match(name):
+        raise ValueError(f"a dataset name must be letters, digits, '_' or '-', got {name!r}")
+    folder = Path(datasets_dir)
+    exact = folder / name
+    if _is_dataset_folder(exact):
+        return exact
+    pattern = re.compile(rf"^(\d{{8}}-\d{{6}})-{re.escape(name)}(?:-(\d+))?$")
+    found: list[tuple[str, int, Path]] = []
+    present: list[str] = []
+    if folder.is_dir():
+        for path in folder.iterdir():
+            if not _is_dataset_folder(path):
+                continue
+            present.append(path.name)
+            match = pattern.match(path.name)
+            if match:
+                found.append((match.group(1), int(match.group(2) or 1), path))
+    if not found:
+        listed = ", ".join(sorted(present)) or "none"
+        raise FileNotFoundError(
+            f"no dataset {name!r} in {folder.name}/ (a dataset id, or <teacher>-<tag> for the "
+            f"newest such dataset); datasets there: {listed}"
+        )
+    return max(found)[2]
+
+
+def dataset_sha256(folder: str | Path) -> str:
+    """The SHA-256 checksum of ``dataset.npz`` in ``folder``, as 64 hexadecimal digits.
+
+    Any change to any frame changes it, so it tells whether a dataset is still the one a run
+    learned from.
+    """
+    digest = hashlib.sha256()
+    with open(Path(folder) / DATASET_FILE, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
