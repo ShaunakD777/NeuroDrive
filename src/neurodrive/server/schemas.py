@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
-API_VERSION = "v1.14"
+API_VERSION = "v1.15"
 
 
 class WireModel(BaseModel):
@@ -805,6 +805,75 @@ class CompareResponse(WireModel):
     skipped: list[str]
 
 
+# ── demonstration datasets (api v1.15, task 6.2, ADR-045) ──────────────────────────────────────
+
+
+class DatasetSummary(WireModel):
+    """One entry of ``GET /api/datasets``: a dataset folder's headline from its ``meta.json``.
+
+    ``finished`` is how many of the ``episodes`` ended by completing their laps; ``straight_share``
+    is q, the share of frames with |steer| < 0.1.
+    """
+
+    dataset_id: str
+    teacher: str
+    tag: str
+    track: str
+    created_at: str
+    demo_frames: int
+    episodes: int
+    finished: int
+    straight_share: float
+
+
+class DatasetListResponse(WireModel):
+    """Answer to ``GET /api/datasets``: every readable dataset folder, newest first."""
+
+    datasets: list[DatasetSummary]
+
+
+class DatasetHistogram(WireModel):
+    """One quantity's histogram (``experiment/dataset_view.py``).
+
+    ``edges`` are the B + 1 bin edges from ``lo`` to ``hi`` (6 decimals); ``counts[b]`` is the
+    number of frames in [edges[b], edges[b + 1]) (the last bin includes ``hi``), so the counts add
+    up to the dataset's frames. ``min`` and ``max`` are the smallest and largest value (null for
+    an empty dataset) and ``covered`` = (max − min) / (hi − lo), the share of the range reached.
+    """
+
+    name: str
+    lo: float
+    hi: float
+    edges: list[float]
+    counts: list[int]
+    min: float | None
+    max: float | None
+    covered: float
+
+
+class DatasetMap(WireModel):
+    """Every ``stride``-th frame of a dataset, for the track map: its position (metres, 2
+    decimals), its steer and throttle label (4 decimals) and its episode number."""
+
+    stride: int
+    x: list[float]
+    y: list[float]
+    steer: list[float]
+    throttle: list[float]
+    episode: list[int]
+
+
+class DatasetDetail(WireModel):
+    """Answer to ``GET /api/datasets/{id}``: the metadata as stored, the 2 label histograms
+    (steer, throttle), the 7 observation histograms (observation v1 order) and the map."""
+
+    dataset_id: str
+    meta: dict[str, Any]
+    labels: list[DatasetHistogram]
+    observations: list[DatasetHistogram]
+    map: DatasetMap
+
+
 WIRE_MODELS: tuple[type[WireModel], ...] = (
     HealthResponse,
     HelloMessage,
@@ -862,4 +931,9 @@ WIRE_MODELS: tuple[type[WireModel], ...] = (
     CheckpointRef,
     CheckpointDiff,
     ExamCardResponse,
+    DatasetSummary,
+    DatasetListResponse,
+    DatasetHistogram,
+    DatasetMap,
+    DatasetDetail,
 )

@@ -1,5 +1,5 @@
-"""The FastAPI application: health, track data, run folders, live driving over a WebSocket, and
-launching and following training runs (task 5.8).
+"""The FastAPI application: health, track data, run folders, live driving over a WebSocket,
+launching and following training runs (task 5.8), and demonstration datasets (task 6.2).
 
 REST is request and response (the browser asks once, the server answers once). A WebSocket stays
 open, so the server can push messages without being asked each time, which live driving and
@@ -16,6 +16,7 @@ from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnec
 
 from neurodrive import __version__
 from neurodrive.core.activations import ACTIVATIONS
+from neurodrive.server.datasets import DatasetLibrary
 from neurodrive.server.live import LiveSession, TrackLibrary
 from neurodrive.server.runs import RunLibrary
 from neurodrive.server.runs_watch import Launcher, LaunchError, RunsHub, RunsWatcher
@@ -26,6 +27,8 @@ from neurodrive.server.schemas import (
     CheckpointNetwork,
     CompareResponse,
     ConfigListResponse,
+    DatasetDetail,
+    DatasetListResponse,
     ExamCardResponse,
     HealthResponse,
     HelloMessage,
@@ -44,6 +47,7 @@ from neurodrive.server.schemas import (
 DEFAULT_TRACKS_DIR = Path(__file__).resolve().parents[3] / "tracks"  # <repository>/tracks
 DEFAULT_RUNS_DIR = Path(__file__).resolve().parents[3] / "runs"  # <repository>/runs (git-ignored)
 DEFAULT_CONFIGS_DIR = Path(__file__).resolve().parents[3] / "configs"  # what the app may launch
+DEFAULT_DATASETS_DIR = Path(__file__).resolve().parents[3] / "data" / "demos"  # git-ignored
 MAX_COMPARE_RUNS = 64  # runs per comparison request (8 groups of 8 seeds)
 TICK_SECONDS = 1.0 / 120.0  # timer period; Windows rounds it up to about 15 ms, which is still fine
 
@@ -53,6 +57,7 @@ def create_app(
     runs_dir: Path | None = None,
     configs_dir: Path | None = None,
     launcher: Launcher | None = None,
+    datasets_dir: Path | None = None,
 ) -> FastAPI:
     """Build the app. A function, so each test can get a fresh one (and its own folders).
 
@@ -61,6 +66,7 @@ def create_app(
     app = FastAPI(title="NeuroDrive", version=__version__)
     tracks = TrackLibrary(DEFAULT_TRACKS_DIR if tracks_dir is None else tracks_dir)
     runs = RunLibrary(DEFAULT_RUNS_DIR if runs_dir is None else runs_dir)
+    datasets = DatasetLibrary(DEFAULT_DATASETS_DIR if datasets_dir is None else datasets_dir)
     if launcher is None:
         configs = DEFAULT_CONFIGS_DIR if configs_dir is None else configs_dir
         launcher = Launcher(runs.runs_dir, configs)
@@ -173,6 +179,20 @@ def create_app(
             return runs.toy(run_id, unit)
         except KeyError:
             raise missing(f"checkpoint {unit} of run {run_id!r}") from None
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from None
+
+    # Demonstration datasets (api v1.15, task 6.2, ADR-045). Read-only, like the run folders.
+    @app.get("/api/datasets")
+    def list_datasets() -> DatasetListResponse:
+        return datasets.list()
+
+    @app.get("/api/datasets/{dataset_id}")
+    def dataset_detail(dataset_id: str) -> DatasetDetail:
+        try:
+            return datasets.detail(dataset_id)
+        except KeyError:
+            raise missing(f"dataset {dataset_id!r}") from None
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from None
 

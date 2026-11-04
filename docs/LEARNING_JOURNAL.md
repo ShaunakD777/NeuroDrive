@@ -1441,3 +1441,27 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
 - Open question: with 88 % straight frames and no recovery examples, will a cloned network learn
   to steer back from the edge at all (Study S5b)? Would random starts with larger offsets help
   plain cloning, or is that the job of DAgger?
+
+### 2026-11-04 — Task 6.2 Dataset inspector
+- Concept: a dataset is only as useful as what it covers. A histogram over an input's *whole*
+  range shows the situations the teacher produced often (tall bars) and the ones it never produced
+  (empty bins); the covered range c = (max − min) / (hi − lo) turns that into one number per input.
+  Seeing the dataset before training tells you where a cloned network will have to guess.
+- Key equation(s) in words: count_b = the number of frames whose value lies in bin b, an interval
+  of width w = (hi − lo) / 20 (the last bin also takes hi, so the counts add up to the frames);
+  c = (largest value − smallest value) / (hi − lo); the map keeps every k-th frame,
+  k = ⌈F / 4000⌉ (39,338 frames → k = 10, 3,934 points).
+- What we observed: on the 6.1a expert dataset, 99.6 % of the steering labels fall in three bins
+  around 0 (−0.2 to 0.1), and steering covers only 28 % of its range. The far rays cover 6.5 %
+  (0.10 to 0.17: the walls are always about the same distance away), the heading error 3.4 %
+  (−0.038 to 0.031: the car always points along the road), while speed (98 %) and throttle (91 %)
+  vary widely. On the 12 m wide road the expert stays within ±1.5 m of the centreline. On the map
+  the bends show up as orange (left) and blue (right) bands and the straights as grey.
+- Surprise or difficulty: on a fixed −1..+1 colour scale the map was almost all grey, because the
+  expert's hardest steering is only ±0.29; the map now colours on the dataset's own ±largest
+  |label| and says so in its legend. The covered range can also flatter a dataset: the left ray
+  "covers 83 %" only because 1,154 frames read exactly 1.0 (nothing in range), while only 58 lie
+  between 0.5 and 1. Min-to-max says how far the values reach, not how densely they fill it.
+- Open question: should coverage count only bins that hold some minimum number of frames, so a
+  handful of outliers cannot make an input look well covered? And which observations will the
+  cloned network get wrong first once it drifts off the centreline (Study S5b)?

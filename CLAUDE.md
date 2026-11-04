@@ -126,10 +126,11 @@ These are created in Phase 0. If a task changes a command, update this section i
 | All Python tests | `uv run pytest` |
 | One area, quiet | `uv run pytest tests/core -q` |
 | Lint and format | `uv run ruff check . && uv run ruff format .` |
-| Start backend (port 8000) | `uv run python -m neurodrive serve` (or `uv run nd serve`; add `--runs-dir <folder>` to show other runs) |
+| Start backend (port 8000) | `uv run python -m neurodrive serve` (or `uv run nd serve`; add `--runs-dir <folder>` to show other runs, `--datasets-dir <folder>` for other demonstration datasets) |
 | Start web app (port 5173) | `cd web && npm install && npm run dev` |
 | Launch, watch and stop training runs from the app (runs `nd train` with a config from `configs/` as a separate process that keeps going if the server stops; at most 4 at once; each process's output in `runs/.launches/`; terminal runs show up too) | start both servers, then Experiment → **Training** (`http://127.0.0.1:5173/#/experiment`) |
 | Replay a driving run's checkpoints in every view (the checkpoint drives the Driving Exam's 10 starts on a chosen track; the Network view colours what changed since the previous checkpoint) | start both servers, then Experiment → **Timeline** |
+| Inspect a demonstration dataset in `data/demos/` (label and observation histograms with the share of each range covered, the frames on the track map coloured by steer or throttle, the episodes) | start both servers, then Experiment → **Datasets** |
 | Regenerate the track files in `tracks/` | `uv run python scripts/make_tracks.py` |
 | Train from a config into `runs/` (toy configs: `configs/toy_line.yaml`, `toy_sine.yaml`, `toy_xor.yaml`, `toy_two_spirals.yaml`; options `--seed`, `--tag`, `--epochs`, `--runs-dir`) | `uv run python -m neurodrive train --config configs/toy_xor.yaml` (or `uv run nd train ...`) |
 | Train random search (the first driving learner: fresh random networks, keep the best; option `--units` overrides `budget.units`; exams at every checkpoint) | `uv run python -m neurodrive train --config configs/random_search.yaml` |
@@ -155,7 +156,8 @@ the Python that uv downloads (seen on 2026-10-25), install Python 3.12 from pyth
 `uv sync --python <path to its python.exe>`; the browser tests also train two small toy runs into
 `runs/` (tag `e2e`) the first time, and every run of them launches two small random-search runs
 from the Training tab (tags `e2elaunch`, `e2estop`, task 5.8); the first time they also train a
-3-unit random search (tag `e2e`) for the timeline test (task 5.9).
+3-unit random search (tag `e2e`) for the timeline test (task 5.9) and record an expert dataset
+from the exam's 10 starts (tag `e2e`, in `data/demos/`) for the dataset inspector test (task 6.2).
 
 ## 7. Project slash commands
 

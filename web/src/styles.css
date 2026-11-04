@@ -1961,3 +1961,72 @@ body {
   background: color-mix(in srgb, var(--accent) 14%, transparent);
   font-weight: 600;
 }
+
+/* Dataset inspector (task 6.2, ADR-045): label and observation histograms, and the track map. */
+.ds-heading {
+  font-size: 1rem;
+  margin: 18px 0 6px;
+}
+
+.ds-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+  gap: 14px;
+}
+
+.ds-grid-big {
+  grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr));
+}
+
+.ds-covered {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.ds-bar {
+  fill: var(--chart-pos);
+}
+
+.ds-bar-hover {
+  fill: var(--text);
+}
+
+.ds-range {
+  stroke: var(--text-muted);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.ds-canvas {
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: grab;
+}
+
+.ds-canvas:active {
+  cursor: grabbing;
+}
+
+.ds-reset {
+  margin-left: auto;
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.ds-ramp {
+  display: inline-block;
+  width: 90px;
+  height: 10px;
+  margin: 0 6px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--chart-neg), var(--text-muted), var(--chart-pos));
+}
+
+.ds-legend-note {
+  color: var(--text-muted);
+}

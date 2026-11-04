@@ -229,6 +229,124 @@ export interface ConfigInfo {
 }
 
 /**
+ * Answer to ``GET /api/datasets/{id}``: the metadata as stored, the 2 label histograms
+ * (steer, throttle), the 7 observation histograms (observation v1 order) and the map.
+ */
+export interface DatasetDetail {
+  dataset_id: string;
+  labels: DatasetHistogram[];
+  map: DatasetMap;
+  meta: {
+    [k: string]: unknown;
+  };
+  observations: DatasetHistogram[];
+}
+/**
+ * One quantity's histogram (``experiment/dataset_view.py``).
+ *
+ * ``edges`` are the B + 1 bin edges from ``lo`` to ``hi`` (6 decimals); ``counts[b]`` is the
+ * number of frames in [edges[b], edges[b + 1]) (the last bin includes ``hi``), so the counts add
+ * up to the dataset's frames. ``min`` and ``max`` are the smallest and largest value (null for
+ * an empty dataset) and ``covered`` = (max − min) / (hi − lo), the share of the range reached.
+ */
+export interface DatasetHistogram {
+  counts: number[];
+  covered: number;
+  edges: number[];
+  hi: number;
+  lo: number;
+  max: number | null;
+  min: number | null;
+  name: string;
+}
+/**
+ * Every ``stride``-th frame of a dataset, for the track map: its position (metres, 2
+ * decimals), its steer and throttle label (4 decimals) and its episode number.
+ */
+export interface DatasetMap {
+  episode: number[];
+  steer: number[];
+  stride: number;
+  throttle: number[];
+  x: number[];
+  y: number[];
+}
+
+/**
+ * One quantity's histogram (``experiment/dataset_view.py``).
+ *
+ * ``edges`` are the B + 1 bin edges from ``lo`` to ``hi`` (6 decimals); ``counts[b]`` is the
+ * number of frames in [edges[b], edges[b + 1]) (the last bin includes ``hi``), so the counts add
+ * up to the dataset's frames. ``min`` and ``max`` are the smallest and largest value (null for
+ * an empty dataset) and ``covered`` = (max − min) / (hi − lo), the share of the range reached.
+ */
+export interface DatasetHistogram {
+  counts: number[];
+  covered: number;
+  edges: number[];
+  hi: number;
+  lo: number;
+  max: number | null;
+  min: number | null;
+  name: string;
+}
+
+/**
+ * Answer to ``GET /api/datasets``: every readable dataset folder, newest first.
+ */
+export interface DatasetListResponse {
+  datasets: DatasetSummary[];
+}
+/**
+ * One entry of ``GET /api/datasets``: a dataset folder's headline from its ``meta.json``.
+ *
+ * ``finished`` is how many of the ``episodes`` ended by completing their laps; ``straight_share``
+ * is q, the share of frames with |steer| < 0.1.
+ */
+export interface DatasetSummary {
+  created_at: string;
+  dataset_id: string;
+  demo_frames: number;
+  episodes: number;
+  finished: number;
+  straight_share: number;
+  tag: string;
+  teacher: string;
+  track: string;
+}
+
+/**
+ * Every ``stride``-th frame of a dataset, for the track map: its position (metres, 2
+ * decimals), its steer and throttle label (4 decimals) and its episode number.
+ */
+export interface DatasetMap {
+  episode: number[];
+  steer: number[];
+  stride: number;
+  throttle: number[];
+  x: number[];
+  y: number[];
+}
+
+/**
+ * One entry of ``GET /api/datasets``: a dataset folder's headline from its ``meta.json``.
+ *
+ * ``finished`` is how many of the ``episodes`` ended by completing their laps; ``straight_share``
+ * is q, the share of frames with |steer| < 0.1.
+ */
+export interface DatasetSummary {
+  created_at: string;
+  dataset_id: string;
+  demo_frames: number;
+  episodes: number;
+  finished: number;
+  straight_share: number;
+  tag: string;
+  teacher: string;
+  track: string;
+}
+
+/**
  * Sent once when every car has stopped; the session then pauses.
  *
  * ``status`` has one name per car: crashed, finished, stalled or timeout.

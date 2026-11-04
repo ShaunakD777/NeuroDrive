@@ -132,6 +132,7 @@ neurodrive/
 │  │  ├─ runner.py               training loop orchestration, checkpoint & exam schedules
 │  │  ├─ store.py                run folder read/write
 │  │  ├─ toy_view.py             toy lab numbers for one checkpoint: predictions, loss, gradients, glow
+│  │  ├─ dataset_view.py         dataset inspector numbers: label/observation histograms, covered ranges, map rows
 │  │  ├─ db.py                   SQLite mirror: schema, insert/update, rebuild, check
 │  │  ├─ exam.py                 the Driving Exam
 │  │  ├─ metrics.py              driving metric definitions
@@ -146,6 +147,7 @@ neurodrive/
 │  │  ├─ schemas.py              Pydantic message models (source for TS types)
 │  │  ├─ live.py                 live sessions over WebSocket
 │  │  ├─ runs.py                 run folders as REST answers (read-only, api v1.10)
+│  │  ├─ datasets.py             demonstration datasets as REST answers (read-only, api v1.15)
 │  │  └─ runs_watch.py           launching training processes, watching run folders, /ws/runs
 │  └─ cli.py                     `nd serve | train | sweep | exam | demo-record | ...`
 ├─ tests/                        mirrors src/neurodrive (core/, env/, learn/, experiment/, explain/, server/)
@@ -159,7 +161,7 @@ neurodrive/
 │  ├─ src/state/                 selection store, layout store (Page/Split/All, drawers), playback clock
 │  ├─ src/views/environment/     canvas renderer, trails, HUD, population mode
 │  ├─ src/views/network/         SVG diagram, output inspector, what-if panel, diff
-│  ├─ src/views/experiment/      toy lab (ToyLab, LossChart, ...), Compare runs (CompareRuns, RunList, CompareChart), Training (TrainingRuns, LiveChart; task 5.8); later timeline
+│  ├─ src/views/experiment/      toy lab (ToyLab, LossChart, ...), Compare runs (CompareRuns, RunList, CompareChart), Training (TrainingRuns, LiveChart; task 5.8), Timeline (task 5.9), Datasets (DatasetView; task 6.2)
 │  └─ src/components/            shared UI pieces
 └─ docs/                         concept, architecture, roadmap, checklist, protocol, journal ...
 ```
@@ -436,8 +438,9 @@ data/demos/<dataset_id>/
   from the `starts` stream of `make_rng(seed)`; default 10, seed 0); episodes are numbered exam
   starts first. The same options give an identical dataset apart from `dataset_id`, `created_at`
   and provenance.
+- Shown by the dataset inspector (task 6.2, ADR-045): `GET datasets` and `GET datasets/{id}` (§7).
 
-## 7. Server API (api v1.14, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033, ADR-035, ADR-041, ADR-042)
+## 7. Server API (api v1.15, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033, ADR-035, ADR-041, ADR-042, ADR-045)
 
 REST (`/api/...`):
 - `GET health` → `{status: "ok", version}` (`version` is the NeuroDrive package version)
@@ -487,6 +490,20 @@ REST (`/api/...`):
   true}`: writes the run folder's stop request (any running run, also one started in a terminal);
   404 unknown run; 409 when the run has already ended, or when this server launched it and its
   process has gone (killed: `nd resume` continues it).
+- `GET datasets`, `GET datasets/{id}`: demonstration datasets (dataset v1, §6.16)
+  *As built (task 6.2, ADR-045, api v1.15):* the server reads the dataset folders in `nd serve
+  --datasets-dir` (default `<repo>/data/demos`). `GET datasets` → `{datasets: [{dataset_id, teacher,
+  tag, track, created_at, demo_frames, episodes, finished, straight_share}]}` newest first (a folder
+  whose name is not a dataset id or whose `meta.json` cannot be read is left out). `GET
+  datasets/{id}` → `{dataset_id, meta, labels, observations, map}`, computed by
+  `experiment/dataset_view.py`: `labels` (steer, throttle) and `observations` (the 7 inputs in
+  observation v1 order) are histograms `{name, lo, hi, edges, counts, min, max, covered}` over the
+  quantity's fixed range (labels [−1, 1], rays and speed [0, 1], heading error [−1, 1]) in 20 equal
+  bins, `counts[b]` = frames in [edges[b], edges[b+1]) with the last bin closed, so the counts add up
+  to F; `covered` = (max − min) / (hi − lo). `map` = `{stride, x, y, steer, throttle, episode}`:
+  every k-th row, k = ⌈F / 4000⌉ (positions to 2 decimals, labels to 4). Unknown or malformed id →
+  404; a folder that does not load as dataset v1 → 400 with the reason. Shown in the Experiment
+  page's "Datasets" tab.
 - `POST replay` {run, unit, track, seed, focus_cars} → Episode Recording
   *Not built (task 5.9, ADR-042):* a checkpoint is replayed in the live session instead (the
   `"checkpoint"` driver below), so every view and tool works on it; `POST replay` stays planned
@@ -499,7 +516,7 @@ REST (`/api/...`):
 
 WebSocket `/ws/live` (one independent session per connection):
 - `hello` is sent first, on connect: `{type: "hello", version, api}` (`api` is the message-contract
-  version, currently `"v1.14"`).
+  version, currently `"v1.15"`).
 - client → server (each has a `type` field):
   - `load_scenario {track, policy, n_cars, seed}`: `policy` is `"keyboard"`, `"constant"`,
     `"neuron"`, `"random_networks"` (every car is driven by its own random [7,16,16,2] network;

@@ -40,6 +40,10 @@ def serve(
     runs_dir: str | None = typer.Option(
         None, help="Folder of run folders to show (default: runs/ in the repository)."
     ),
+    datasets_dir: str | None = typer.Option(
+        None,
+        help="Folder of demonstration datasets to show (default: data/demos/ in the repository).",
+    ),
 ) -> None:
     """Start the NeuroDrive server (REST and WebSocket) for the web viewer."""
     # Imported here so that `nd --help` stays fast and only this command touches the server.
@@ -47,7 +51,10 @@ def serve(
 
     from neurodrive.server.app import create_app
 
-    app_ = create_app(runs_dir=Path(runs_dir) if runs_dir else None)
+    app_ = create_app(
+        runs_dir=Path(runs_dir) if runs_dir else None,
+        datasets_dir=Path(datasets_dir) if datasets_dir else None,
+    )
     uvicorn.run(app_, host=host, port=port)
 
 

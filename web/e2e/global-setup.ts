@@ -60,7 +60,27 @@ function hasCompletedSearch(): boolean {
     });
 }
 
+// An expert demonstration dataset for the dataset inspector (task 6.2): the exam's 10 starts on
+// the training loop, no random starts (tag "e2e"), recorded into data/demos/ (git-ignored) with
+// `nd demo-record` unless one is there. The expert is deterministic, so it is always the same.
+export const E2E_DATASET_TAG = "e2e";
+const demosDir = join(repoRoot, "data", "demos");
+
+function hasDataset(): boolean {
+  if (!existsSync(demosDir)) return false;
+  return readdirSync(demosDir).some(
+    (name) => name.endsWith(`-expert-${E2E_DATASET_TAG}`) && existsSync(join(demosDir, name, "meta.json")),
+  );
+}
+
 export default function globalSetup(): void {
+  if (!hasDataset()) {
+    execFileSync(
+      "uv",
+      ["run", "python", "-m", "neurodrive", "demo-record", "--teacher", "expert", "--random-starts", "0", "--tag", E2E_DATASET_TAG],
+      { cwd: repoRoot, stdio: "inherit" },
+    );
+  }
   if (!hasCompletedSearch()) {
     execFileSync(
       "uv",
