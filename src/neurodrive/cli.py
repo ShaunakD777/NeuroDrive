@@ -1,8 +1,8 @@
 """The ``nd`` command-line tool.
 
 Each subcommand is one thing you can ask NeuroDrive to do from a terminal. ``version``,
-``serve``, ``train``, ``sweep``, ``resume``, ``exam``, ``baseline`` and ``db rebuild`` /
-``db check`` exist so far; others are added by later tasks.
+``serve``, ``train``, ``sweep``, ``resume``, ``exam``, ``baseline``, ``demo-record`` and
+``db rebuild`` / ``db check`` exist so far; others are added by later tasks.
 """
 
 from pathlib import Path
@@ -269,6 +269,57 @@ def baseline(
                 f"random networks, held-out {label}: median {s.median:.3f} "
                 f"[IQR {s.q1:.3f} to {s.q3:.3f}] over {s.n} seeds"
             )
+
+
+@app.command("demo-record")
+def demo_record(
+    teacher: str = typer.Option("expert", help="Who drives: expert (keyboard: task 6.1b)."),
+    track: str = typer.Option("train_loop_01", help="Training track to record on."),
+    random_starts: int = typer.Option(
+        10, help="Seeded random starts besides the exam's 10 starts (0: exam starts only)."
+    ),
+    seed: int = typer.Option(0, help="Seed of the random starts."),
+    tag: str = typer.Option("default", help="Label in the dataset folder's name."),
+    out_dir: str = typer.Option("data/demos", help="Folder to create the dataset folder in."),
+) -> None:
+    """Record a teacher's driving as a demonstration dataset (dataset.npz + meta.json)."""
+    from neurodrive.env.track import Track
+    from neurodrive.experiment.exam import DEFAULT_TRACKS_DIR, EXAM_V1
+    from neurodrive.experiment.store import _git_info
+    from neurodrive.learn.supervised.demos import record_expert, save_dataset
+
+    try:
+        if teacher != "expert":
+            raise ValueError(
+                f"unknown teacher {teacher!r}; only expert so far (keyboard demos are recorded "
+                "from the live session, task 6.1b)"
+            )
+        path = DEFAULT_TRACKS_DIR / f"{track}.json"
+        if not path.is_file():
+            raise ValueError(f"unknown track {track!r}")
+        dataset = record_expert(
+            Track.from_json(path),
+            start_fractions=EXAM_V1.start_fractions,
+            lateral_offsets=EXAM_V1.lateral_offsets,
+            random_starts=random_starts,
+            seed=seed,
+            target_laps=EXAM_V1.target_laps,
+        )
+        folder = save_dataset(dataset, out_dir, tag, provenance=_git_info())
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=2) from None
+    meta = dataset.meta
+    outcomes: dict[str, int] = {}
+    for episode in meta["episodes"]:
+        outcomes[episode["status"]] = outcomes.get(episode["status"], 0) + 1
+    size = sum(p.stat().st_size for p in folder.iterdir())
+    typer.echo(f"dataset folder: {folder.as_posix()}")
+    typer.echo(
+        f"frames: {dataset.n_frames:,} from {len(meta['episodes'])} episodes "
+        f"({', '.join(f'{n} {s}' for s, n in sorted(outcomes.items()))}); {size / 1e6:.1f} MB"
+    )
+    typer.echo(f"nearly straight (|steer| < 0.1): {meta['straight_share']:.3f} of the frames")
 
 
 db_app = typer.Typer(

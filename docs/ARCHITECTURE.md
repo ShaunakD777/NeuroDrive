@@ -123,7 +123,7 @@ neurodrive/
 │  │  └─ episode.py              episode runner + EpisodeRecording
 │  ├─ learn/
 │  │  ├─ base.py                 Learner contract (v0 since task 3.7), budget counters
-│  │  ├─ supervised/             toy_tasks.py, train_toy.py, datasets.py, demos.py, imitation.py, dagger.py
+│  │  ├─ supervised/             toy_tasks.py, train_toy.py, datasets.py, demos.py (dataset v1, §6.16), imitation.py, dagger.py
 │  │  ├─ evolution/              random_search.py, ga.py, es.py, neat/ (genome, species, ...)
 │  │  ├─ rl/                     returns.py, gaussian_policy.py, reinforce.py, actor_critic.py, ppo.py
 │  │  └─ hybrid/                 distill.py, pretrain_finetune.py
@@ -409,6 +409,34 @@ Only the named optimizer's own settings are allowed; their defaults are those of
 and `training.epochs`; an invalid config exits with status 2 and creates no run folder.
 
 *Random search (task 5.7, ADR-040, `configs/random_search.yaml`):* `method: random_search`, `seed`, `tag`; `network` (a driving network: 7 inputs first, 2 outputs last; default [7, 16, 16, 2], tanh / tanh, xavier); `search.candidates_per_unit` (≥ 1, default 20); `fitness` (`track`, which must have split `train`, default `train_loop_01`; `start_fractions` in [0, 1) and `lateral_offsets`, default the Driving Exam's 5 × 2 starts; `target_laps`, default 2); `budget` (`units`, `env_steps`, `wall_clock_s`: at least one); `exams` (default true). `nd train` and `nd sweep` pick the method from the file; `--units` overrides `budget.units` (`--epochs` is for toy configs only, and the other way round). `nd resume --run <folder>` rebuilds the learner from the run's resolved `config.yaml` (`runner.learner_from_config`) and continues it with `runner.resume`; it refuses runs whose learner saves no state (toy) and finished runs (status 2).
+### 6.16 Demonstration dataset (dataset v1, task 6.1, ADR-044)
+A folder `data/demos/<YYYYMMDD-HHMMSS>-<teacher>-<tag>/` (git-ignored; `-2`, `-3`, … when the name
+exists), written and read by `learn/supervised/demos.py` (`save_dataset`, `DemoDataset.load`):
+
+```
+data/demos/<dataset_id>/
+  dataset.npz   observation (F, 7), label (F, 2), episode (F,), step (F,), x, y, psi, v (F,)
+  meta.json     dataset_version 1, dataset_id, tag, created_at, teacher {kind, params}, track,
+                track_split, starts, episodes [{index, start_kind, start_s0_m, start_lateral_m,
+                start_heading_offset_rad, start_speed_mps, status, frames}], demo_frames, env_steps,
+                straight_share, observation/action/physics versions and names, dt, world_config,
+                car_params, git_commit, git_dirty, neurodrive_version
+```
+
+- A **frame** (row) is one car at one step t while it was still driving: car i contributes steps
+  0 .. n_i − 1, n_i being the steps it drove before its episode ended (`EpisodeMetrics.steps`).
+  Rows are in episode order, then step order. `demo_frames` = F = the number of rows, the
+  budget an imitation learner reports; `env_steps` = the car-steps driven while recording (= F).
+- `observation` is o_t, exactly what the student sees (observation v1); `label` is the teacher's
+  action for that state, clipped to [−1, 1] (for a demonstration, the action it drove with).
+  `x, y, psi, v` are kept for drawing only and are never inputs.
+- Teachers: `expert` (`nd demo-record`); `keyboard` arrives with task 6.1b. The expert records
+  from the Driving Exam's starts on a **training** track (held-out tracks are refused) plus
+  `random_starts` seeded random starts (arc length uniform on the lap, ±1 m sideways, ±0.1 rad,
+  from the `starts` stream of `make_rng(seed)`; default 10, seed 0); episodes are numbered exam
+  starts first. The same options give an identical dataset apart from `dataset_id`, `created_at`
+  and provenance.
+
 ## 7. Server API (api v1.14, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033, ADR-035, ADR-041, ADR-042)
 
 REST (`/api/...`):

@@ -1417,3 +1417,27 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   the slow, general drivers that random search found early? Does the genetic algorithm (Phase 7),
   which builds on its best networks, fall into the same trap sooner? What causes the neuron-view
   browser test to fail once in a while?
+
+### 2026-11-04 — Task 6.1a Demonstration recorder
+- Concept: behavioural cloning starts with a dataset of (observation, label) pairs, where the label
+  is what the teacher did in that exact moment. A demonstration frame is one such row, one car at
+  one step while it was still driving, and frames are the budget currency of imitation. The
+  teacher (the scripted expert) drives using privileged state; the dataset keeps only the seven
+  numbers the student will see, with positions beside them for drawing only.
+- Key equation(s) in words: F = n_1 + … + n_N, where n_i is the number of steps car i drove before
+  its episode ended (car A crashing after 3 steps and car B finishing after 5 give 8 frames, not
+  the 10 actions the runner logged). q = the share of labels with |steer| < 0.1 (steers 0.02,
+  −0.05, 0.4, 0.01, −0.6 give 3/5 = 0.6).
+- What we observed: the expert on `train_loop_01` from the exam's 10 starts plus 10 seeded random
+  starts finishes all 20 drives: 39,338 frames (4.7 MB, 15 s). 88 % of the frames steer nearly
+  straight, and the largest steering label is only ±0.29: the expert never needs a sharp
+  correction, because it never leaves the centreline. The random starts were all within ±1 m and
+  ±0.1 rad, so even they barely leave the expert's usual path. Replaying any episode alone from its
+  stored start with its stored labels reproduces the stored observations bit for bit.
+- Surprise or difficulty: the planted "keep the frozen frames" bug was not caught by the budget
+  test, because the budget and the per-episode counts came from the same counter. It was caught by
+  the tests that compare against something independent (a separate expert drive and a replay).
+  A check that only compares a program with itself proves little.
+- Open question: with 88 % straight frames and no recovery examples, will a cloned network learn
+  to steer back from the edge at all (Study S5b)? Would random starts with larger offsets help
+  plain cloning, or is that the job of DAgger?
