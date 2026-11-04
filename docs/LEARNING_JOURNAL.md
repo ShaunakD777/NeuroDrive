@@ -1515,3 +1515,30 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
 - Open question: what does the late network do wrong where the early one did not, given that its
   steering loss is lower? Study S5a (6.4) asks whether lower validation loss ever means better
   driving across seeds; S5b (6.5) opens a crash in the Network view to find out.
+
+### 2026-11-04 — Task 6.4 Study S5a: loss vs driving
+- Concept: a training loss is a proxy for what we want. Whether it is a good proxy can be measured:
+  of every two checkpoints, how often is the lower-loss one also the better driver (pairwise
+  agreement; 1 = perfect, 0.5 = coin flip, below 0.5 = the wrong way round). And a checkpoint must
+  be chosen without the held-out tracks: the last one, the lowest loss, or the training-track exam.
+- Key equation(s) in words: A = agree / (agree + disagree) over the pairs whose losses and scores
+  differ. Worked example: losses 0.10, 0.08, 0.05, 0.03 with progress 0.6, 0.8, 0.3, 0.3 give 1
+  agreeing pair, 4 disagreeing, 1 left out: A = 0.2. The training-exam rule keeps the epochs that
+  finish most training starts and, among them, the lowest loss.
+- What we observed: 10 seeds x 300 epochs. The validation loss fell 28-fold (0.117 to 0.0042) in
+  every seed, almost all of it throttle; the held-out driving peaked at about 0.75 median progress
+  over epochs 3-15 and then collapsed to about 0.10, below the hand-wired neuron. Median agreement
+  0.36 (interval 0.21-0.44): the loss ranks checkpoints the wrong way round. Every seed laps the
+  training loop by epoch 5 (the phase goal), but the lowest-loss networks mostly do not. The rules:
+  last 0.104, lowest loss 0.105, training exam 0.129 (+0.025, interval excludes 0), and, post hoc,
+  the earliest full lap 0.711. Seed 0's lowest-loss network crashes on its own training track
+  at 30 m/s after the left ray opens to 1.0; the expert brakes there at 22 m/s, and its data holds
+  not one frame with that view at high speed.
+- Surprise or difficulty: the pre-registered training-exam rule barely helped, because its
+  tie-break (lowest loss) drags it to late epochs. The rule that worked was the one we did not
+  choose (earliest lap, D3 option B): it must be tested on new seeds before being trusted. Also, a
+  claim I read off the scatter plot by eye was wrong (8 high-progress points do have low loss);
+  counting fixed it.
+- Open question: why do the late networks drive faster on the approach while copying the
+  expert's throttle better on its own frames? Study S5b (6.5) inspects it; DAgger (6.6) adds
+  expert labels for the states the student itself reaches.

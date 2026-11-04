@@ -10,6 +10,7 @@ from neurodrive.experiment.stats import (
     bootstrap_median_ci,
     bootstrap_median_difference,
     curve_bands,
+    pairwise_agreement,
     percentile,
     summarise,
 )
@@ -121,3 +122,29 @@ def test_bootstrap_bad_input():
         bootstrap_median_ci([1.0], make_rng(0), level=1.0)
     with pytest.raises(ValueError):
         bootstrap_median_ci([1.0], make_rng(0), resamples=0)
+
+
+# ── pairwise agreement (task 6.4) ───────────────────────────────────────────────────────────
+
+
+def test_pairwise_agreement_brief_example():
+    found = pairwise_agreement([0.10, 0.08, 0.05, 0.03], [0.6, 0.8, 0.3, 0.3])
+    assert (found.agree, found.disagree, found.left_out) == (1, 4, 1)
+    assert found.share == pytest.approx(0.2)
+
+
+def test_pairwise_agreement_edges():
+    assert pairwise_agreement([3, 2, 1], [0.1, 0.5, 0.9]).share == 1.0  # loss down, score up
+    assert pairwise_agreement([3, 2, 1], [0.9, 0.5, 0.1]).share == 0.0  # the wrong way round
+    flat = pairwise_agreement([3, 2, 1], [1.0, 1.0, 1.0])  # every score equal: nothing counts
+    assert (flat.left_out, flat.share) == (3, None)
+    same_loss = pairwise_agreement([1, 1], [0.2, 0.8])  # equal losses rank nothing
+    assert (same_loss.left_out, same_loss.share) == (1, None)
+    # The order of the checkpoints does not matter, only which loss goes with which score.
+    order = np.array([2, 0, 3, 1])
+    loss, score = np.array([0.10, 0.08, 0.05, 0.03]), np.array([0.6, 0.8, 0.3, 0.3])
+    assert pairwise_agreement(loss[order], score[order]) == pairwise_agreement(loss, score)
+    with pytest.raises(ValueError):
+        pairwise_agreement([1, 2], [1])
+    with pytest.raises(ValueError):
+        pairwise_agreement([], [])
