@@ -102,7 +102,7 @@
 | S2b | 3 | How does the activation choice affect gradient-based learning (vanishing gradients)? |
 | S3 | 4 | How do learning rate and optimizer choice affect convergence and stability? |
 | S4 | 5 | Does random search beat the baselines, and at what budget? |
-| S5a–c | 6 | Does low imitation loss mean good driving? Where does cloning fail, and does DAgger fix it? Human vs scripted teacher? (S5a done, task 6.4: `docs/studies/S5a.md`) |
+| S5a–c | 6 | Does low imitation loss mean good driving? Where does cloning fail, and does DAgger fix it? Human vs scripted teacher? (S5a done, task 6.4: `docs/studies/S5a.md`; S5b done, task 6.5: `docs/studies/S5b.md`) |
 | S6 | 7 | How do population size, mutation and fitness design shape evolution? Does GA beat random search? Does evolution discover a racing line (cutting bends where the centreline expert does not)? |
 | S7 | 8 | Imitation vs evolution: which learns more per unit of experience, and which generalises? |
 | S8a/b | 9 | ES vs GA; fixed vs evolving topology. |

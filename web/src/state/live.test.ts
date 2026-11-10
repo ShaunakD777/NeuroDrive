@@ -39,6 +39,7 @@ const scenario: ScenarioMessage = {
   n_cars: 1,
   seed: null,
   checkpoint: null,
+  start_shift: null,
   dt: 1 / 30,
   time_limit: 90,
   target_laps: 2,
@@ -144,9 +145,18 @@ describe("live store: commands", () => {
       n_cars: 1,
       seed: null,
       checkpoint: null,
+      start_shift: null,
     });
     expect(sent).toEqual([
-      { type: "load_scenario", track: "train_loop_01", policy: "keyboard", n_cars: 1, seed: null, checkpoint: null },
+      {
+        type: "load_scenario",
+        track: "train_loop_01",
+        policy: "keyboard",
+        n_cars: 1,
+        seed: null,
+        checkpoint: null,
+        start_shift: null,
+      },
     ]);
   });
 
@@ -163,6 +173,7 @@ describe("live store: commands", () => {
       n_cars: 5,
       seed: 7,
       checkpoint: null,
+      start_shift: null,
     });
     loadScenario({ seed: null }); // null means "fixed start", it is not "unchanged"
     expect(sent.at(-1)).toMatchObject({ n_cars: 5, seed: null });
@@ -176,6 +187,21 @@ describe("live store: commands", () => {
     useLive.setState({ ...initialLive, tracks: [{ name: "first_track", split: "train" }] });
     useLive.getState().loadScenario({});
     expect(sent.at(-1)).toMatchObject({ track: "first_track", policy: "keyboard", n_cars: 1 });
+  });
+
+  it("keeps a start shift between the checkpoint and expert drivers and drops it for others", () => {
+    // Task 6.5, ADR-048: the shift moves the exam starts, so only those two drivers use it.
+    const { loadScenario } = useLive.getState();
+    const shift = { lateral_m: -3, heading_rad: 0.2618 };
+    const checkpoint = { run: "r", unit: 2 };
+    loadScenario({ track: "train_loop_01", policy: "checkpoint", checkpoint, start_shift: shift });
+    expect(sent.at(-1)).toMatchObject({ policy: "checkpoint", checkpoint, start_shift: shift });
+    loadScenario({ policy: "expert" });
+    expect(sent.at(-1)).toMatchObject({ policy: "expert", checkpoint: null, start_shift: shift });
+    loadScenario({ policy: "constant" });
+    expect(sent.at(-1)).toMatchObject({ policy: "constant", start_shift: null });
+    loadScenario({ policy: "checkpoint", checkpoint, start_shift: null });
+    expect(sent.at(-1)).toMatchObject({ policy: "checkpoint", start_shift: null });
   });
 
   it("can ask for the neuron driver and keeps it when other settings change", () => {

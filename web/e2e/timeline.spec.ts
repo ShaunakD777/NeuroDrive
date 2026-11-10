@@ -113,3 +113,31 @@ test("a replayed checkpoint drives exactly as its exam card says", async ({ page
     await expect(page.getByTestId("hud-status").first()).toHaveText(LABEL[status]);
   }
 });
+
+test("a start shift moves and turns every replayed car, and the expert can drive the same starts", async ({ page }) => {
+  // Task 6.5, ADR-048: the shift is sent with the replay; the network then sees the turned start.
+  const { runId, units } = await searchRun(page);
+  await openTimeline(page, runId);
+  const unit = units[units.length - 1];
+  await page.getByTestId("timeline-replay").click();
+  await expect(page.getByTestId("timeline-card-row")).toHaveCount(10);
+  await expect(page.getByTestId("timeline-shift-expert")).toBeDisabled(); // no shift yet
+
+  await page.getByTestId("timeline-shift-lateral").fill("-3");
+  await page.getByTestId("timeline-shift-heading").fill("15");
+  await page.getByTestId("timeline-replay").click();
+  await expect(page.getByTestId("timeline-replay")).toBeDisabled(); // this checkpoint and shift are loaded
+  await expect(page.getByTestId("timeline-card-shifted")).toBeVisible();
+  await expect(page.getByTestId("timeline-card-row")).toHaveCount(0);
+  await expect(page.getByTestId("replay-banner")).toHaveAttribute("data-unit", String(unit));
+  // Heading error input = 15° / 180° = 0.0833 at the start (the car barely turns in one step).
+  await page.getByTestId("btn-step").first().click();
+  await expect
+    .poll(async () => Number(await page.getByTestId("net-input-6").getAttribute("data-value")))
+    .toBeCloseTo(15 / 180, 2);
+
+  await page.getByTestId("timeline-shift-expert").click();
+  await expect(page.getByTestId("select-policy").first()).toHaveValue("expert");
+  await expect(page.getByTestId("select-car").first().locator("option")).toHaveCount(10);
+  await expect(page.getByTestId("timeline-shift-expert")).toBeDisabled();
+});

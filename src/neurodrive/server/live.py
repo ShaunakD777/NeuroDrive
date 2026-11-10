@@ -20,6 +20,11 @@ exam's order, all driven by that one network as one batch. The session's step lo
 step) is the exam's loop, so the drive is the exam drive: every car ends exactly as on the
 checkpoint's exam card. Everything a network driver offers (trace, explanations, what-if, trail,
 looking back) works on it.
+
+Perturbed starts (task 6.5, ADR-048). With a ``start_shift`` (sideways metres, heading radians)
+every exam start is moved by the same shift (``experiment/exam.py: shifted_starts``, the function
+Study S5b drives), for the checkpoint driver and for the expert, which then drives the same 10
+starts. Shift (0, 0) is the plain replay.
 """
 
 import json
@@ -47,7 +52,7 @@ from neurodrive.env.policies import (
 from neurodrive.env.sensors import RAY_ANGLES, RAY_RANGE, edge_grid, observe
 from neurodrive.env.track import Track
 from neurodrive.env.world import Status, World, WorldConfig
-from neurodrive.experiment.exam import EXAM_V1, exam_starts
+from neurodrive.experiment.exam import EXAM_V1, shifted_starts
 from neurodrive.explain.contributions import neuron_contributions
 from neurodrive.explain.sensitivity import sensitivity
 from neurodrive.server.runs import RunLibrary
@@ -327,12 +332,18 @@ class LiveSession:
             return [ErrorMessage(message=f"unknown track {command.track!r}")]
         replayed: Network | None = None
         laps = WorldConfig.for_track(track).target_laps
+        if command.start_shift is not None and command.policy not in ("checkpoint", "expert"):
+            return [
+                ErrorMessage(message="start_shift works only with the checkpoint or expert driver")
+            ]
+        exam_cars = command.policy == "checkpoint" or command.start_shift is not None
         if command.policy == "checkpoint":
             # Checked before anything changes: a refused checkpoint keeps the old scenario.
             try:
                 replayed = self._checkpoint_network(command)
             except ValueError as error:
                 return [ErrorMessage(message=str(error))]
+        if exam_cars:
             n_starts = len(EXAM_V1.start_fractions) * len(EXAM_V1.lateral_offsets)
             command = command.model_copy(update={"n_cars": n_starts, "seed": None})
             laps = EXAM_V1.target_laps
@@ -371,6 +382,7 @@ class LiveSession:
             n_cars=command.n_cars,
             seed=command.seed,
             checkpoint=command.checkpoint if replayed is not None else None,
+            start_shift=command.start_shift,
             dt=world.dt,
             time_limit=world.config.time_limit,
             target_laps=world.config.target_laps,
@@ -386,10 +398,16 @@ class LiveSession:
     def _reset_world(self) -> None:
         assert self._world is not None and self._scenario is not None
         scenario = self._scenario
-        if scenario.policy == "checkpoint":
-            # The exam's starts in the exam's order (car k = exam start k).
-            s0, lateral = exam_starts(self._world.track.length, EXAM_V1)
-            self._world.reset(s0=s0, lateral=lateral)
+        if scenario.policy == "checkpoint" or scenario.start_shift is not None:
+            # The exam's starts in the exam's order (car k = exam start k), shifted if asked.
+            shift = scenario.start_shift
+            s0, lateral, heading = shifted_starts(
+                self._world.track.length,
+                0.0 if shift is None else shift.lateral_m,
+                0.0 if shift is None else shift.heading_rad,
+                EXAM_V1,
+            )
+            self._world.reset(s0=s0, lateral=lateral, heading_offset=heading)
         elif scenario.seed is None:
             self._world.reset(n=scenario.n_cars)
         else:

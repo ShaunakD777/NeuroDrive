@@ -6,6 +6,7 @@ import { fetchCheckpointDiff, fetchCheckpoints } from "../../api/rest";
 import { useLive } from "../../state/live";
 import { useMoment, usePlayback } from "../../state/playback";
 import { useSelection } from "../../state/selection";
+import { describeStarts } from "../environment/status";
 import { NetworkCompact } from "./NetworkCompact";
 import { NetworkDiagram } from "./NetworkDiagram";
 import { OutputInspector } from "./OutputInspector";
@@ -119,6 +120,7 @@ let showChangeChoice = true;
 function MultilayerView({ compact, headerExtra }: { compact: boolean; headerExtra?: ReactNode }) {
   const frame = useLive((s) => s.frame);
   const checkpoint = useLive((s) => s.scenario?.checkpoint ?? null);
+  const startShift = useLive((s) => s.scenario?.start_shift ?? null);
   const change = useCheckpointChange(compact ? null : checkpoint);
   const [showChange, setShowChange] = useState(showChangeChoice);
   const network = useLive((s) => s.network);
@@ -169,7 +171,7 @@ function MultilayerView({ compact, headerExtra }: { compact: boolean; headerExtr
         <div className="replay-banner" data-testid="replay-banner" data-run={checkpoint.run} data-unit={checkpoint.unit}>
           <span>
             Replaying checkpoint <strong>unit {checkpoint.unit}</strong> of {checkpoint.run}: the same network
-            drives every car, from the Driving Exam's starts.
+            drives every car, from {describeStarts(startShift)}.
           </span>
           <label className="replay-toggle">
             <input

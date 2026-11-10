@@ -86,6 +86,22 @@ def exam_starts(length: float, spec: ExamSpec = EXAM_V1) -> tuple[np.ndarray, np
     return s0, lateral
 
 
+def shifted_starts(
+    length: float, lateral_shift: float, heading_offset: float, spec: ExamSpec = EXAM_V1
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """The exam's starts on a track ``length`` long, each moved by one shift (task 6.5, ADR-048).
+
+    Start i keeps its arc length s_i; its sideways offset becomes l_i + delta (delta =
+    ``lateral_shift`` metres, positive = left) and its heading the road direction plus theta
+    (``heading_offset`` radians, positive = pointing left). Returns s0, lateral and heading
+    offset, one value per start. Shift (0, 0) is the exam itself. Example: ``train_loop_01``,
+    delta = -3 m, theta = 15 deg: start 1 at s = 146.1 m, 3 m right of the centreline; start 6 at
+    the same s, 1.5 - 3 = -1.5 m; both pointing 15 deg left of the road.
+    """
+    s0, lateral = exam_starts(length, spec)
+    return s0, lateral + lateral_shift, np.full(len(s0), float(heading_offset))
+
+
 @dataclass(frozen=True)
 class TrackExam:
     """One track's part of the card: its rules, its episodes and their summary."""

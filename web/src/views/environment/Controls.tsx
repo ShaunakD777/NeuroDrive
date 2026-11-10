@@ -100,6 +100,7 @@ export function Controls({
   const seed = scenario?.seed ?? null;
   // A replayed checkpoint (task 5.9) always drives the exam's 10 starts: cars and start are fixed.
   const replay = scenario?.checkpoint ?? null;
+  const startShift = scenario?.start_shift ?? null;
   const selected = frame?.selected?.index ?? 0;
 
   return (
@@ -143,7 +144,7 @@ export function Controls({
             <option value="expert">Expert (scripted, reads the track)</option>
             {replay !== null && (
               <option value="checkpoint">
-                Checkpoint: {shortRun(replay.run)} · unit {replay.unit} (exam starts)
+                Checkpoint: {shortRun(replay.run)} · unit {replay.unit} ({startShift === null ? "exam starts" : "shifted starts"})
               </option>
             )}
           </select>

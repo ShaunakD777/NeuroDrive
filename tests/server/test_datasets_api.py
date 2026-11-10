@@ -165,7 +165,7 @@ def test_detail_dense_coverage(client, datasets_dir):
     assert throttle.dense == throttle.covered == 0.0
 
 
-def test_hello_says_v1_17(client):
-    assert API_VERSION == "v1.17"
+def test_hello_says_the_current_api(client):
+    assert API_VERSION == "v1.18"
     with client.websocket_connect("/ws/live") as ws:
-        assert json.loads(ws.receive_text())["api"] == "v1.17"
+        assert json.loads(ws.receive_text())["api"] == "v1.18"

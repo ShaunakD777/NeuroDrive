@@ -737,12 +737,19 @@ export interface LaunchResponse {
  * on ``track``: ``checkpoint`` names it, and the cars are placed at the exam's starts on that
  * track in the exam's order (car k = exam start k, 10 cars), all driven by that one network as
  * one batch, exactly as the exam drove them. ``n_cars`` and ``seed`` are then ignored.
+ *
+ * ``start_shift`` (api v1.18, task 6.5, ADR-048) moves every one of those 10 starts sideways
+ * and turns it (see :class:`StartShift`); the starts are those of
+ * ``experiment/exam.py: shifted_starts``, the function Study S5b drives. It is allowed for the
+ * ``"checkpoint"`` driver and for ``"expert"``, which then also drives the 10 shifted exam
+ * starts (``n_cars`` and ``seed`` ignored), so the teacher can be watched from the same start.
  */
 export interface LoadScenario {
   checkpoint: CheckpointRef | null;
   n_cars: number;
   policy: "keyboard" | "constant" | "neuron" | "random_networks" | "expert" | "checkpoint";
   seed: number | null;
+  start_shift: StartShift | null;
   track: string;
   type: "load_scenario";
 }
@@ -752,6 +759,15 @@ export interface LoadScenario {
 export interface CheckpointRef {
   run: string;
   unit: number;
+}
+/**
+ * One shift for every exam start (api v1.18, task 6.5, ADR-048): ``lateral_m`` metres added to
+ * each start's sideways offset (positive = left) and ``heading_rad`` radians added to its
+ * heading (positive = pointing left of the road). The cars still start at rest.
+ */
+export interface StartShift {
+  heading_rad: number;
+  lateral_m: number;
 }
 
 /**
@@ -1031,7 +1047,8 @@ export interface RunSummary {
  * relative to the heading (left positive), ``ray_range`` the sensor range in metres. Track
  * geometry is not included: fetch ``GET /api/tracks/{track}``. ``trail_seconds`` is how much
  * of the drive the session remembers for the decision trail (ADR-027). ``checkpoint`` is the
- * replayed network for the ``"checkpoint"`` driver (api v1.14), else null.
+ * replayed network for the ``"checkpoint"`` driver (api v1.14), else null. ``start_shift`` is
+ * the shift of the exam starts the cars began from (api v1.18), else null.
  */
 export interface ScenarioMessage {
   car_half_width: number;
@@ -1042,6 +1059,7 @@ export interface ScenarioMessage {
   ray_angles: number[];
   ray_range: number;
   seed: number | null;
+  start_shift: StartShift | null;
   target_laps: number;
   time_limit: number;
   track: string;
@@ -1056,6 +1074,15 @@ export interface ScenarioMessage {
 export interface CheckpointRef {
   run: string;
   unit: number;
+}
+/**
+ * One shift for every exam start (api v1.18, task 6.5, ADR-048): ``lateral_m`` metres added to
+ * each start's sideways offset (positive = left) and ``heading_rad`` radians added to its
+ * heading (positive = pointing left of the road). The cars still start at rest.
+ */
+export interface StartShift {
+  heading_rad: number;
+  lateral_m: number;
 }
 
 /**

@@ -52,3 +52,13 @@ export function formatRayAngle(radians: number): string {
   if (degrees === 0) return "0°";
   return `${degrees > 0 ? "+" : "−"}${Math.abs(degrees)}°`;
 }
+
+/**
+ * Where a replay's cars start (task 6.5, ADR-048): "the exam's starts", or with a shift
+ * "the exam's starts, moved −3 m and turned −30°" (metres and degrees, left positive).
+ */
+export function describeStarts(shift: { lateral_m: number; heading_rad: number } | null): string {
+  if (shift === null) return "the exam's starts";
+  const metres = `${shift.lateral_m > 0 ? "+" : shift.lateral_m < 0 ? "−" : ""}${Math.abs(shift.lateral_m)} m`;
+  return `the exam's starts, moved ${metres} and turned ${formatRayAngle(shift.heading_rad)}`;
+}

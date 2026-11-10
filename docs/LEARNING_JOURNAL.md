@@ -1542,3 +1542,37 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
 - Open question: why do the late networks drive faster on the approach while copying the
   expert's throttle better on its own frames? Study S5b (6.5) inspects it; DAgger (6.6) adds
   expert labels for the states the student itself reaches.
+
+### 2026-11-10 — Task 6.5 Study S5b: failure study
+- Concept: distribution shift made measurable. Start S5a's clones from shifted starts the teacher
+  never used (the exam's starts on the training loop moved sideways and turned), count only the
+  starts the expert recovers from, and ask two questions of every state the clone drives through:
+  how far is it from the nearest demonstration frame (novelty), and how far is the clone's action
+  from the expert's label for that very state (on-policy error)?
+- Key equation(s) in words: novelty d(o) = the distance in the 7 inputs to the nearest dataset
+  frame; novel when d > tau, the 99th percentile of each dataset frame's distance to the nearest
+  frame of another expert drive (tau = 0.042). Worked example: frames (0.98, 0.3), (0.5, 1.0),
+  (0.7, 0.3) and the state (0.98, 1.0) give d = 0.48, although each value occurs alone. On-policy
+  error L_on = (1 / 2T) sum of squared differences from the expert's labels on the clone's own
+  states (example: 2.37 / 6 = 0.395), the validation loss's formula on the learner's states.
+- What we observed: 32 drivers x 300 starts, the expert recovers from 290. Early clones
+  (epochs 1-5) finish 0.70 of them (1.0 from the exam's own starts; difference -0.30, interval
+  -0.38 to -0.27); late clones 0.00 (4 seeds 0.43-0.56); the hand-wired neuron 1.00. Every crash
+  is from a novel state, but early clones crash within 2 s of the start (median 1.2 s), still in
+  the shifted pose, while late clones crash after a recovery (median 8.6 s) at top speed as their
+  novelty climbs. Late minus early on-policy error: -0.12 on familiar states, +0.26 on novel
+  states (H4): longer training makes a better copy where the expert drove and a worse guesser
+  elsewhere. H3 failed in 3 seeds: early clones are poor at the throttle everywhere. The inspected
+  early crash steers -0.26 where the expert steers -0.72, almost exactly the label of the nearest
+  frame (a car at rest on the centreline, -0.245); its steer barely reacts to the heading-error
+  input (+0.06), because the expert's data never varied it.
+- Surprise or difficulty: H2's "every crash is from a novel state" is close to true by
+  construction for the early clones, and early clones spend 54 % of their steps in novel states on
+  drives they finish, so novelty is necessary but not sufficient. The tight tau comes from the
+  expert's 20 drives being nearly copies of each other (median distance 0.000007). Also, the grid
+  counts central offsets twice (starts 5-9 of one shift are starts 0-4 of the next), noticed only
+  after the Brief; a distinct-pose count gives the same answers. Two heredoc edits failed on
+  backslashes and quotes; the Edit tool was safer.
+- Open question: why do all networks fail when turned 30 degrees left, from almost every offset,
+  but not 30 degrees right? Does DAgger (6.6), whose expert labels are exactly this study's
+  on-policy labels, raise the shifted-start completion and teach the heading-error input?

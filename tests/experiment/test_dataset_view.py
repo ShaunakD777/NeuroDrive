@@ -1,11 +1,12 @@
 """Tests for the dataset inspector's numbers (task 6.2, ADR-045): histograms, covered ranges, the
-thinned map rows, and the dense coverage (6.2 follow-up, ADR-046)."""
+thinned map rows, the dense coverage (6.2 follow-up, ADR-046), and novelty (task 6.5)."""
 
 from pathlib import Path
 
 import numpy as np
 import pytest
 
+from neurodrive.core.rng import make_rng
 from neurodrive.env.track import Track
 from neurodrive.experiment.dataset_view import (
     BINS,
@@ -16,6 +17,9 @@ from neurodrive.experiment.dataset_view import (
     dataset_view,
     dense_coverage,
     histogram,
+    nearest_distances,
+    novelty_threshold,
+    other_episode_distances,
     thin,
 )
 from neurodrive.learn.supervised.demos import DemoDataset, record_expert, straight_share
@@ -139,3 +143,39 @@ def test_the_view_is_deterministic(expert_demo):
     for ha, hb in zip(a.labels + a.observations, b.labels + b.observations, strict=True):
         assert np.array_equal(ha.counts, hb.counts) and np.array_equal(ha.edges, hb.edges)
     assert np.array_equal(a.rows, b.rows)
+
+
+# ── novelty (task 6.5) ──────────────────────────────────────────────────────────────────────
+
+
+def test_worked_example_nearest_distance():
+    # Task 6.5 Brief 4b: (speed, left ray) frames A, B, C and the state q = (0.98, 1.0).
+    frames = np.array([[0.98, 0.3], [0.5, 1.0], [0.7, 0.3]])
+    d = nearest_distances(np.array([[0.98, 1.0], [0.5, 1.0]]), frames)
+    assert d[0] == pytest.approx(0.48, abs=1e-12)
+    assert d[1] == 0.0  # a state that is a frame is at distance 0
+
+
+def test_nearest_distances_equal_a_plain_loop():
+    rng = make_rng(7)
+    states, frames = rng.uniform(size=(300, 7)), rng.uniform(size=(1000, 7))
+    slow = [min(np.linalg.norm(s - f) for f in frames) for s in states]
+    assert nearest_distances(states, frames) == pytest.approx(slow, abs=1e-12)
+
+
+def test_worked_example_novelty_threshold():
+    # Brief 4b: near twins inside each episode; only other episodes count.
+    obs = np.array([[0.10], [0.101], [0.20], [0.201]])
+    episodes = np.array([1, 1, 2, 2])
+    assert other_episode_distances(obs, episodes) == pytest.approx([0.1, 0.099, 0.099, 0.1])
+    assert novelty_threshold(obs, episodes) == pytest.approx(0.1)
+    # With the frame's own episode allowed, every distance would be the twin's 0.001.
+    with_own = [np.sort(np.abs(obs[:, 0] - v))[1] for v in obs[:, 0]]
+    assert with_own == pytest.approx([0.001] * 4)
+
+
+def test_novelty_needs_two_episodes_and_matching_widths():
+    with pytest.raises(ValueError, match="two episodes"):
+        novelty_threshold(np.zeros((3, 7)), np.zeros(3))
+    with pytest.raises(ValueError, match="need"):
+        nearest_distances(np.zeros((2, 7)), np.zeros((2, 6)))

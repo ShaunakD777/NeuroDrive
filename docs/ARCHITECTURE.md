@@ -444,7 +444,7 @@ data/demos/<dataset_id>/
   and provenance.
 - Shown by the dataset inspector (task 6.2, ADR-045; dense coverage and the comparator, ADR-046): `GET datasets` and `GET datasets/{id}` (§7).
 
-## 7. Server API (api v1.17, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033, ADR-035, ADR-041, ADR-042, ADR-045, ADR-046, ADR-047)
+## 7. Server API (api v1.18, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033, ADR-035, ADR-041, ADR-042, ADR-045, ADR-046, ADR-047, ADR-048)
 
 REST (`/api/...`):
 - `GET health` → `{status: "ok", version}` (`version` is the NeuroDrive package version)
@@ -524,7 +524,7 @@ REST (`/api/...`):
 
 WebSocket `/ws/live` (one independent session per connection):
 - `hello` is sent first, on connect: `{type: "hello", version, api}` (`api` is the message-contract
-  version, currently `"v1.17"`).
+  version, currently `"v1.18"`).
 - client → server (each has a `type` field):
   - `load_scenario {track, policy, n_cars, seed}`: `policy` is `"keyboard"`, `"constant"`,
     `"neuron"`, `"random_networks"` (every car is driven by its own random [7,16,16,2] network;
@@ -542,6 +542,12 @@ WebSocket `/ws/live` (one independent session per connection):
     traces, explanations, `what_if`, trail and `inspect_step` like the random-networks driver. An
     unknown run or unit, a network that is not 7 → 2, or a run without checkpoints (the expert
     baseline) is refused with `error`, and the loaded scenario stays.
+    Since api v1.18 (task 6.5, ADR-048) also an optional `start_shift {lateral_m, heading_rad}`
+    (±5 m, ±π/2; positive = left) for `"checkpoint"` and `"expert"`: every exam start is moved
+    sideways by `lateral_m` and turned by `heading_rad`, at rest (`experiment/exam.py:
+    shifted_starts`, the function Study S5b drives, so a shifted replay ends car for car as the
+    study's drive). With `"expert"` the expert then drives those 10 starts (`n_cars`, `seed`
+    ignored). A shift with any other driver is refused with `error`; the scenario stays.
   - `play`, `pause`, `step` (exactly one physics step, even while paused), `reset` (back to
     step 0 with the same scenario and seed; stays paused or playing as before),
     `set_speed {speed}` (0.1 to 8, default 1), `select_car {index}` (default 0),
@@ -567,7 +573,8 @@ WebSocket `/ws/live` (one independent session per connection):
   - `scenario {track, policy, n_cars, seed, dt, time_limit, target_laps, v_max, wheelbase,
     car_half_width, ray_angles, ray_range, trail_seconds}`: no geometry (use
     `GET tracks/{name}`). `trail_seconds` (60) is how much of the drive the session remembers.
-    Since api v1.14 also `checkpoint` (the replayed `{run, unit}`, else null).
+    Since api v1.14 also `checkpoint` (the replayed `{run, unit}`, else null), since api v1.18
+    `start_shift` (the shift of the exam starts, else null).
   - `frame {step, time, playing, speed, cars, selected}`: `cars` holds one array per quantity, one
     entry per car: `x`, `y`, `psi`, `v`, `alive`, `progress`, `status` (0 running, 1 crashed,
     2 finished, 3 stalled, 4 timeout), `action` (a [steer, throttle] pair per car; the last action
@@ -705,6 +712,9 @@ view shows a replay banner and, by default, colours every line by its change sin
 checkpoint (`changeStroke` in `views/network/diff.ts`: blue up, orange down, strength |change|,
 unchanged lines not drawn); the chart has a cursor; the card's 10 per-car results for the track are
 listed, the selected car's row highlighted, and clicking a row selects that car.
+*Since task 6.5 (ADR-048):* two inputs, sideways shift (m) and heading (°, sent in radians), are
+sent with the replay as `start_shift`; with a shift the card is hidden (it describes the unshifted
+starts), and "Watch the expert from these starts" loads the expert from the same shifted starts.
 
 ### 8.3 Output-neuron inspector (built up over phases)
 1. Readout: the value plus its physical meaning ("−0.93 = hard left").

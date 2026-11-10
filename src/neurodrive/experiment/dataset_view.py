@@ -27,6 +27,17 @@ situations did the student get to see?
 
 The ranges are the observation and action contracts' (observation v1, action v1): rays and speed
 in [0, 1], heading error in (-1, 1], steer and throttle in [-1, 1].
+
+**Novelty** (task 6.5, Study S5b): how far a state is from everything the dataset holds. With o
+the 7 observations of a state and o_j those of frame j, d(o) = min_j ||o - o_j||, the ordinary
+straight-line distance in the network's own inputs. It sees combinations the histograms above
+cannot: frames A = (0.98, 0.3), B = (0.5, 1.0), C = (0.7, 0.3) (speed, left ray) and the state
+q = (0.98, 1.0) give distances 0.70, 0.48 and 0.754, so d(q) = 0.48, although each of q's values
+occurs in the data on its own. The threshold tau of "never visited" is the q-th percentile of
+every frame's distance to the nearest frame of *another* episode (frames 1/30 s apart are near
+twins, so its own episode would make tau tiny). Frames 0.10, 0.101 (episode 1) and 0.20, 0.201
+(episode 2) have other-episode distances 0.1, 0.099, 0.099, 0.1, so the 99th percentile is
+tau = 0.1; with the own episode allowed every distance would be 0.001.
 """
 
 import math
@@ -37,6 +48,7 @@ from numpy.typing import NDArray
 
 from neurodrive.env.car import ACTION_NAMES
 from neurodrive.env.sensors import OBSERVATION_NAMES
+from neurodrive.experiment.stats import percentile
 from neurodrive.learn.supervised.demos import DemoDataset
 
 Array = NDArray[np.float64]
@@ -44,6 +56,8 @@ Array = NDArray[np.float64]
 BINS = 20
 DENSE_SHARE = 0.01  # tau: a bin is dense when it holds at least 1 % of the frames (ADR-046)
 MAP_POINTS = 4000
+NOVELTY_PERCENTILE = 99.0  # tau: the 99th percentile of the other-episode distances
+_CHUNK_ENTRIES = 1 << 22  # distances held in memory at once by nearest_distances (32 MB)
 LABEL_RANGES = {"steer": (-1.0, 1.0), "throttle": (-1.0, 1.0)}
 OBSERVATION_RANGES = {
     "ray_far_left": (0.0, 1.0),
@@ -166,3 +180,48 @@ def dataset_view(dataset: DemoDataset, max_points: int = MAP_POINTS) -> DatasetV
     ]
     stride, rows = thin(dataset.n_frames, max_points)
     return DatasetView(labels=labels, observations=observations, stride=stride, rows=rows)
+
+
+def nearest_distances(states: Array, frames: Array) -> Array:
+    """d_i = min_j ||states_i - frames_j||, the distance from each state to its nearest frame.
+
+    ``states`` is (Q, n) and ``frames`` (F, n). The nearest frame is found in chunks of states
+    with ||a - b||^2 = ||a||^2 + ||b||^2 - 2 a.b (one matrix product per chunk), then the
+    distance to it is computed again directly, so the result has no cancellation error.
+    """
+    states = np.asarray(states, dtype=np.float64)
+    frames = np.asarray(frames, dtype=np.float64)
+    if states.ndim != 2 or frames.ndim != 2 or states.shape[1] != frames.shape[1]:
+        raise ValueError(f"need (Q, n) states and (F, n) frames: {states.shape}, {frames.shape}")
+    if len(frames) == 0:
+        raise ValueError("need at least one frame")
+    out = np.empty(len(states))
+    frame_sq = np.einsum("ij,ij->i", frames, frames)
+    chunk = max(1, _CHUNK_ENTRIES // len(frames))
+    for lo in range(0, len(states), chunk):
+        part = states[lo : lo + chunk]
+        sq = frame_sq[np.newaxis, :] - 2.0 * (part @ frames.T)  # ||a||^2 is the same in a row
+        nearest = np.argmin(sq, axis=1)
+        out[lo : lo + chunk] = np.linalg.norm(part - frames[nearest], axis=1)
+    return out
+
+
+def other_episode_distances(observations: Array, episodes: NDArray) -> Array:
+    """Each frame's distance to the nearest frame of a different episode (needs 2+ episodes)."""
+    observations = np.asarray(observations, dtype=np.float64)
+    episodes = np.asarray(episodes)
+    out = np.empty(len(observations))
+    labels = np.unique(episodes)
+    if len(labels) < 2:
+        raise ValueError("the novelty threshold needs at least two episodes")
+    for e in labels:
+        own = episodes == e
+        out[own] = nearest_distances(observations[own], observations[~own])
+    return out
+
+
+def novelty_threshold(
+    observations: Array, episodes: NDArray, q: float = NOVELTY_PERCENTILE
+) -> float:
+    """tau: the q-th percentile of :func:`other_episode_distances` (see the module docstring)."""
+    return percentile(other_episode_distances(observations, episodes), q)

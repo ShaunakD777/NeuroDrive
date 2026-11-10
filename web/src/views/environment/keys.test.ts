@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { DRIVING_KEYS, inputFromKeys } from "./keys";
-import { describeStatus, formatRayAngle, formatSpeed } from "./status";
+import { describeStarts, describeStatus, formatRayAngle, formatSpeed } from "./status";
 
 const held = (...codes: string[]) => new Set(codes);
 
@@ -57,5 +57,15 @@ describe("status words", () => {
     expect(formatRayAngle(Math.PI / 3)).toBe("+60°");
     expect(formatRayAngle(0)).toBe("0°");
     expect(formatRayAngle(-Math.PI / 6)).toBe("−30°");
+  });
+});
+
+describe("replay starts", () => {
+  it("names the exam's starts and, with a shift, how they were moved (task 6.5)", () => {
+    expect(describeStarts(null)).toBe("the exam's starts");
+    expect(describeStarts({ lateral_m: -3, heading_rad: (-30 * Math.PI) / 180 })).toBe(
+      "the exam's starts, moved −3 m and turned −30°",
+    );
+    expect(describeStarts({ lateral_m: 1.5, heading_rad: 0 })).toBe("the exam's starts, moved +1.5 m and turned 0°");
   });
 });

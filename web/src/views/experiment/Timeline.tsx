@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import type { RunSummary } from "../../api/generated";
+import type { RunSummary, StartShift } from "../../api/generated";
 import { fetchExamCard, fetchRuns } from "../../api/rest";
 import { connectLive, type LiveConnection } from "../../api/ws";
 import { useLive } from "../../state/live";
@@ -31,6 +31,16 @@ function drivingRuns(runs: readonly RunSummary[]): RunSummary[] {
   return runs.filter((r) => !r.method.startsWith("toy_") && r.checkpoints > 0);
 }
 
+/** The shift for the server (radians), or null when both numbers are 0 (the exam's own starts). */
+export function startShift(lateralM: number, headingDeg: number): StartShift | null {
+  if (lateralM === 0 && headingDeg === 0) return null;
+  return { lateral_m: lateralM, heading_rad: (headingDeg * Math.PI) / 180 };
+}
+
+function sameShift(a: StartShift | null, b: StartShift | null): boolean {
+  return a === b || (a !== null && b !== null && a.lateral_m === b.lateral_m && a.heading_rad === b.heading_rad);
+}
+
 /**
  * The run timeline (task 5.9, ADR-042): pick a driving run and a track, then move along the run's
  * checkpoints. Every move replays that checkpoint's exam drive in the live session (the
@@ -47,12 +57,18 @@ export function Timeline({ headerExtra }: { headerExtra?: ReactNode }) {
   const [card, setCard] = useState<{ key: string; tracks: CardTrack[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [watch, setWatch] = useState(initialRunsWatch);
+  // Perturbed starts (task 6.5, ADR-048): every exam start moved sideways and turned.
+  const [shiftM, setShiftM] = useState(0);
+  const [shiftDeg, setShiftDeg] = useState(0);
+  const shift = startShift(shiftM, shiftDeg);
   const socket = useRef<LiveConnection | null>(null);
   const watched = useRef<string | null>(null);
 
   const loadScenario = useLive((s) => s.loadScenario);
   const send = useLive((s) => s.send);
   const replaying = useLive((s) => s.scenario?.checkpoint ?? null);
+  const replayedShift = useLive((s) => s.scenario?.start_shift ?? null);
+  const policy = useLive((s) => s.scenario?.policy ?? null);
   const selectedCar = useLive((s) => s.frame?.selected?.index ?? null);
   const selectCar = useSelection((s) => s.selectCar);
 
@@ -118,7 +134,7 @@ export function Timeline({ headerExtra }: { headerExtra?: ReactNode }) {
   function replay(u: number, onTrack = track) {
     if (runId === null) return;
     const wasPlaying = useLive.getState().frame?.playing ?? false;
-    loadScenario({ track: onTrack, policy: "checkpoint", checkpoint: { run: runId, unit: u } });
+    loadScenario({ track: onTrack, policy: "checkpoint", checkpoint: { run: runId, unit: u }, start_shift: shift });
     if (wasPlaying) send({ type: "play" }); // after the load (the server answers in order)
   }
 
@@ -130,7 +146,9 @@ export function Timeline({ headerExtra }: { headerExtra?: ReactNode }) {
   const keys = plottableKeys(watch.records);
   const metric = defaultMetric(keys);
   const drawn = useMemo(() => (metric ? series(watch.records, metric) : { unit: [], value: [] }), [watch.records, metric]);
-  const isReplayed = replaying !== null && replaying.run === runId && replaying.unit === unit;
+  const isReplayed =
+    replaying !== null && replaying.run === runId && replaying.unit === unit && sameShift(replayedShift, shift);
+  const expertShown = policy === "expert" && replayedShift !== null && sameShift(replayedShift, shift);
   const run = runs?.find((r) => r.run_id === runId) ?? null;
 
   return (
@@ -178,6 +196,41 @@ export function Timeline({ headerExtra }: { headerExtra?: ReactNode }) {
         </button>
       </div>
 
+      <div className="toylab-controls" data-testid="timeline-shift">
+        <label className="picker">
+          <span>Start shift sideways (m, left +) </span>
+          <input
+            type="number"
+            data-testid="timeline-shift-lateral"
+            min={-5}
+            max={5}
+            step={0.5}
+            value={shiftM}
+            onChange={(e) => setShiftM(Number.isFinite(e.target.valueAsNumber) ? e.target.valueAsNumber : 0)}
+          />
+        </label>
+        <label className="picker">
+          <span>heading (°, left +) </span>
+          <input
+            type="number"
+            data-testid="timeline-shift-heading"
+            min={-90}
+            max={90}
+            step={5}
+            value={shiftDeg}
+            onChange={(e) => setShiftDeg(Number.isFinite(e.target.valueAsNumber) ? e.target.valueAsNumber : 0)}
+          />
+        </label>
+        <button
+          type="button"
+          data-testid="timeline-shift-expert"
+          disabled={shift === null || expertShown}
+          onClick={() => loadScenario({ track, policy: "expert", start_shift: shift })}
+        >
+          {expertShown ? "The expert drives these starts" : "Watch the expert from these starts"}
+        </button>
+      </div>
+
       {error && <p className="toylab-error">Could not load: {error}</p>}
       {runs !== null && runs.length === 0 && (
         <p className="hint" data-testid="timeline-empty">
@@ -210,7 +263,7 @@ export function Timeline({ headerExtra }: { headerExtra?: ReactNode }) {
       {unit !== null && (
         <p className="hint">
           {isReplayed
-            ? "The Environment view (page or drawer) drives this checkpoint's network from the exam's 10 starts; press Play there. The Network view shows the network and what changed since the previous checkpoint."
+            ? `The Environment view (page or drawer) drives this checkpoint's network from the exam's 10 starts${shift === null ? "" : `, each moved ${shiftM} m sideways and turned ${shiftDeg}°`}; press Play there. The Network view shows the network and what changed since the previous checkpoint.`
             : "Move the slider (or press Replay) to load this checkpoint into the Environment and Network views."}
         </p>
       )}
@@ -230,7 +283,13 @@ export function Timeline({ headerExtra }: { headerExtra?: ReactNode }) {
         />
       )}
 
-      {part !== null && unit !== null && (
+      {part !== null && unit !== null && shift !== null && (
+        <p className="hint" data-testid="timeline-card-shifted">
+          The exam card describes the exam's own starts, not shifted ones, so it is not shown. Set the shift to 0 m and 0°
+          to see it; the Environment view's HUD shows how each shifted car ends.
+        </p>
+      )}
+      {part !== null && unit !== null && shift === null && (
         <table className="compare-table" data-testid="timeline-card">
           <caption>
             Exam card of unit {unit} on {part.track} ({part.split}): what each car of the replay does. Click a row to
