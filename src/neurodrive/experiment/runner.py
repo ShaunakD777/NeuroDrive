@@ -34,9 +34,10 @@ The mirror's rows of that run are then copied again from the cut-back folder.
 
 ``train_toy_run`` starts a whole toy run from a validated config (``nd train``, task 4.6b),
 ``train_random_search_run`` a random-search run (task 5.7), ``train_imitation_run`` a
-behavioural-cloning run (task 6.3); ``sweep_seeds`` runs one config once per seed (``nd sweep``,
-task 4.7a, ADR-033); ``learner_from_config`` rebuilds the learner a run folder's config
-describes, for ``nd resume`` (task 5.7).
+behavioural-cloning run (task 6.3), ``train_dagger_run`` a DAgger run (task 6.6; it also saves
+the frames it collected as a dataset, :func:`save_dagger_dataset`); ``sweep_seeds`` runs one
+config once per seed (``nd sweep``, task 4.7a, ADR-033); ``learner_from_config`` rebuilds the
+learner a run folder's config describes, for ``nd resume`` (task 5.7).
 
 An imitation config names its dataset by id or by a ``<teacher>-<tag>`` selector
 (:func:`pin_dataset`, ADR-047). The run folder's config names the exact dataset found and its
@@ -59,26 +60,30 @@ from neurodrive.env.policies import MLPPolicy
 from neurodrive.env.sensors import OBSERVATION_SIZE
 from neurodrive.env.track import Track
 from neurodrive.experiment.config import (
+    DaggerRunConfig,
     ImitationRunConfig,
     RandomSearchRunConfig,
     RunConfig,
     ToyRunConfig,
     parse_config,
     resolved,
+    to_dagger_settings,
     to_imitation_settings,
     to_random_search_settings,
     to_toy_config,
 )
 from neurodrive.experiment.db import DB_NAME, Mirror
 from neurodrive.experiment.exam import DEFAULT_TRACKS_DIR, ExamResult, run_exam
-from neurodrive.experiment.store import RunStore
+from neurodrive.experiment.store import RunStore, _git_info
 from neurodrive.learn.base import Learner, Resumable
 from neurodrive.learn.evolution.random_search import RandomSearchLearner
+from neurodrive.learn.supervised.dagger import DaggerLearner, collected_dataset
 from neurodrive.learn.supervised.demos import (
     DEFAULT_DATASETS_DIR,
     DemoDataset,
     dataset_sha256,
     find_dataset,
+    save_dataset,
 )
 from neurodrive.learn.supervised.imitation import ImitationLearner
 from neurodrive.learn.supervised.train_toy import ToyLearner
@@ -426,9 +431,10 @@ class ImitationRunResult:
 
 
 def pin_dataset(
-    config: ImitationRunConfig, datasets_dir: str | Path = DEFAULT_DATASETS_DIR
-) -> tuple[ImitationRunConfig, DemoDataset]:
-    """Find and load the dataset an imitation config names; return the config naming it exactly.
+    config: ImitationRunConfig | DaggerRunConfig, datasets_dir: str | Path = DEFAULT_DATASETS_DIR
+) -> tuple[Any, DemoDataset]:
+    """Find and load the dataset an imitation or DAgger config names; return the config naming
+    it exactly (of the same kind as ``config``).
 
     1. :func:`find_dataset` turns ``data.dataset`` (an id or a ``<teacher>-<tag>`` selector) into
        one folder of ``datasets_dir``.
@@ -467,6 +473,10 @@ def learner_from_config(
     if isinstance(config, ImitationRunConfig):
         _, dataset = pin_dataset(config, datasets_dir)
         return ImitationLearner(to_imitation_settings(config), dataset, make_rng(config.seed))
+    if isinstance(config, DaggerRunConfig):
+        _, dataset = pin_dataset(config, datasets_dir)
+        track = Track.from_json(Path(tracks_dir) / f"{config.dagger.track}.json")
+        return DaggerLearner(to_dagger_settings(config), dataset, track, make_rng(config.seed))
     toy = to_toy_config(config)
     return ToyLearner(toy, make_rng(toy.seed))
 
@@ -514,6 +524,100 @@ def train_imitation_run(
     finite = [m for m in metrics if m["loss"] is not None]
     last = finite[-1] if finite else {}
     return ImitationRunResult(store, status, len(metrics), last.get("loss"), last.get("val_loss"))
+
+
+@dataclass(frozen=True)
+class DaggerRunResult:
+    """What ``train_dagger_run`` reports: the folder, the status, rounds, the last losses, the
+    teacher queries spent and the id of the dataset of collected frames (None if none)."""
+
+    store: RunStore
+    status: str
+    rounds_done: int
+    end_loss: float | None  # training loss after the last finite round; None if none finished
+    end_val_loss: float | None  # validation loss then; None without a validation set
+    end_onpolicy_loss: float | None  # the last collection drive's on-policy error
+    teacher_queries: int
+    dagger_dataset: str | None
+
+
+def save_dagger_dataset(
+    store: RunStore, learner: DaggerLearner, datasets_dir: str | Path = DEFAULT_DATASETS_DIR
+) -> str | None:
+    """Save the frames a DAgger run collected as a dataset v1 (teacher kind ``dagger``) in
+    ``datasets_dir``, tagged with the run's tag, and name it in ``meta.json`` as
+    ``dagger_dataset`` (ADR-049, D4A). Returns its id, or None when nothing was collected.
+    """
+    dataset = collected_dataset(learner)
+    if dataset is None:
+        return None
+    provenance = {**_git_info(), "dagger_run": store.path.name}
+    folder = save_dataset(dataset, datasets_dir, store.read_config()["tag"], provenance)
+    store.update_meta(dagger_dataset=folder.name)
+    return folder.name
+
+
+def dagger_result(store: RunStore, status: str, saved: str | None) -> DaggerRunResult:
+    """The :class:`DaggerRunResult` of a finished run, read from its folder (also after
+    ``nd resume``)."""
+    metrics = store.read_metrics()
+    finite = [m for m in metrics if m["loss"] is not None]
+    last = finite[-1] if finite else {}
+    drives = [m["onpolicy_loss"] for m in metrics if m.get("onpolicy_loss") is not None]
+    return DaggerRunResult(
+        store,
+        status,
+        len(metrics),
+        last.get("loss"),
+        last.get("val_loss"),
+        drives[-1] if drives else None,
+        metrics[-1]["teacher_queries_total"] if metrics else 0,
+        saved,
+    )
+
+
+def train_dagger_run(
+    config: DaggerRunConfig,
+    runs_dir: str | Path,
+    extra_meta: dict | None = None,
+    tracks_dir: str | Path = DEFAULT_TRACKS_DIR,
+    on_start: Callable[[RunStore], None] | None = None,
+    datasets_dir: str | Path = DEFAULT_DATASETS_DIR,
+) -> DaggerRunResult:
+    """Train one DAgger run described by ``config`` under ``runs_dir`` (task 6.6).
+
+    Steps: pin the dataset (:func:`pin_dataset`); build the learner from ``make_rng(seed)``;
+    create the run folder with the pinned, resolved config and, in ``meta.json``, the dataset as
+    for imitation (``on_start(store)`` is called then); :func:`run` for ``dagger.rounds`` units
+    with the config's exams and ``checkpoint_every``; then save the collected frames
+    (:func:`save_dagger_dataset`).
+    """
+    pinned, dataset = pin_dataset(config, datasets_dir)
+    track = Track.from_json(Path(tracks_dir) / f"{pinned.dagger.track}.json")
+    learner = DaggerLearner(to_dagger_settings(pinned), dataset, track, make_rng(pinned.seed))
+    meta = {
+        **(extra_meta or {}),
+        "dataset": {
+            "id": pinned.data.dataset,
+            "sha256": pinned.data.sha256,
+            "demo_frames": dataset.n_frames,
+            "train_frames": int(learner.x_train.shape[0]),
+            "val_episodes": learner.val_episodes,
+        },
+    }
+    store = RunStore.create(runs_dir, learner.name, pinned.tag, resolved(pinned), extra_meta=meta)
+    if on_start is not None:
+        on_start(store)
+    status = run(
+        learner,
+        store,
+        Budget(units=pinned.dagger.rounds),
+        exams=pinned.exams,
+        tracks_dir=tracks_dir,
+        checkpoint_every=pinned.checkpoint_every,
+    )
+    saved = save_dagger_dataset(store, learner, datasets_dir)
+    return dagger_result(store, status, saved)
 
 
 def train_random_search_run(
@@ -574,22 +678,23 @@ def sweep_seeds(
     when: datetime | None = None,
     study: str | None = None,
     datasets_dir: str | Path = DEFAULT_DATASETS_DIR,
-) -> tuple[str, list[ToyRunResult] | list[RandomSearchRunResult] | list[ImitationRunResult]]:
+) -> tuple[str, list[Any]]:
     """Train ``config`` once per seed; returns the sweep id and one result per seed.
 
     The sweep id is ``<YYYYMMDD-HHMMSS>-<method>-<tag>`` (formed like a run id; the method is
-    ``toy_<task>``, ``random_search`` or ``imitation``). Run k gets seed k, tag ``<tag>-s<k>`` (so
-    its resolved config re-creates it on its own) and ``"sweep": <id>`` in its ``meta.json``, plus
-    ``"study": <study>`` when ``study`` is given (ADR-043). Runs are trained one after another.
-    An imitation config's dataset is pinned once, before the first run, so every seed learns from
-    the same frames even if a newer dataset is recorded meanwhile.
+    ``toy_<task>``, ``random_search``, ``imitation`` or ``dagger``). Run k gets seed k, tag
+    ``<tag>-s<k>`` (so its resolved config re-creates it on its own) and ``"sweep": <id>`` in its
+    ``meta.json``, plus ``"study": <study>`` when ``study`` is given (ADR-043). Runs are trained
+    one after another. An imitation or DAgger config's dataset is pinned once, before the first
+    run, so every seed learns from the same frames even if a newer dataset is recorded
+    meanwhile.
     """
     if not seeds:
         raise ValueError("need at least one seed")
     when = when or datetime.now(UTC)
     label = f"toy_{config.task}" if isinstance(config, ToyRunConfig) else config.method
     sweep_id = f"{when:%Y%m%d-%H%M%S}-{label}-{config.tag}"
-    if isinstance(config, ImitationRunConfig):
+    if isinstance(config, ImitationRunConfig | DaggerRunConfig):
         config, _ = pin_dataset(config, datasets_dir)
     results = []
     for seed in seeds:
@@ -600,6 +705,10 @@ def sweep_seeds(
         elif isinstance(one, ImitationRunConfig):
             results.append(
                 train_imitation_run(one, runs_dir, extra_meta=meta, datasets_dir=datasets_dir)
+            )
+        elif isinstance(one, DaggerRunConfig):
+            results.append(
+                train_dagger_run(one, runs_dir, extra_meta=meta, datasets_dir=datasets_dir)
             )
         else:
             results.append(train_random_search_run(one, runs_dir, extra_meta=meta))

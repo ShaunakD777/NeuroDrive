@@ -60,7 +60,11 @@ def serve(
 
 _STUDY_HELP = "Study id written into each run's meta.json, e.g. S4 (ADR-043)."
 _EPOCHS_HELP = "Override training.epochs (toy and imitation configs)."
-_DATASETS_HELP = "Folder of demonstration datasets for imitation (default: data/demos/)."
+_UNITS_HELP = "Override budget.units (random_search) or dagger.rounds (dagger configs)."
+_DATASETS_HELP = (
+    "Folder of demonstration datasets for imitation and DAgger (default: data/demos/); "
+    "DAgger also saves the frames it collected there."
+)
 
 
 def _datasets_dir(datasets_dir: str | None) -> Path:
@@ -75,6 +79,19 @@ def _loss_line(result) -> str:
         return "loss: none (diverged at once)"
     val = f", validation {result.end_val_loss:.6g}" if result.end_val_loss is not None else ""
     return f"loss after the last finite epoch: training {result.end_loss:.6g}{val}"
+
+
+def _dagger_lines(result) -> list[str]:
+    """What a DAgger run ends with: its losses, the teacher queries and the dataset saved."""
+    lines = [_loss_line(result).replace("epoch", "round")]
+    if result.end_onpolicy_loss is not None:
+        lines.append(
+            f"on-policy error of the last collection drive: {result.end_onpolicy_loss:.6g}"
+        )
+    lines.append(f"teacher queries: {result.teacher_queries}")
+    if result.dagger_dataset is not None:
+        lines.append(f"collected frames saved as dataset: {result.dagger_dataset}")
+    return lines
 
 
 def _check_study_option(study: str | None) -> None:
@@ -93,22 +110,24 @@ def train(
     seed: int | None = typer.Option(None, help="Override the config's seed."),
     tag: str | None = typer.Option(None, help="Override the config's tag (run folder label)."),
     epochs: int | None = typer.Option(None, help=_EPOCHS_HELP),
-    units: int | None = typer.Option(None, help="Override budget.units (random_search configs)."),
+    units: int | None = typer.Option(None, help=_UNITS_HELP),
     runs_dir: str = typer.Option("runs", help="Folder to create the run folder in."),
     study: str | None = typer.Option(None, help=_STUDY_HELP),
     datasets_dir: str | None = typer.Option(None, help=_DATASETS_HELP),
 ) -> None:
-    """Train from a config file (toy, random_search or imitation) and write a run folder."""
+    """Train from a config file (toy, random_search, imitation or dagger), write a run folder."""
     import sys
 
     from neurodrive.experiment.config import (
         ConfigError,
+        DaggerRunConfig,
         ImitationRunConfig,
         ToyRunConfig,
         load_config,
     )
     from neurodrive.experiment.runner import (
         pin_dataset,
+        train_dagger_run,
         train_imitation_run,
         train_random_search_run,
         train_toy_run,
@@ -118,7 +137,7 @@ def train(
     try:
         _check_study_option(study)
         run_config = load_config(Path(config), seed=seed, tag=tag, epochs=epochs, units=units)
-        if isinstance(run_config, ImitationRunConfig):
+        if isinstance(run_config, ImitationRunConfig | DaggerRunConfig):
             run_config, _ = pin_dataset(run_config, demos)  # refuse a missing dataset up front
     except (ConfigError, FileNotFoundError, ValueError) as exc:
         typer.echo(str(exc), err=True)
@@ -138,6 +157,15 @@ def train(
         )
         typer.echo(f"status: {cloned.status} after {cloned.epochs_done} epochs")
         typer.echo(_loss_line(cloned))
+        return
+    if isinstance(run_config, DaggerRunConfig):
+        typer.echo(f"dataset: {run_config.data.dataset}")
+        aggregated = train_dagger_run(
+            run_config, runs_dir, meta, on_start=announce, datasets_dir=demos
+        )
+        typer.echo(f"status: {aggregated.status} after {aggregated.rounds_done} rounds")
+        for line in _dagger_lines(aggregated):
+            typer.echo(line)
         return
     if not isinstance(run_config, ToyRunConfig):
         found = train_random_search_run(run_config, runs_dir, meta, on_start=announce)
@@ -164,14 +192,20 @@ def resume(
 ) -> None:
     """Continue a killed or failed run exactly where it stopped (resumable methods only)."""
     from neurodrive.experiment.config import ConfigError
-    from neurodrive.experiment.runner import learner_from_config
+    from neurodrive.experiment.runner import (
+        dagger_result,
+        learner_from_config,
+        save_dagger_dataset,
+    )
     from neurodrive.experiment.runner import resume as resume_run
     from neurodrive.experiment.store import RunStore
     from neurodrive.learn.base import Resumable
+    from neurodrive.learn.supervised.dagger import DaggerLearner
 
+    demos = _datasets_dir(datasets_dir)
     try:
         store = RunStore.open(run)
-        learner = learner_from_config(store.read_config(), datasets_dir=_datasets_dir(datasets_dir))
+        learner = learner_from_config(store.read_config(), datasets_dir=demos)
         if not isinstance(learner, Resumable):
             raise ValueError(
                 f"{learner.name} runs cannot be resumed (the learner saves no state); "
@@ -188,7 +222,12 @@ def resume(
     last = metrics[-1] if metrics else {}
     if "best_fitness" in last:
         typer.echo(f"best fitness: {last['best_fitness']:.4f} (found in unit {last['best_unit']})")
-    if last.get("val_loss") is not None:
+    if isinstance(learner, DaggerLearner):  # the frames are saved once the run has ended
+        for line in _dagger_lines(
+            dagger_result(store, status, save_dagger_dataset(store, learner, demos))
+        ):
+            typer.echo(line)
+    elif last.get("val_loss") is not None:
         typer.echo(f"loss: training {last['loss']:.6g}, validation {last['val_loss']:.6g}")
 
 
@@ -200,7 +239,7 @@ def sweep(
     seeds: str = typer.Option(..., help="Seeds to run, e.g. 0-4 or 0,2,7."),
     tag: str | None = typer.Option(None, help="Override the config's tag; runs get <tag>-s<seed>."),
     epochs: int | None = typer.Option(None, help=_EPOCHS_HELP),
-    units: int | None = typer.Option(None, help="Override budget.units (random_search configs)."),
+    units: int | None = typer.Option(None, help=_UNITS_HELP),
     runs_dir: str = typer.Option("runs", help="Folder to create the run folders in."),
     study: str | None = typer.Option(None, help=_STUDY_HELP),
     datasets_dir: str | None = typer.Option(None, help=_DATASETS_HELP),
@@ -208,6 +247,7 @@ def sweep(
     """Train one config once per seed; summarise the final loss or best fitness (median, IQR)."""
     from neurodrive.experiment.config import (
         ConfigError,
+        DaggerRunConfig,
         ImitationRunConfig,
         ToyRunConfig,
         load_config,
@@ -220,7 +260,7 @@ def sweep(
         _check_study_option(study)
         seed_list = parse_seeds(seeds)
         run_config = load_config(Path(config), tag=tag, epochs=epochs, units=units)
-        if isinstance(run_config, ImitationRunConfig):
+        if isinstance(run_config, ImitationRunConfig | DaggerRunConfig):
             run_config, _ = pin_dataset(run_config, demos)
     except (ConfigError, FileNotFoundError, ValueError) as exc:
         typer.echo(str(exc), err=True)
@@ -229,6 +269,26 @@ def sweep(
         run_config, seed_list, runs_dir, study=study, datasets_dir=demos
     )
     typer.echo(f"sweep: {sweep_id} ({len(results)} runs)")
+    if isinstance(run_config, DaggerRunConfig):
+        val, onp = [], []
+        for seed, aggregated in zip(seed_list, results, strict=True):
+            done = aggregated.status == "completed"
+            for values, value in (
+                (val, aggregated.end_val_loss),
+                (onp, aggregated.end_onpolicy_loss),
+            ):
+                values.append(value if done and value is not None else float("inf"))
+            typer.echo(
+                f"  seed {seed}: {aggregated.store.path.name}  {aggregated.status}  "
+                f"{aggregated.teacher_queries} teacher queries"
+            )
+        for name, values in (("validation loss", val), ("on-policy error", onp)):
+            s = summarise(values)
+            typer.echo(
+                f"final {name}: median {s.median:.6g} [IQR {s.q1:.6g} to {s.q3:.6g}] over "
+                f"{s.n} seeds (a diverged run, or one without the value, counts as inf)"
+            )
+        return
     if isinstance(run_config, ImitationRunConfig):
         finals = []
         for seed, cloned in zip(seed_list, results, strict=True):
@@ -352,6 +412,12 @@ def demo_record(
         10, help="Seeded random starts besides the exam's 10 starts (0: exam starts only)."
     ),
     seed: int = typer.Option(0, help="Seed of the random starts."),
+    start_lateral: float = typer.Option(
+        1.0, help="Random starts are moved sideways by up to this many metres (default 1)."
+    ),
+    start_heading: float = typer.Option(
+        0.1, help="Random starts are turned by up to this many radians (default 0.1)."
+    ),
     tag: str = typer.Option("default", help="Label in the dataset folder's name."),
     out_dir: str = typer.Option("data/demos", help="Folder to create the dataset folder in."),
 ) -> None:
@@ -377,6 +443,8 @@ def demo_record(
             random_starts=random_starts,
             seed=seed,
             target_laps=EXAM_V1.target_laps,
+            random_lateral_m=start_lateral,
+            random_heading_rad=start_heading,
         )
         folder = save_dataset(dataset, out_dir, tag, provenance=_git_info())
     except ValueError as exc:

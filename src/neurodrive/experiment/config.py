@@ -1,9 +1,9 @@
 """Config files: the written recipe of an experiment, validated before anything runs (ADR-032).
 
 A config file is YAML. Its ``method`` field says which kind of run it describes: ``toy`` (task
-4.6b), ``random_search`` (task 5.7, ``configs/random_search.yaml``) or ``imitation`` (task 6.3,
-``configs/imitation.yaml``). A toy config (config v1,
-docs/ARCHITECTURE.md §6.15) looks like::
+4.6b), ``random_search`` (task 5.7, ``configs/random_search.yaml``), ``imitation`` (task 6.3,
+``configs/imitation.yaml``) or ``dagger`` (task 6.6, ``configs/dagger.yaml``). A toy config
+(config v1, docs/ARCHITECTURE.md §6.15) looks like::
 
     method: toy
     task: sine              # line, sine, xor or two_spirals
@@ -41,10 +41,16 @@ optional ``sha256`` checksum, and the share of episodes held back for validation
 examine every k-th epoch) and ``exams``. Validation does not look for the dataset: the runner
 finds it, and the run folder's config then names the exact dataset and its checksum.
 
+A DAgger config (task 6.6, ADR-049) has imitation's ``network``, ``data``, ``optimizer``,
+``checkpoint_every`` and ``exams``, a ``training`` section with ``epochs_per_round`` instead of
+``epochs``, and a ``dagger`` section: ``rounds`` (the run's units; ``--units`` overrides it), the
+collection ``track`` (a training track), ``random_starts`` per round and ``target_laps``.
+
 The learners keep their own plain settings (``learn/`` does not use Pydantic); this module
 converts between the file and them. Every list of valid names comes from the module that owns it.
 """
 
+import math
 from functools import cache
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -70,6 +76,8 @@ from neurodrive.env.sensors import OBSERVATION_SIZE
 from neurodrive.env.track import Track
 from neurodrive.experiment.exam import DEFAULT_TRACKS_DIR, EXAM_V1, TRAINING_TRACK
 from neurodrive.learn.evolution.random_search import RandomSearchSettings
+from neurodrive.learn.supervised.dagger import DaggerSettings
+from neurodrive.learn.supervised.demos import RANDOM_START_HEADING, RANDOM_START_LATERAL
 from neurodrive.learn.supervised.imitation import ImitationSettings
 from neurodrive.learn.supervised.toy_tasks import TOY_TASKS, make_toy_dataset
 from neurodrive.learn.supervised.train_toy import LOSSES, ToyConfig
@@ -334,11 +342,64 @@ class ImitationRunConfig(_Section):
     exams: bool = True
 
 
-RunConfig = ToyRunConfig | RandomSearchRunConfig | ImitationRunConfig
-METHODS = ("toy", "random_search", "imitation")
+class DaggerTrainingSection(_Section):
+    """DAgger: the epochs of every round, the loss and the minibatch size."""
+
+    epochs_per_round: Annotated[StrictInt, Field(ge=1)] = 30
+    loss: str = "mse"
+    batch_size: Annotated[StrictInt, Field(ge=1)] = 256
+
+    @field_validator("loss")
+    @classmethod
+    def _loss(cls, v: str) -> str:
+        return _one_of(v, LOSSES, "loss")
+
+
+class DaggerSection(_Section):
+    """DAgger: how many rounds (the run's units), where the network drives when collecting
+    (a training track, R fresh random starts per round, moved sideways by up to
+    ±``start_lateral_m`` and turned by up to ±``start_heading_rad``) and each drive's goal in
+    laps. The start ranges came with the task 6.6 follow-up (ADR-050)."""
+
+    rounds: Annotated[StrictInt, Field(ge=1)]
+    track: str = TRAINING_TRACK
+    random_starts: Annotated[StrictInt, Field(ge=1)] = 10
+    target_laps: Annotated[StrictInt, Field(ge=1)] = 2
+    start_lateral_m: float = Field(RANDOM_START_LATERAL, ge=0.0, le=4.5)
+    start_heading_rad: float = Field(RANDOM_START_HEADING, ge=0.0, le=math.pi / 4)
+
+    @field_validator("track")
+    @classmethod
+    def _training_track(cls, v: str) -> str:
+        if _track_split(v) != "train":
+            raise ValueError(
+                f"{v!r} is a held-out track; DAgger may only drive training tracks "
+                "(EXPERIMENT_PROTOCOL rule 7)"
+            )
+        return v
+
+
+class DaggerRunConfig(_Section):
+    """A complete DAgger run (task 6.6, ADR-049)."""
+
+    method: Literal["dagger"]
+    seed: Annotated[StrictInt, Field(ge=0)] = 0
+    tag: str = Field("default", pattern=r"^[A-Za-z0-9_-]+$")
+    network: DrivingNetworkSection = Field(default_factory=DrivingNetworkSection)
+    data: DataSection
+    training: DaggerTrainingSection = Field(default_factory=DaggerTrainingSection)
+    dagger: DaggerSection
+    optimizer: OptimizerSection
+    checkpoint_every: Annotated[StrictInt, Field(ge=1)] | None = None
+    exams: bool = True
+
+
+RunConfig = ToyRunConfig | RandomSearchRunConfig | ImitationRunConfig | DaggerRunConfig
+METHODS = ("toy", "random_search", "imitation", "dagger")
 _MODELS: dict[str, type[_Section]] = {
     "random_search": RandomSearchRunConfig,
     "imitation": ImitationRunConfig,
+    "dagger": DaggerRunConfig,
 }
 
 
@@ -384,8 +445,8 @@ def parse_config(
     """Validate ``data`` (a parsed YAML mapping) and return the config.
 
     ``seed``, ``tag``, ``epochs`` (toy and imitation: training.epochs) and ``units`` (random
-    search: budget.units) override the file's values when given. A Phase 3 flat config is converted
-    first. Raises ``ConfigError`` listing every problem.
+    search: budget.units; DAgger: dagger.rounds) override the file's values when given. A
+    Phase 3 flat config is converted first. Raises ``ConfigError`` listing every problem.
     """
     if not isinstance(data, dict):
         raise ConfigError(["the file must contain a mapping (field: value lines)"], source)
@@ -401,15 +462,22 @@ def parse_config(
         data["tag"] = tag
     method = data.get("method")
     if epochs is not None:
-        if method == "random_search":
+        if method in ("random_search", "dagger"):
             raise ConfigError(["--epochs is for toy and imitation configs; use --units"], source)
         training = data.get("training")
         data["training"] = (
             {**training, "epochs": epochs} if isinstance(training, dict) else training
         )
-    if units is not None:
+    if units is not None and method == "dagger":  # a DAgger run's units are its rounds
+        section = data.get("dagger")
+        data["dagger"] = (
+            {**section, "rounds": units} if isinstance(section, dict) else {"rounds": units}
+        )
+    elif units is not None:
         if method != "random_search":
-            raise ConfigError(["--units is for random_search configs; use --epochs"], source)
+            raise ConfigError(
+                ["--units is for random_search and dagger configs; use --epochs"], source
+            )
         budget = data.get("budget")
         data["budget"] = (
             {**budget, "units": units} if isinstance(budget, dict) else {"units": units}
@@ -514,6 +582,33 @@ def to_imitation_settings(config: ImitationRunConfig) -> ImitationSettings:
         learning_rate=opt.learning_rate,
         optimizer_settings=settings,
         val_fraction=config.data.val_fraction,
+    )
+
+
+def to_dagger_settings(config: DaggerRunConfig) -> DaggerSettings:
+    """The learner's ``DaggerSettings`` for this config (the expert labels with its defaults)."""
+    net, opt = config.network, config.optimizer
+    settings = {k: v for k, v in opt.model_dump().items() if k not in ("name", "learning_rate")}
+    return DaggerSettings(
+        imitation=ImitationSettings(
+            spec=NetworkSpec(
+                layer_sizes=tuple(net.layer_sizes),
+                hidden_activation=net.hidden_activation,
+                output_activation=net.output_activation,
+            ),
+            init_scheme=net.init_scheme,
+            batch_size=config.training.batch_size,
+            loss=config.training.loss,
+            optimizer=opt.name,
+            learning_rate=opt.learning_rate,
+            optimizer_settings=settings,
+            val_fraction=config.data.val_fraction,
+        ),
+        epochs_per_round=config.training.epochs_per_round,
+        random_starts=config.dagger.random_starts,
+        target_laps=config.dagger.target_laps,
+        start_lateral_m=config.dagger.start_lateral_m,
+        start_heading_rad=config.dagger.start_heading_rad,
     )
 
 

@@ -1,0 +1,43 @@
+# DAgger with wide collection starts (task 6.6 follow-up, ADR-050): configs/dagger.yaml, except
+# that each round's 10 collection starts are moved sideways by up to 3 m and turned by up to
+# 0.35 rad (20 degrees) instead of 1 m and 0.1 rad, so the network drives into, and the expert
+# corrects, poses far off the expert's line.
+# DAgger (Dataset Aggregation, task 6.6, ADR-049): behavioural cloning, then rounds in which the
+# network drives, the scripted expert labels every state it drove into, the labelled frames are
+# added to the dataset and the network trains on all of it again.
+# Record a dataset first:  uv run python -m neurodrive demo-record --teacher expert
+# Train:   uv run python -m neurodrive train --config configs/dagger_wide.yaml
+# Resume:  uv run python -m neurodrive resume --run runs/<run_id>
+# At the end the collected frames are saved as a dataset <time>-dagger-wide in data/demos/.
+# Format: docs/ARCHITECTURE.md section 6.15 (config v1).
+method: dagger
+seed: 0
+tag: wide
+network:                    # the same driving network as imitation (fair-comparison rule 2)
+  layer_sizes: [7, 16, 16, 2]
+  hidden_activation: tanh
+  output_activation: tanh
+  init_scheme: xavier
+data:
+  dataset: expert-default   # the demonstrations of round 1: a dataset id, or <teacher>-<tag>
+  sha256: null              # the run folder's config fills in the exact dataset and its checksum
+  val_fraction: 0.2         # share of the demonstrations' episodes held back for validation
+training:
+  epochs_per_round: 30      # E: 10 rounds x 30 = 300 epochs, Study S5a's length
+  loss: mse
+  batch_size: 256
+dagger:
+  rounds: 10                # the run's units; round 1 is plain behavioural cloning
+  track: train_loop_01      # where the network drives to collect (a training track only)
+  random_starts: 10         # R fresh seeded random starts per round (+-1 m, +-0.1 rad, at rest)
+  target_laps: 2
+  start_lateral_m: 3.0      # sideways range of the collection starts (default 1.0)
+  start_heading_rad: 0.35   # heading range, about 20 degrees (default 0.1)
+optimizer:
+  name: adam
+  learning_rate: 0.003
+  beta1: 0.9
+  beta2: 0.999
+  eps: 1.0e-08
+checkpoint_every: 1         # a checkpoint and a Driving Exam after every round
+exams: true

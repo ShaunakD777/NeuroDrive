@@ -70,7 +70,7 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Overfitting | Doing well on training data but badly on new data. |
 | Imitation learning (behavioural cloning) | Supervised learning where the targets are an expert's actions. |
 | Distribution shift | The learner ends up in situations the expert never showed it, so errors compound. |
-| DAgger | Let the learner drive, ask the expert what it *should* have done there, add that to the data, retrain. |
+| DAgger | Dataset Aggregation (Ross, Gordon and Bagnell, 2011): let the learner drive, ask the expert what it *should* have done in every state it reached, add that to the data, retrain, and repeat (see DAgger round, teacher query, data aggregation). Built in task 6.6. |
 | Fitness | One score for a whole drive, used by evolutionary methods. Random search (task 5.7) uses, per start, progress (up to 1) plus a time bonus for finishing, averaged over fixed training-track starts. |
 | Random search | The simplest gradient-free learner: draw fresh random networks, score each, keep the best one so far. It uses no direction at all, only selection, so it is the null model for every smarter search. |
 | Gradient-free learning | Learning that uses only a score per candidate, never the gradient of a loss through the network: random search, evolution, evolution strategies. |
@@ -299,3 +299,7 @@ Add a term the first time a task uses it. Keep definitions short and concrete.
 | Recoverable start | A perturbed start from which the scripted expert still finishes, so failing there is the learner's fault, not the start's. |
 | Novelty (of a state) | How far a state is from everything in the dataset: the distance, in the network's 7 inputs, to the nearest demonstration frame. A state is *novel* when that distance is larger than the threshold τ, the distance that 99 % of the expert's own frames keep to the nearest frame of another expert drive. |
 | On-policy error | The learner's error against the teacher's label on the states the learner itself drives into (the expert can label any state). The validation loss measures the same error on the teacher's states; the gap between the two is the cost of distribution shift. |
+| DAgger round | One pass of DAgger's loop (task 6.6): the current network drives from fresh starts, the expert labels every state it reached, those labelled frames are added to the data, and the network trains on all of it for a few more epochs. Round 1 is plain behavioural cloning on the demonstrations. |
+| Teacher query | One request to the teacher for its label of one state: "what would you do here?". DAgger asks one per frame its network drives. A budget currency of its own (protocol rule 4), because a teacher's attention costs something, a human's most of all. |
+| Data aggregation | Adding new examples to everything collected before, instead of replacing the old data. DAgger keeps the expert's demonstrations and every round's labelled frames, so the network learns to recover from its own mistakes without forgetting the expert's line. |
+| β (expert mixing, DAgger) | The chance that the expert, not the network, drives a step while data is collected in a DAgger round. NeuroDrive uses β = 1 in round 1 (the demonstrations) and β = 0 afterwards: the network always drives on its own. |

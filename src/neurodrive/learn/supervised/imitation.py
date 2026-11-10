@@ -216,37 +216,57 @@ class ImitationLearner:
         new = self.optimizer.step(params_of(net), g)
         return network_from_params(net, new) if _all_finite(new) else None
 
-    def train_unit(self) -> UnitResult:
-        """One epoch (see the module docstring)."""
-        self.epochs += 1
-        frames = self.demo_frames if self.epochs == 1 else 0  # the dataset is read once
-        diverged = UnitResult(
-            metrics={"loss": None, "loss_before": None}, demo_frames=frames, diverged=True
-        )
+    def set_training_frames(self, x: np.ndarray, y: np.ndarray) -> None:
+        """Train on (x, y) from now on (DAgger, task 6.6, adds the frames it collects).
+
+        The batch loader is rebuilt over the new frames with the same generator, which simply
+        continues: the next epoch's shuffle is its next draw.
+        """
+        self.x_train, self.y_train = x, y
+        batch = min(self.settings.batch_size, x.shape[0])
+        self.loader = MinibatchLoader(x, y, batch, self.loader.rng)
+
+    def _epoch(self) -> dict | None:
+        """One guarded epoch on the training frames (see the module docstring).
+
+        Returns the epoch's metrics and keeps the new network, or returns None, leaving the
+        network as it was, if any loss, gradient or parameter stopped being finite.
+        """
         net, x, y = self.network, self.x_train, self.y_train
         with np.errstate(all="ignore"):  # overflow is detected below, not warned about
             trace = forward(net, x)
             loss_before = self._loss(trace.output, y)
             grads = backward(net, trace, self._loss_grad(trace.output, y))
             if not (np.isfinite(loss_before) and _all_finite(grads.weights + grads.biases)):
-                return diverged
+                return None
             for xb, yb in self.loader:
                 stepped = self._step(net, self._gradients(net, xb, yb))
                 if stepped is None:
-                    return diverged
+                    return None
                 net = stepped
             metrics: dict = self.losses(x, y, net)
             if self.x_val is not None and self.y_val is not None:
                 val = self.losses(self.x_val, self.y_val, net)
                 metrics.update({f"val_{key}": value for key, value in val.items()})
         if not all(np.isfinite(v) for v in metrics.values()):
-            return diverged
+            return None
         self.network = net  # kept only when everything stayed finite
         metrics["loss_before"] = loss_before
         metrics["grad_norm"] = [
             float(np.sqrt(np.sum(gw * gw) + np.sum(gb * gb)))
             for gw, gb in zip(grads.weights, grads.biases, strict=True)
         ]
+        return metrics
+
+    def train_unit(self) -> UnitResult:
+        """One epoch (see the module docstring)."""
+        self.epochs += 1
+        frames = self.demo_frames if self.epochs == 1 else 0  # the dataset is read once
+        metrics = self._epoch()
+        if metrics is None:
+            return UnitResult(
+                metrics={"loss": None, "loss_before": None}, demo_frames=frames, diverged=True
+            )
         return UnitResult(metrics=metrics, demo_frames=frames)
 
     def current_networks(self) -> list[Network]:

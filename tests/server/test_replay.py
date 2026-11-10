@@ -297,7 +297,7 @@ def test_a_checkpoint_replay_over_the_live_socket(runs):
     store = run_of(runs, "random_search")
     with TestClient(create_app(runs_dir=runs)) as client:
         with client.websocket_connect("/ws/live") as ws:
-            assert json.loads(ws.receive_text())["api"] == "v1.18"
+            assert json.loads(ws.receive_text())["api"] == "v1.19"
             ws.send_text(
                 json.dumps(
                     {

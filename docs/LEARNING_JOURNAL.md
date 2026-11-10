@@ -1576,3 +1576,33 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
 - Open question: why do all networks fail when turned 30 degrees left, from almost every offset,
   but not 30 degrees right? Does DAgger (6.6), whose expert labels are exactly this study's
   on-policy labels, raise the shifted-start completion and teach the heading-error input?
+
+### 2026-11-10 — Task 6.6 DAgger
+- Concept: DAgger (Dataset Aggregation). Round 1 is behavioural cloning; in every later round the
+  network drives from fresh random starts, the scripted expert labels every state it reached
+  ("what would you do here?"), the labelled frames are added to everything collected so far, and
+  the network trains on all of it again. Every label is a teacher query, the budget currency no
+  learner had spent before.
+- Key equation(s) in words: the round's frames M = the steps each car drove while still running,
+  summed over the cars; each frame is one environment step and one teacher query (3 + 5 = 8).
+  The on-policy error is the mean squared difference between what the network did and the
+  expert's label, over those frames and both outputs (2.37 / 6 = 0.395). Cloning's mistakes can
+  grow like T²ε over a drive of T steps, DAgger's like Tε (Ross et al.).
+- What we observed: with the dataset's narrow starts (±1 m, ±0.1 rad), seeds 0-4, 10 rounds of
+  30 epochs, the on-policy error fell tenfold (0.13-0.21 in round 2 to 0.009-0.039 in round 10)
+  and the network still lapped the training loop after 300 epochs in every seed, where S5a's
+  epoch-300 clones mostly did not. But it finished only 0.543 of S5b's shifted starts (V1, V2
+  not supported): good near its own starts, worse than S5a's early clones when turned 30°. Its
+  data covered 4.5 % of the heading-error range, hardly more than the expert's 3.4 %. In the
+  follow-up (ADR-050) wider collection starts (±3 m, ±20°) raised it to 0.836 (W1 supported).
+  Cloning on expert demonstrations from the same wide starts reached 0.764 with a far wider
+  spread; DAgger-wide beat it in 3 of 5 seeds (W2 not supported). One DAgger-wide seed collapsed
+  in its very last round (W3 not supported).
+- Surprise or difficulty: I predicted the narrow DAgger data would cover much more of the heading
+  error than the expert's; it did not, because a network that drives well never makes large
+  heading mistakes. DAgger corrects the shift the learner causes itself, not shifts that come
+  from outside. Most of the gain in the follow-up came from the width of the starts, which the
+  wide clone shares. DAgger's own contribution was reliability: no flicker between checkpoints.
+- Open question: with 10 seeds and the held-out tracks, does DAgger beat cloning from the same
+  starts, at the same number of teacher labels? And which checkpoint should be kept, when the
+  last round can collapse? Both are for Study S5c (6.7).

@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
-API_VERSION = "v1.18"
+API_VERSION = "v1.19"
 
 
 class WireModel(BaseModel):
@@ -654,13 +654,14 @@ class ConfigInfo(WireModel):
     accepts.
 
     ``length_field`` names what the run's length counts (``epochs`` for toy and imitation
-    configs, ``units`` for random search) and ``length`` is the file's value (null when a
-    random-search budget has no unit limit). ``task`` is the toy task (null for the others).
-    ``imitation`` was added in api v1.17 (task 6.3).
+    configs, ``units`` for random search and for DAgger, whose units are rounds) and ``length``
+    is the file's value (null when a random-search budget has no unit limit). ``task`` is the toy
+    task (null for the others). ``imitation`` was added in api v1.17 (task 6.3), ``dagger`` in
+    api v1.19 (task 6.6).
     """
 
     name: str
-    method: Literal["toy", "random_search", "imitation"]
+    method: Literal["toy", "random_search", "imitation", "dagger"]
     task: str | None
     seed: int
     tag: str

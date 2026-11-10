@@ -12,7 +12,9 @@ the others drive on; those steps are left out. Example: car A crashes after 3 st
 finishes after 5, the episode lasted 5 steps: 10 recorded actions, F = 3 + 5 = 8 frames.
 
 The label of a demonstration frame is the (clipped) action the teacher drove with, y_t = a_t; it
-has its own column because DAgger (task 6.6) will label states that someone else drove.
+has its own column because DAgger (task 6.6, ``learn/supervised/dagger.py``) labels states that
+someone else drove: its datasets have teacher kind ``dagger``, the network drove and the expert
+labelled.
 
 A dataset is a folder ``<out_dir>/<YYYYMMDD-HHMMSS>-<teacher>-<tag>/`` with
 
@@ -64,6 +66,7 @@ STRAIGHT_STEER = 0.1  # |steer| below this counts as "nearly straight" in straig
 _FLOAT_FIELDS = ("observation", "label", "x", "y", "psi", "v")
 _INT_FIELDS = ("episode", "step")
 _ARRAY_FIELDS = _FLOAT_FIELDS + _INT_FIELDS
+ARRAY_FIELDS = _ARRAY_FIELDS  # the arrays of a dataset, in file order (used by DAgger)
 _NAME = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
@@ -149,17 +152,22 @@ def driven_steps(recording: EpisodeRecording) -> NDArray[np.int64]:
 
 
 def frames_from_recording(
-    recording: EpisodeRecording, first_episode: int = 0
+    recording: EpisodeRecording, first_episode: int = 0, labels: Array | None = None
 ) -> dict[str, np.ndarray]:
     """The dataset rows of one recording: car i's steps 0 .. n_i - 1, labelled with its actions.
 
     Car i becomes episode ``first_episode + i``. Returns the arrays of :class:`DemoDataset`.
+    ``labels`` (T, N, 2), when given, replaces the actions as the labels: DAgger (task 6.6)
+    records what the teacher *would* have done in states the student drove into.
     """
     steps = driven_steps(recording)
+    if labels is not None and labels.shape != recording.action.shape:
+        raise ValueError(f"labels must be {recording.action.shape}, got {labels.shape}")
+    source = recording.action if labels is None else labels
     parts: dict[str, list[np.ndarray]] = {name: [] for name in _ARRAY_FIELDS}
     for car, n in enumerate(steps):
         parts["observation"].append(recording.observation[:n, car])
-        parts["label"].append(recording.action[:n, car])
+        parts["label"].append(source[:n, car])
         parts["episode"].append(np.full(n, first_episode + car, dtype=np.int64))
         parts["step"].append(np.arange(n, dtype=np.int64))
         for name in ("x", "y", "psi", "v"):
@@ -196,14 +204,17 @@ def record_expert(
     seed: int,
     target_laps: int = 2,
     params: ExpertParams = DEFAULT_EXPERT,
+    random_lateral_m: float = RANDOM_START_LATERAL,
+    random_heading_rad: float = RANDOM_START_HEADING,
 ) -> DemoDataset:
     """Let the scripted expert drive and keep what it saw and did.
 
     1. Refuse a held-out track (protocol rule 7: they are never used for training).
     2. Group "exam": one car per fraction x offset (at rest, along the road), one batch.
     3. Group "random" (if ``random_starts`` > 0): that many cars at seeded random starts: arc
-       length uniform on the lap, sideways +-1 m, heading +-0.1 rad, from the ``starts`` stream
-       of ``make_rng(seed)``; one batch.
+       length uniform on the lap, sideways uniform on ±``random_lateral_m`` (default 1 m),
+       heading offset on ±``random_heading_rad`` (default 0.1 rad; wider ranges since the 6.6
+       follow-up, ADR-050), from the ``starts`` stream of ``make_rng(seed)``; one batch.
     4. Each group is one world with the per-track rules for ``target_laps`` and its own
        :class:`ScriptedExpert`, driven by ``run_episode``; its frames are cut out by
        :func:`frames_from_recording`. Episodes are numbered exam starts first.
@@ -218,6 +229,8 @@ def record_expert(
         )
     if random_starts < 0:
         raise ValueError(f"random_starts must be 0 or more, got {random_starts}")
+    if not (random_lateral_m >= 0.0 and random_heading_rad >= 0.0):
+        raise ValueError("the random starts' sideways and heading ranges must be 0 or more")
     config = WorldConfig.for_track(track, target_laps)
     groups: list[tuple[str, World]] = []
     exam_world = World(track, config)
@@ -231,8 +244,8 @@ def record_expert(
             n=random_starts,
             rng=child_rng(make_rng(seed), "starts"),
             random_s0=True,
-            lateral_jitter=RANDOM_START_LATERAL,
-            heading_jitter=RANDOM_START_HEADING,
+            lateral_jitter=random_lateral_m,
+            heading_jitter=random_heading_rad,
         )
         groups.append(("random", random_world))
     if not groups:
@@ -270,8 +283,8 @@ def record_expert(
             "lateral_offsets": list(lateral_offsets),
             "random_starts": random_starts,
             "seed": seed,
-            "random_lateral_m": RANDOM_START_LATERAL,
-            "random_heading_rad": RANDOM_START_HEADING,
+            "random_lateral_m": random_lateral_m,
+            "random_heading_rad": random_heading_rad,
         },
         "episodes": episodes,
         "demo_frames": frames,

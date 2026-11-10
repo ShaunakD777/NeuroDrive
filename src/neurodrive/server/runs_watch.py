@@ -38,6 +38,7 @@ from pydantic import ValidationError
 from neurodrive import __version__
 from neurodrive.experiment.config import (
     ConfigError,
+    DaggerRunConfig,
     RandomSearchRunConfig,
     ToyRunConfig,
     load_config,
@@ -123,7 +124,13 @@ class Launcher:
             except ConfigError:
                 continue
             toy = isinstance(config, ToyRunConfig)
-            by_units = isinstance(config, RandomSearchRunConfig)
+            by_units = isinstance(config, RandomSearchRunConfig | DaggerRunConfig)
+            if isinstance(config, DaggerRunConfig):  # its units are rounds (api v1.19, ADR-049)
+                length = config.dagger.rounds
+            elif isinstance(config, RandomSearchRunConfig):
+                length = config.budget.units
+            else:
+                length = config.training.epochs
             found.append(
                 ConfigInfo(
                     name=path.name,
@@ -132,7 +139,7 @@ class Launcher:
                     seed=config.seed,
                     tag=config.tag,
                     length_field="units" if by_units else "epochs",
-                    length=config.budget.units if by_units else config.training.epochs,
+                    length=length,
                 )
             )
         return found
