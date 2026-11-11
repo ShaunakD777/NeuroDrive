@@ -117,14 +117,14 @@ neurodrive/
 │  │  ├─ car.py                  batched kinematic car physics
 │  │  ├─ sensors.py              batched raycasts + observation builder
 │  │  ├─ world.py                World: reset/step for N cars, termination
-│  │  ├─ feedback.py             the three taps: teacher label, step reward, episode summary
+│  │  ├─ feedback.py             (planned, not built: the teacher label is `experts.py`, the episode summary `experiment/metrics.py`; the step reward comes with Phase 10)
 │  │  ├─ experts.py              scripted expert driver (privileged state)
 │  │  ├─ policies.py             Policy protocol + Keyboard/Neuron/MLP/Expert/Stochastic policies
 │  │  └─ episode.py              episode runner + EpisodeRecording
 │  ├─ learn/
 │  │  ├─ base.py                 Learner contract (v0 since task 3.7), budget counters
 │  │  ├─ supervised/             toy_tasks.py, train_toy.py, datasets.py, demos.py (dataset v1, §6.16), imitation.py, dagger.py
-│  │  ├─ evolution/              random_search.py, genome.py (gene map, genome matrices), ga.py, es.py, neat/ (genome, species, ...)
+│  │  ├─ evolution/              random_search.py, genome.py (gene map, genome matrices), ga.py (evaluation and ranking since 7.2), es.py, neat/ (genome, species, ...)
 │  │  ├─ rl/                     returns.py, gaussian_policy.py, reinforce.py, actor_critic.py, ppo.py
 │  │  └─ hybrid/                 distill.py, pretrain_finetune.py
 │  ├─ experiment/
@@ -268,8 +268,14 @@ ADR and a new version.
 - **Step reward** (reward v1): r_t = 0.1·Δs_t (metres of forward progress this step); add −5 on
   the crash step. Revised in Phase 10 via ADR.
 - **Episode summary** (summary v1): total progress P, laps, crashed (yes/no), steps alive, lap
-  times, mean speed, steering smoothness. **Fitness v1** = P + 200·(laps completed), plus a time
-  bonus of (time_limit − finish_time) if the target laps were completed. Examined in Phase 7.
+  times, mean speed, steering smoothness (as built: `experiment/metrics.py: EpisodeMetrics`, task 5.2).
+  ~~Fitness v1~~ = P + 200·(laps completed) + (time_limit − finish_time) if finished: planned, never
+  implemented, replaced at task 7.2 (ADR-055). **Fitness v2** (random search since task 5.7,
+  ADR-040; the GA since task 7.2): per start f = p + c·(1 − t/T), with p the progress as a share
+  of the target laps in [0, 1], c = 1 for a finish and t its time, T the per-track time limit;
+  a network's fitness F is the mean of f over the evaluation starts (the exam's 10 starts on a
+  training track), 0 ≤ F < 2. `learn/evolution/ga.py: evaluate_genomes` scores and ranks a
+  genome matrix with random search's `evaluate` (best first, ties in index order).
 
 ### 6.8 Network spec and file (network v1)
 - `NetworkSpec`: `layer_sizes` (default [7, 16, 16, 2]), `hidden_activation` (default tanh),

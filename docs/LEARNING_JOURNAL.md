@@ -1754,3 +1754,24 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   in both orders by coincidence.
 - Open question: how often does uniform crossover of two good drivers make a bad child in
   practice, and does it matter once the population descends from one ancestor (7.4, 7.9)?
+
+### 2026-11-11 — Task 7.2 Fitness v1 + population evaluation
+- Concept: fitness as evolution's only view of good driving; batched evaluation of a whole
+  generation in one world; a stable ranking; why only the order of the fitness values matters to
+  tournament and rank selection.
+- Key equation(s) in words: per start f = p + c x (1 - t / T) (progress share, plus time left over
+  for a finisher); F = the mean over the 10 starts; ranking = a stable sort of F, largest first.
+  On one start the planned Fitness v1 (P + 200 laps + (T - t)) orders cars exactly as f does;
+  over several starts they differ: a network finishing once at 60 s and missing at 99 % scores
+  1.169 under f and beats a steady 90 s finisher (1.022), but loses under v1 (1,770.5 vs 1,864).
+- What we observed: the ranking from one batched world matched the ranking from each network's
+  own exam episodes exactly. In a family of the hand-wired neuron and seven noisy copies, a copy
+  with noise 0.3 drove faster than the neuron and ranked first (1.173 vs 1.063); a copy with
+  noise 0.02 reached the end of every drive but too slowly, finishing none (0.997); noise 0.05
+  already crashed at once (0.058), so the ranking did not follow the noise level. Of 50 fresh
+  random networks, 20 scored exactly 0 (they never move and stall), and the best scored 0.17.
+- Surprise or difficulty: my reordering test assumed there would be no ties; random networks
+  that never move tie at exactly 0, and a stable ranking puts tied networks in index order, so
+  the order among them follows the rows. Selection (7.3) must not let the index decide.
+- Open question: with a third of the first generation tied at 0, how much does tie-breaking
+  matter for the first generations of selection?
