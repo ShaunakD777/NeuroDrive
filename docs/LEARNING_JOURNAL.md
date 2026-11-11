@@ -1681,3 +1681,30 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   chosen before looking make DAgger's advantage appear or vanish (T3 and D-1 were decided by the
   pre-registered tie-break)? Which checkpoint rule should imitation use when Phase 8 compares it
   with evolution?
+
+### 2026-11-11 — Task 7.0 Performance check
+- Concept: profiling (measure before optimising); the hot loop; worst case versus typical case;
+  Amdahl's law; timing noise on a processor with performance and efficiency cores.
+- Key equation(s) in words: the budget per step is the wall-clock target divided by the steps,
+  5 s / 1,800 = 2.78 ms (55.6 us per car-step for 50 cars); the sensors do cars x rays x
+  candidate walls = 50 x 5 x 422 = 105,500 ray-wall checks per step; speeding up a part with
+  share p by s makes the whole 1 / ((1 - p) + p / s) faster, so with the sensors at p = 0.87
+  even infinitely fast rays give at most 7.8x.
+- What we observed: the worst-case generation (every car alive for the full 60 s, steered by
+  recorded expert actions while the sensors and 50 networks are still computed) misses the 5 s
+  target: 6.74 s median on a performance core (3.74 ms per step), 10.3 s on an efficiency core.
+  The ray sensors take 87 %, the world step 10 %, the 50 networks only 2.4 %. A typical early
+  generation of random networks costs 0.78 s because they crash or stall within seconds, so a
+  generation gets more expensive as evolution succeeds. The cost per car-step is lowest at
+  10-50 cars (about 65 us) and rises to 88 us at 500 cars, where each temporary array of the ray
+  test is 8 MB and no longer fits in the processor's cache. Prototypes kept all 450,000 readings
+  identical bit for bit: per-direction wall lists made the sensors 2.2-6.6x faster, smaller
+  cells 1.3-1.8x, and removing the padding did nothing (the gathering cost what it saved).
+- Surprise or difficulty: the same run took anywhere from 4.85 s to 10.6 s; Windows moves the
+  process between the i5-13420H's performance and efficiency cores, and the run under cProfile
+  was once faster than the plain runs. Pinning the process to one core made the repeats steady.
+  Numba could not even be imported: Smart App Control blocks its compiled library, as it blocks
+  `nd.exe` and `pre-commit.exe` on this machine.
+- Open question: which optimisation (per-direction wall lists, a process pool, accepting it until
+  the performance pass), and how many starts per network should 7.2 evaluate, given that 10
+  starts make a generation about 10x more expensive?

@@ -761,6 +761,23 @@ What-if overrides and answers belong to one car at one step and are dropped when
   projection search; spatial grid for raycasts; process pool for independent seeds and runs;
   Numba for env hot loops only, via an ADR.
 
+*As measured (task 7.0, `scripts/profile_generation.py`, 2026-11-11):* vectorising, the windowed
+projection search (task 1.5) and the wall grid for the rays (task 1.12) are all in place. The
+**worst case** (50 cars from seeded random starts on `train_loop_01`, all driving the whole
+60 s: the timed pass computes the sensors and 50 different [7, 16, 16, 2] networks but steers
+with recorded expert actions) takes **4.9–7.6 s on a performance core and 10.2–10.6 s on an
+efficiency core** of the development machine (Intel i5-13420H, 4 + 4 cores, 12 threads; Python
+3.12.10, NumPy 2.5.3; 22 runs, 3 under 5 s). So the **target is missed**, by about 1.3× on the
+fast cores and 2× on the slow ones. Of the time, the ray sensors take 85–87 %, the world step
+(physics, projection, termination) 10–12 % and the 50 networks 2–3 %. The cost grows with the
+number of cars: about 65 µs per car-step at 10–50 cars and 85–88 µs at 100–500, of which the
+sensors take 67 % at 10 cars and 96 % at 500. A typical early generation (random networks
+that crash or stall) takes about 0.8 s; one random-search unit (50 networks × 10 starts =
+500 cars, 92 s limit) about 7 s. The live view is far inside its budget (3.7 ms per step for
+50 cars against 33 ms per frame). Numba cannot run on the development machine: Windows Smart
+App Control blocks its compiled library (`_helperlib`). The options are listed in the task 7.0
+Report and ADR-013; none is implemented yet.
+
 ## 10. Testing layers
 See `EXPERIMENT_PROTOCOL.md` §1 for the component verification table.
 - Unit tests for every maths function, against hand-computed values.

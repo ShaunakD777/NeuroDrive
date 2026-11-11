@@ -82,6 +82,15 @@ Alternatives considered · Consequences. Add new records at the bottom. Never de
 
 ### ADR-013 — Numba for environment hot loops
 - **Status:** proposed (decide at task 7.0 only if profiling misses the target).
+- **Context added at task 7.0 (2026-11-11), decision pending with the user:** profiling missed
+  the target. The worst-case generation (50 cars × 60 s) takes 4.9–7.6 s on a performance core
+  and 10.2–10.6 s on an efficiency core, against 5 s, and the ray sensors take 85–87 % of it
+  (ARCHITECTURE §9). A Numba prototype of the ray kernel could not be measured: Windows Smart
+  App Control blocks Numba's compiled library on the development machine, as it blocks other
+  unsigned binaries there (CLAUDE.md §6). A pure-NumPy prototype that gives every grid cell and
+  ray direction its own wall list (conservative, so it leaves out only walls that no ray can
+  reach) kept all 450,000 ray readings of a worst-case generation identical bit for bit and made
+  the sensors 2.2–6.6× faster. The options are in the task 7.0 Report.
 
 ### ADR-014 — Version control on GitHub, with a secret-free repository
 - **Status:** accepted (2026-10-10)
