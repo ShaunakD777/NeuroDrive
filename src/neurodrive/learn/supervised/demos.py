@@ -432,6 +432,165 @@ class DemoRecorder:
         return DemoDataset(meta=meta, **arrays)
 
 
+def record_expert_from_starts(
+    track: Track,
+    source: DemoDataset,
+    *,
+    match_frames: bool,
+    target_laps: int = 2,
+    params: ExpertParams = DEFAULT_EXPERT,
+) -> DemoDataset:
+    """Let the scripted expert drive from the starts another dataset used (task 6.7, ADR-052).
+
+    Episode i of ``source`` has a start pose (arc length, sideways offset, heading offset, speed).
+    The expert drives from that same pose, all episodes as one batch, and its frames are cut out
+    by :func:`frames_from_recording`. With ``match_frames`` only its first n_i frames of episode
+    i are kept, n_i being the number of frames of ``source``'s episode i, so the two datasets
+    have the same starts and the same size. Example: source episodes of 3 and 5 frames give the
+    expert's first 3 and first 5 frames, F = 8 in both. They are the expert's own states, not the
+    source teacher's. An episode cut short that way has status ``truncated``; without
+    ``match_frames`` every drive runs to its own end. Held-out tracks are refused (rule 7).
+    """
+    if track.split != "train":
+        raise ValueError(
+            f"{track.name!r} is a held-out track; demonstrations may only use training tracks "
+            "(EXPERIMENT_PROTOCOL rule 7)"
+        )
+    if source.meta.get("track") != track.name:
+        raise ValueError(
+            f"the source dataset was recorded on {source.meta.get('track')!r}, not {track.name!r}"
+        )
+    episodes = source.meta["episodes"]
+    if not episodes:
+        raise ValueError("the source dataset has no episodes")
+    config = WorldConfig.for_track(track, target_laps)
+    world = World(track, config)
+    world.reset(
+        s0=[e["start_s0_m"] for e in episodes],
+        lateral=[e["start_lateral_m"] for e in episodes],
+        heading_offset=[e["start_heading_offset_rad"] for e in episodes],
+        speed=[e["start_speed_mps"] for e in episodes],
+    )
+    recording = run_episode(world, ScriptedExpert(world, params), seed=None)
+    arrays = frames_from_recording(recording)
+    own = driven_steps(recording)
+    limit = np.array([e["frames"] for e in episodes], dtype=np.int64)
+    if match_frames:
+        keep = arrays["step"] < limit[arrays["episode"]]
+        arrays = {name: value[keep] for name, value in arrays.items()}
+    kept = np.bincount(arrays["episode"], minlength=len(episodes))
+    records = []
+    for i, e in enumerate(episodes):
+        cut = match_frames and kept[i] < own[i]
+        records.append(
+            {
+                "index": i,
+                "start_kind": "from_dataset",
+                "source_index": e["index"],
+                "start_s0_m": float(recording.start_s0[i]),
+                "start_lateral_m": float(recording.start_lateral[i]),
+                "start_heading_offset_rad": float(recording.start_heading_offset[i]),
+                "start_speed_mps": float(recording.start_speed[i]),
+                "status": "truncated" if cut else Status(int(recording.status[i])).name.lower(),
+                "frames": int(kept[i]),
+            }
+        )
+    frames = int(arrays["observation"].shape[0])
+    meta = {
+        "dataset_version": DATASET_VERSION,
+        "teacher": {"kind": "expert", "params": asdict(params)},
+        "track": track.name,
+        "track_split": track.split,
+        "starts": {
+            "kind": "from_dataset",
+            "source_dataset": source.meta.get("dataset_id"),
+            "match_frames": match_frames,
+        },
+        "episodes": records,
+        "demo_frames": frames,
+        "env_steps": frames,
+        "straight_share": straight_share(arrays["label"]),
+        "observation_version": OBSERVATION_VERSION,
+        "observation_names": list(OBSERVATION_NAMES),
+        "action_version": ACTION_VERSION,
+        "action_names": list(ACTION_NAMES),
+        "physics_version": PHYSICS_VERSION,
+        "dt": world.dt,
+        "world_config": asdict(config),
+        "car_params": asdict(world.params),
+    }
+    return DemoDataset(meta=meta, **arrays)
+
+
+_SAME_IN_ALL = (
+    "track",
+    "observation_version",
+    "action_version",
+    "physics_version",
+    "dt",
+    "world_config",
+    "car_params",
+)
+
+
+def merge_datasets(datasets: list[DemoDataset]) -> DemoDataset:
+    """Join several datasets of one teacher into one (task 6.7, ADR-052).
+
+    1. Refuse fewer than one dataset, a mix of teachers, or datasets that differ in track,
+       contract versions, time step, world rules or car parameters.
+    2. Put their rows one after the other, renumbering episodes 0 .. k - 1 in order. Every episode
+       keeps ``source_dataset`` (the source's id) and ``source_index`` (its number there).
+    3. ``demo_frames`` and ``env_steps`` are the sums, ``straight_share`` is recomputed.
+
+    Example: datasets of 3 + 5 frames (two episodes) and 4 frames (one episode) give 12 frames
+    and episodes 0, 1, 2 with 3, 5 and 4 frames.
+    """
+    if not datasets:
+        raise ValueError("nothing to merge: give at least one dataset")
+    first = datasets[0].meta
+    for d in datasets[1:]:
+        if d.meta["teacher"] != first["teacher"]:
+            raise ValueError(
+                f"cannot merge different teachers: {first['teacher']['kind']!r} and "
+                f"{d.meta['teacher']['kind']!r}"
+            )
+        for key in _SAME_IN_ALL:
+            if d.meta.get(key) != first.get(key):
+                raise ValueError(f"cannot merge datasets that differ in {key!r}")
+    episodes: list[dict[str, Any]] = []
+    parts: dict[str, list[np.ndarray]] = {name: [] for name in _ARRAY_FIELDS}
+    for d in datasets:
+        offset = len(episodes)
+        for e in d.meta["episodes"]:
+            episodes.append(
+                {
+                    **e,
+                    "index": offset + e["index"],
+                    "source_dataset": d.meta.get("dataset_id"),
+                    "source_index": e["index"],
+                }
+            )
+        for name in _ARRAY_FIELDS:
+            values = getattr(d, name)
+            parts[name].append(values + offset if name == "episode" else values)
+    arrays = {name: np.concatenate(chunks) for name, chunks in parts.items()}
+    frames = int(arrays["observation"].shape[0])
+    meta = {
+        "dataset_version": DATASET_VERSION,
+        "teacher": first["teacher"],
+        **{key: first[key] for key in _SAME_IN_ALL},
+        "track_split": first["track_split"],
+        "starts": {"kind": "merged", "sources": [d.meta.get("dataset_id") for d in datasets]},
+        "episodes": episodes,
+        "demo_frames": frames,
+        "env_steps": frames,
+        "straight_share": straight_share(arrays["label"]),
+        "observation_names": first["observation_names"],
+        "action_names": first["action_names"],
+    }
+    return DemoDataset(meta=meta, **arrays)
+
+
 def save_dataset(
     dataset: DemoDataset,
     out_dir: str | Path,

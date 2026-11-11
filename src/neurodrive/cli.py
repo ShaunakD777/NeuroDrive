@@ -6,6 +6,7 @@ Each subcommand is one thing you can ask NeuroDrive to do from a terminal. ``ver
 """
 
 from pathlib import Path
+from typing import Annotated
 
 import typer
 
@@ -418,6 +419,16 @@ def demo_record(
     start_heading: float = typer.Option(
         0.1, help="Random starts are turned by up to this many radians (default 0.1)."
     ),
+    starts_from: str | None = typer.Option(
+        None,
+        help="A dataset id or <teacher>-<tag>: the expert drives from the starts that dataset "
+        "used, one drive per episode (task 6.7; the exam and random starts are not used).",
+    ),
+    match_frames: bool = typer.Option(
+        False,
+        help="With --starts-from: keep only as many frames of each drive as the source's "
+        "episode has.",
+    ),
     tag: str = typer.Option("default", help="Label in the dataset folder's name."),
     out_dir: str = typer.Option("data/demos", help="Folder to create the dataset folder in."),
 ) -> None:
@@ -425,7 +436,13 @@ def demo_record(
     from neurodrive.env.track import Track
     from neurodrive.experiment.exam import DEFAULT_TRACKS_DIR, EXAM_V1
     from neurodrive.experiment.store import _git_info
-    from neurodrive.learn.supervised.demos import record_expert, save_dataset
+    from neurodrive.learn.supervised.demos import (
+        DemoDataset,
+        find_dataset,
+        record_expert,
+        record_expert_from_starts,
+        save_dataset,
+    )
 
     try:
         if teacher != "expert":
@@ -436,18 +453,29 @@ def demo_record(
         path = DEFAULT_TRACKS_DIR / f"{track}.json"
         if not path.is_file():
             raise ValueError(f"unknown track {track!r}")
-        dataset = record_expert(
-            Track.from_json(path),
-            start_fractions=EXAM_V1.start_fractions,
-            lateral_offsets=EXAM_V1.lateral_offsets,
-            random_starts=random_starts,
-            seed=seed,
-            target_laps=EXAM_V1.target_laps,
-            random_lateral_m=start_lateral,
-            random_heading_rad=start_heading,
-        )
+        if match_frames and starts_from is None:
+            raise ValueError("--match-frames needs --starts-from")
+        if starts_from is not None:
+            source = DemoDataset.load(find_dataset(out_dir, starts_from))
+            dataset = record_expert_from_starts(
+                Track.from_json(path),
+                source,
+                match_frames=match_frames,
+                target_laps=EXAM_V1.target_laps,
+            )
+        else:
+            dataset = record_expert(
+                Track.from_json(path),
+                start_fractions=EXAM_V1.start_fractions,
+                lateral_offsets=EXAM_V1.lateral_offsets,
+                random_starts=random_starts,
+                seed=seed,
+                target_laps=EXAM_V1.target_laps,
+                random_lateral_m=start_lateral,
+                random_heading_rad=start_heading,
+            )
         folder = save_dataset(dataset, out_dir, tag, provenance=_git_info())
-    except ValueError as exc:
+    except (ValueError, FileNotFoundError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=2) from None
     meta = dataset.meta
@@ -461,6 +489,45 @@ def demo_record(
         f"({', '.join(f'{n} {s}' for s, n in sorted(outcomes.items()))}); {size / 1e6:.1f} MB"
     )
     typer.echo(f"nearly straight (|steer| < 0.1): {meta['straight_share']:.3f} of the frames")
+
+
+@app.command("demo-merge")
+def demo_merge(
+    datasets: Annotated[
+        list[str],
+        typer.Argument(
+            help="Dataset ids, or <teacher>-<tag> for the newest such dataset, in this order."
+        ),
+    ],
+    tag: str = typer.Option("merged", help="Label in the new dataset folder's name."),
+    datasets_dir: str = typer.Option("data/demos", help="Folder holding the datasets."),
+) -> None:
+    """Join datasets of one teacher into one new dataset (the sources are left as they are)."""
+    from neurodrive.experiment.store import _git_info
+    from neurodrive.learn.supervised.demos import (
+        DemoDataset,
+        find_dataset,
+        merge_datasets,
+        save_dataset,
+    )
+
+    try:
+        sources = [DemoDataset.load(find_dataset(datasets_dir, name)) for name in datasets]
+        merged = merge_datasets(sources)
+        folder = save_dataset(
+            merged,
+            datasets_dir,
+            tag,
+            provenance={**_git_info(), "merged_from": merged.meta["starts"]["sources"]},
+        )
+    except (ValueError, FileNotFoundError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=2) from None
+    typer.echo(f"dataset folder: {folder.as_posix()}")
+    typer.echo(
+        f"frames: {merged.n_frames:,} from {len(merged.meta['episodes'])} episodes "
+        f"of {len(sources)} datasets"
+    )
 
 
 db_app = typer.Typer(

@@ -1626,3 +1626,30 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   so the server builds the file name and only validates the tag.
 - Open question: how different will a clone of these nine-valued labels be from the expert's
   clone, and does DAgger help a human teacher more or less? That is Study S5c (6.7).
+
+### 2026-11-11 — Task 6.7 Study S5c: teachers, DAgger
+- Concept: a controlled comparison needs the same starts and the same amount of data. The
+  scripted expert drove from the 22 starting poses the person had driven and kept as many
+  frames per drive as the person (a matched dataset); DAgger and a plain clone were compared at
+  about equal numbers of expert labels (the clone's 196,765 frames against DAgger's 39,338
+  demonstrations plus about 164,000 teacher queries, a ratio of 0.97).
+- Key equation(s) in words: for each seed, the difference of the two arms' held-out progress;
+  the study reports the median of those 10 differences and a bootstrap interval; an interval
+  that contains 0 means no clear difference.
+- What we observed: the person's labels are bang-bang (three distinct steering values, 75 % at
+  full lock, 60 times the expert's step-to-step steering change), and a clone of them never lapped the training
+  loop in any of 10 seeds and scored 0.08 on the held-out tracks, below the hand-wired neuron.
+  The matched expert clone beat it in every seed (median +0.42, interval excluding 0) but was
+  bimodal (5 seeds at 0.7 or more, 5 at 0.10-0.25). DAgger-wide was not clearly better than a
+  wide clone (+0.11, interval -0.12 to +0.45); and DAgger on the person's data lifted the clone
+  from 0.08 to 0.23 and made it lap the training loop in 9 of 10 seeds.
+- Surprise or difficulty: the pre-registered checkpoint rule (the lowest validation loss among
+  the checkpoints that lap the training loop best) picked late epochs for the big datasets, and
+  the wide clone scored 0.12 with it and 0.75 with the post hoc earliest-lap rule. The choice
+  of epoch moved the result six-fold, more than the choice of method, so two of my hypotheses
+  (T3, D-1) were decided by the tie-break. Also found while writing the Brief: one recording
+  session has one start, which I had told the user wrongly; `nd demo-merge` fixed it.
+- Open question: would a smoother human demonstration (a gamepad, or a filtered keyboard) lift
+  the human clone, and does an early-epoch rule chosen before looking make DAgger's advantage
+  appear or vanish? Phase 8 will compare imitation with evolution; which checkpoint rule to use
+  for imitation there is still open.
