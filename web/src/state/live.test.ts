@@ -39,6 +39,7 @@ const scenario: ScenarioMessage = {
   n_cars: 1,
   seed: null,
   checkpoint: null,
+  start_shift: null,
   dt: 1 / 30,
   time_limit: 90,
   target_laps: 2,
@@ -144,9 +145,18 @@ describe("live store: commands", () => {
       n_cars: 1,
       seed: null,
       checkpoint: null,
+      start_shift: null,
     });
     expect(sent).toEqual([
-      { type: "load_scenario", track: "train_loop_01", policy: "keyboard", n_cars: 1, seed: null, checkpoint: null },
+      {
+        type: "load_scenario",
+        track: "train_loop_01",
+        policy: "keyboard",
+        n_cars: 1,
+        seed: null,
+        checkpoint: null,
+        start_shift: null,
+      },
     ]);
   });
 
@@ -163,6 +173,7 @@ describe("live store: commands", () => {
       n_cars: 5,
       seed: 7,
       checkpoint: null,
+      start_shift: null,
     });
     loadScenario({ seed: null }); // null means "fixed start", it is not "unchanged"
     expect(sent.at(-1)).toMatchObject({ n_cars: 5, seed: null });
@@ -176,6 +187,21 @@ describe("live store: commands", () => {
     useLive.setState({ ...initialLive, tracks: [{ name: "first_track", split: "train" }] });
     useLive.getState().loadScenario({});
     expect(sent.at(-1)).toMatchObject({ track: "first_track", policy: "keyboard", n_cars: 1 });
+  });
+
+  it("keeps a start shift between the checkpoint and expert drivers and drops it for others", () => {
+    // Task 6.5, ADR-048: the shift moves the exam starts, so only those two drivers use it.
+    const { loadScenario } = useLive.getState();
+    const shift = { lateral_m: -3, heading_rad: 0.2618 };
+    const checkpoint = { run: "r", unit: 2 };
+    loadScenario({ track: "train_loop_01", policy: "checkpoint", checkpoint, start_shift: shift });
+    expect(sent.at(-1)).toMatchObject({ policy: "checkpoint", checkpoint, start_shift: shift });
+    loadScenario({ policy: "expert" });
+    expect(sent.at(-1)).toMatchObject({ policy: "expert", checkpoint: null, start_shift: shift });
+    loadScenario({ policy: "constant" });
+    expect(sent.at(-1)).toMatchObject({ policy: "constant", start_shift: null });
+    loadScenario({ policy: "checkpoint", checkpoint, start_shift: null });
+    expect(sent.at(-1)).toMatchObject({ policy: "checkpoint", start_shift: null });
   });
 
   it("can ask for the neuron driver and keeps it when other settings change", () => {
@@ -330,5 +356,27 @@ describe("live store: replaying a checkpoint (task 5.9)", () => {
     loadScenario({ track: "train_loop_01", policy: "checkpoint", checkpoint: ref });
     loadScenario({ policy: "random_networks" });
     expect(sent.at(-1)).toMatchObject({ policy: "random_networks", checkpoint: null });
+  });
+});
+
+describe("live store: keyboard recording (task 6.1b)", () => {
+  beforeEach(() => useLive.setState({ ...initialLive }));
+
+  it("keeps the recording counts while it is on and forgets them when it is off", () => {
+    const { receive } = useLive.getState();
+    receive({ type: "recording", on: true, episodes: 1, frames: 8 });
+    expect(useLive.getState().recording).toMatchObject({ episodes: 1, frames: 8 });
+    receive({ type: "dataset_saved", dataset_id: "20261111-120000-keyboard-me", frames: 8, episodes: 1 });
+    receive({ type: "recording", on: false, episodes: 0, frames: 0 });
+    expect(useLive.getState().recording).toBeNull();
+    expect(useLive.getState().savedDataset?.frames).toBe(8); // the note stays until the next recording
+    receive({ type: "recording", on: true, episodes: 0, frames: 0 });
+    expect(useLive.getState().savedDataset).toBeNull();
+  });
+
+  it("a lost connection ends the recording (the server's session is gone)", () => {
+    useLive.getState().receive({ type: "recording", on: true, episodes: 1, frames: 3 });
+    useLive.getState().setStatus("disconnected");
+    expect(useLive.getState().recording).toBeNull();
   });
 });

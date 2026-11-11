@@ -22,6 +22,7 @@ from neurodrive.experiment.exam import (
     exam_track,
     format_card,
     run_exam,
+    shifted_starts,
 )
 from neurodrive.experiment.metrics import episode_metrics
 
@@ -61,6 +62,24 @@ def test_starts_match_the_worked_example():
     expected = [0.0, 146.1, 292.3, 438.4, 584.6]
     assert s0 == pytest.approx(expected * 2, abs=0.05)
     assert lateral.tolist() == [0.0] * 5 + [1.5] * 5
+
+
+def test_shifted_starts_match_the_worked_example():
+    # Task 6.5 Brief 4a: delta = -3 m, theta = 15 deg on train_loop_01.
+    length = load("train_loop_01").length
+    s0, lateral, heading = shifted_starts(length, -3.0, np.radians(15.0))
+    assert s0.tolist() == exam_starts(length)[0].tolist()
+    assert s0[1] == pytest.approx(146.1, abs=0.05) and s0[6] == s0[1]
+    assert lateral[1] == -3.0 and lateral[6] == -1.5
+    assert heading.tolist() == [np.radians(15.0)] * 10
+
+
+def test_no_shift_is_the_exam():
+    length = load("hairpins_01").length
+    s0, lateral, heading = shifted_starts(length, 0.0, 0.0)
+    exam_s0, exam_lateral = exam_starts(length)
+    assert s0.tolist() == exam_s0.tolist() and lateral.tolist() == exam_lateral.tolist()
+    assert heading.tolist() == [0.0] * 10
 
 
 # ── a card is what the recorded drives say ──────────────────────────────────────────────────

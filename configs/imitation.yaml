@@ -1,0 +1,30 @@
+# Imitation (behavioural cloning, task 6.3, ADR-047): train the driving network to output the
+# teacher's (steer, throttle) for each recorded observation, by gradient descent on the MSE.
+# Record a dataset first:  uv run python -m neurodrive demo-record --teacher expert
+# Train:   uv run python -m neurodrive train --config configs/imitation.yaml
+# Resume:  uv run python -m neurodrive resume --run runs/<run_id>
+# Format: docs/ARCHITECTURE.md section 6.15 (config v1).
+method: imitation
+seed: 0
+tag: default
+network:                    # the same driving network as random search (fair-comparison rule 2)
+  layer_sizes: [7, 16, 16, 2]
+  hidden_activation: tanh
+  output_activation: tanh
+  init_scheme: xavier
+data:
+  dataset: expert-default   # a dataset id, or <teacher>-<tag>: the newest such one in data/demos/
+  sha256: null              # the run folder's config fills in the exact dataset and its checksum
+  val_fraction: 0.2         # share of whole episodes held back for validation (4 of 20)
+training:
+  epochs: 100               # one unit = one pass over the training frames
+  loss: mse
+  batch_size: 256           # about 123 Adam steps per epoch on the 6.1a dataset
+optimizer:
+  name: adam
+  learning_rate: 0.003
+  beta1: 0.9
+  beta2: 0.999
+  eps: 1.0e-08
+checkpoint_every: 1         # a checkpoint and a Driving Exam after every epoch (about 15 s each)
+exams: true

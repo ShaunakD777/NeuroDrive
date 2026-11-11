@@ -4,6 +4,8 @@ import type {
   CheckpointList,
   CompareResponse,
   ConfigListResponse,
+  DatasetDetail,
+  DatasetListResponse,
   ExamCardResponse,
   LaunchRequest,
   LaunchResponse,
@@ -86,6 +88,21 @@ export async function fetchToyCheckpoint(runId: string, unit: number): Promise<T
 export async function fetchCompare(runIds: readonly string[], metric: "loss" | "val_loss"): Promise<CompareResponse> {
   const ids = runIds.map(encodeURIComponent).join(",");
   return getJson<CompareResponse>(`/api/runs/compare?ids=${ids}&metric=${metric}`);
+}
+
+// Demonstration datasets (api v1.15, task 6.2, ADR-045): read-only, like the run folders.
+
+/** Every dataset folder in `data/demos/`, newest first (`GET /api/datasets`). */
+export async function fetchDatasets(): Promise<DatasetListResponse> {
+  return getJson<DatasetListResponse>("/api/datasets");
+}
+
+/**
+ * One dataset's metadata, label and observation histograms and thinned map, computed by the
+ * server (`GET /api/datasets/{id}`).
+ */
+export async function fetchDataset(datasetId: string): Promise<DatasetDetail> {
+  return getJson<DatasetDetail>(`/api/datasets/${encodeURIComponent(datasetId)}`);
 }
 
 // Launching and stopping training runs (api v1.13, task 5.8, ADR-041). The server starts the

@@ -15,6 +15,12 @@ One training run is one roll of the dice, so results are summarised over several
   n results, take each sample's median, and report the 2.5th and 97.5th percentiles of those R
   medians. For a difference "A − B" each draw records median(A) − median(B). The generator is
   passed in, so an interval is reproducible.
+* **Pairwise agreement** (task 6.4) of a loss with a score, over the checkpoints of one run: of
+  the pairs of checkpoints whose losses differ and whose scores differ, the share in which the
+  lower-loss one has the higher score. 1 means the loss ranks the checkpoints exactly as the
+  score does, 0.5 a coin flip, below 0.5 the wrong way round. Losses (0.10, 0.08, 0.05, 0.03)
+  with scores (0.6, 0.8, 0.3, 0.3): 1 pair agrees, 4 disagree, 1 is left out (equal scores),
+  so the agreement is 1 / 5 = 0.2.
 
 Same rules as the study scripts, so a report and the web view never disagree (ADR-033).
 """
@@ -200,3 +206,36 @@ def bootstrap_median_difference(
         estimate = summarise(va).median - summarise(vb).median
     low, high = _interval_bounds(diffs, level)
     return Interval(float(estimate), low, high, level)
+
+
+@dataclass(frozen=True)
+class Agreement:
+    """How a loss ranks checkpoints against a score (see the module docstring).
+
+    ``agree`` / ``disagree``: pairs in which the lower-loss checkpoint has the strictly higher /
+    strictly lower score. ``left_out``: pairs with equal losses or equal scores. ``share``:
+    agree / (agree + disagree), or None when no pair counts.
+    """
+
+    agree: int
+    disagree: int
+    left_out: int
+    share: float | None
+
+
+def pairwise_agreement(loss: ArrayLike, score: ArrayLike) -> Agreement:
+    """Pairwise agreement of ``loss`` (lower is better) with ``score`` (higher is better).
+
+    ``loss[i]`` and ``score[i]`` belong to the same checkpoint i. Every pair i < j is looked at
+    once: with d_loss = loss[j] − loss[i] and d_score = score[j] − score[i], the pair agrees when
+    the two have opposite signs (lower loss, higher score), disagrees when they have the same sign,
+    and is left out when either is 0.
+    """
+    lv, sv = _values(loss), _values(score)
+    if lv.size != sv.size:
+        raise ValueError(f"need one score per loss, got {lv.size} and {sv.size}")
+    i, j = np.triu_indices(lv.size, k=1)
+    product = np.sign(lv[j] - lv[i]) * np.sign(sv[j] - sv[i])
+    agree, disagree = int(np.sum(product < 0)), int(np.sum(product > 0))
+    counted = agree + disagree
+    return Agreement(agree, disagree, int(i.size - counted), agree / counted if counted else None)

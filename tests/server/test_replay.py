@@ -1,7 +1,9 @@
-"""Tests for replaying checkpoints and the run timeline's endpoints (task 5.9, ADR-042, api v1.14).
+"""Tests for replaying checkpoints and the run timeline's endpoints (task 5.9, ADR-042, api v1.14),
+and for replays from shifted starts (task 6.5, ADR-048, api v1.18).
 
 The central check: a checkpoint loaded as a live driver and played to the end drives exactly the
-exam drive its card was made from, car for car, to the last digit.
+exam drive its card was made from, car for car, to the last digit. From shifted starts it drives
+exactly what Study S5b's own drive of the same network from the same starts gives.
 """
 
 import json
@@ -13,8 +15,13 @@ from fastapi.testclient import TestClient
 
 from neurodrive.core.nn.network import Network
 from neurodrive.core.nn.spec import NetworkSpec
-from neurodrive.env.world import Status
+from neurodrive.env.episode import run_episode
+from neurodrive.env.experts import ScriptedExpert
+from neurodrive.env.policies import MLPPolicy
+from neurodrive.env.track import Track
+from neurodrive.env.world import Status, World, WorldConfig
 from neurodrive.experiment.config import load_config, parse_config
+from neurodrive.experiment.exam import shifted_starts
 from neurodrive.experiment.runner import train_random_search_run, train_toy_run
 from neurodrive.experiment.store import RunStore
 from neurodrive.server.app import create_app
@@ -142,6 +149,86 @@ def test_refused_checkpoints_keep_the_loaded_scenario(runs):
     assert reply.type == "error" and "no run folders" in reply.message
 
 
+# ── shifted starts (task 6.5, ADR-048) ────────────────────────────────────────────────────────
+
+
+def drive_shifted(track_name: str, policy_for, lateral: float, heading: float) -> World:
+    """The study's drive, made without the server: the 10 shifted exam starts as one batch."""
+    track = Track.from_json(TRACKS / f"{track_name}.json")
+    world = World(track, WorldConfig.for_track(track, 2))
+    s0, lat, psi = shifted_starts(track.length, lateral, heading)
+    world.reset(s0=s0, lateral=lat, heading_offset=psi)
+    run_episode(world, policy_for(world))
+    return world
+
+
+def assert_same_ending(session: LiveSession, direct: World) -> None:
+    world = session._world
+    session._advance(10**7)  # play to the end
+    assert world.done and world.step_count == direct.step_count
+    assert world.status.tolist() == direct.status.tolist()
+    assert world.progress.tolist() == direct.progress.tolist()  # to the last digit
+
+
+@pytest.mark.parametrize("shift", [(-3.0, 0.2618), (1.5, -0.5236)])
+def test_a_shifted_replay_drives_exactly_the_studys_drive(runs, shift):
+    store = run_of(runs, "random_search")
+    unit = store.checkpoint_units()[-1]
+    session = session_for(runs)
+    lateral, heading = shift
+    replies = send(
+        session,
+        type="load_scenario",
+        track="train_loop_01",
+        policy="checkpoint",
+        checkpoint={"run": store.path.name, "unit": unit},
+        start_shift={"lateral_m": lateral, "heading_rad": heading},
+    )
+    scenario = replies[0]
+    assert scenario.type == "scenario" and scenario.n_cars == 10
+    assert (scenario.start_shift.lateral_m, scenario.start_shift.heading_rad) == shift
+    start = session._world.start
+    assert start["lateral"].tolist() == [lateral] * 5 + [1.5 + lateral] * 5
+    assert start["heading_offset"].tolist() == [heading] * 10
+    network = store.load_checkpoint(unit)
+    direct = drive_shifted("train_loop_01", lambda w: MLPPolicy(network), lateral, heading)
+    assert_same_ending(session, direct)
+    (reset,) = send(session, type="reset")  # Reset keeps the shift
+    assert session._world.start["heading_offset"].tolist() == [heading] * 10
+
+
+def test_the_expert_drives_the_same_shifted_starts(runs):
+    session = session_for(runs)
+    replies = send(
+        session,
+        type="load_scenario",
+        track="train_loop_01",
+        policy="expert",
+        n_cars=3,
+        seed=5,
+        start_shift={"lateral_m": -3.0, "heading_rad": 0.2618},
+    )
+    assert replies[0].n_cars == 10 and replies[0].seed is None
+    assert_same_ending(session, drive_shifted("train_loop_01", ScriptedExpert, -3.0, 0.2618))
+
+
+def test_a_shift_without_the_checkpoint_or_expert_driver_is_refused(runs):
+    session = session_for(runs)
+    send(session, type="load_scenario", track="train_loop_01", policy="constant", n_cars=3)
+    shift = {"lateral_m": 1.0, "heading_rad": 0.0}
+    (reply,) = send(
+        session, type="load_scenario", track="train_loop_01", policy="neuron", start_shift=shift
+    )
+    assert reply.type == "error" and "start_shift" in reply.message
+    assert session._scenario.policy == "constant" and len(session._world.cars.x) == 3
+    for bad in ({"lateral_m": 6.0, "heading_rad": 0.0}, {"lateral_m": 0.0, "heading_rad": 2.0}):
+        (reply,) = send(
+            session, type="load_scenario", track="train_loop_01", policy="expert", start_shift=bad
+        )
+        assert reply.type == "error"
+        assert session._scenario.policy == "constant"
+
+
 # ── new bests get a checkpoint (D2) ────────────────────────────────────────────────────────────
 
 
@@ -210,7 +297,7 @@ def test_a_checkpoint_replay_over_the_live_socket(runs):
     store = run_of(runs, "random_search")
     with TestClient(create_app(runs_dir=runs)) as client:
         with client.websocket_connect("/ws/live") as ws:
-            assert json.loads(ws.receive_text())["api"] == "v1.14"
+            assert json.loads(ws.receive_text())["api"] == "v1.20"
             ws.send_text(
                 json.dumps(
                     {

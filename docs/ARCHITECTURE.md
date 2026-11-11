@@ -123,7 +123,7 @@ neurodrive/
 │  │  └─ episode.py              episode runner + EpisodeRecording
 │  ├─ learn/
 │  │  ├─ base.py                 Learner contract (v0 since task 3.7), budget counters
-│  │  ├─ supervised/             toy_tasks.py, train_toy.py, datasets.py, demos.py, imitation.py, dagger.py
+│  │  ├─ supervised/             toy_tasks.py, train_toy.py, datasets.py, demos.py (dataset v1, §6.16), imitation.py, dagger.py
 │  │  ├─ evolution/              random_search.py, ga.py, es.py, neat/ (genome, species, ...)
 │  │  ├─ rl/                     returns.py, gaussian_policy.py, reinforce.py, actor_critic.py, ppo.py
 │  │  └─ hybrid/                 distill.py, pretrain_finetune.py
@@ -132,6 +132,7 @@ neurodrive/
 │  │  ├─ runner.py               training loop orchestration, checkpoint & exam schedules
 │  │  ├─ store.py                run folder read/write
 │  │  ├─ toy_view.py             toy lab numbers for one checkpoint: predictions, loss, gradients, glow
+│  │  ├─ dataset_view.py         dataset inspector numbers: label/observation histograms, covered ranges, map rows
 │  │  ├─ db.py                   SQLite mirror: schema, insert/update, rebuild, check
 │  │  ├─ exam.py                 the Driving Exam
 │  │  ├─ metrics.py              driving metric definitions
@@ -146,6 +147,7 @@ neurodrive/
 │  │  ├─ schemas.py              Pydantic message models (source for TS types)
 │  │  ├─ live.py                 live sessions over WebSocket
 │  │  ├─ runs.py                 run folders as REST answers (read-only, api v1.10)
+│  │  ├─ datasets.py             demonstration datasets as REST answers (read-only, api v1.15/v1.16)
 │  │  └─ runs_watch.py           launching training processes, watching run folders, /ws/runs
 │  └─ cli.py                     `nd serve | train | sweep | exam | demo-record | ...`
 ├─ tests/                        mirrors src/neurodrive (core/, env/, learn/, experiment/, explain/, server/)
@@ -159,7 +161,7 @@ neurodrive/
 │  ├─ src/state/                 selection store, layout store (Page/Split/All, drawers), playback clock
 │  ├─ src/views/environment/     canvas renderer, trails, HUD, population mode
 │  ├─ src/views/network/         SVG diagram, output inspector, what-if panel, diff
-│  ├─ src/views/experiment/      toy lab (ToyLab, LossChart, ...), Compare runs (CompareRuns, RunList, CompareChart), Training (TrainingRuns, LiveChart; task 5.8); later timeline
+│  ├─ src/views/experiment/      toy lab (ToyLab, LossChart, ...), Compare runs (CompareRuns, RunList, CompareChart), Training (TrainingRuns, LiveChart; task 5.8), Timeline (task 5.9), Datasets (DatasetView; task 6.2)
 │  └─ src/components/            shared UI pieces
 └─ docs/                         concept, architecture, roadmap, checklist, protocol, journal ...
 ```
@@ -313,7 +315,7 @@ rebuilds the same world. Replaying the actions reproduces every array bit for bi
 ### 6.12 Learner contract (learner v1)
 *Version 0 (task 3.7, ADR-030): `learn/base.py` without save/restore; wall-clock time measured by the runner; `experiment/runner.py` v0 owns a minimal loop.*
 
-*Version 1 (task 5.5, ADR-037):* save/restore is the optional `Resumable` protocol: `state()` → `LearnerState` (named NumPy arrays + a JSON-friendly `info` dict holding counters and every generator's state, `generator_state`), `restore(state)`. A learner without it trains but cannot resume. `experiment/runner.py` v1: `run(learner, store, budget, exams)` and `resume(learner, store)`; `Budget(units, env_steps, wall_clock_s)`, any limit stops the run after the unit that reaches it (overshoot ≤ 1 unit); checkpoint schedule 0, 1, 2, 5, 10, 20, 50, … plus the last unit; at every checkpoint the Driving Exam runs when exams are on and the network drives (7 → 2), its time kept out of the training clock (`exam_wall_clock_s`). Order within a unit: train → metrics line → checkpoint + exam → state (last). Resume cuts the folder back to the state's unit and continues; a killed run (status running) or a failed one can be resumed, identically except for wall-clock times. Since task 5.5b (ADR-038) the wall-clock limit is compared with the training time recorded in the last metrics line, like the step totals, so a run stops after the first unit whose line reaches the limit; the database mirror's time, like exam time, is kept out of the training clock. Since task 5.8 (ADR-041) the runner also stops before the next unit when the run folder holds a stop request (the file `stop_requested`): stop reason `stopped`, status `completed`, the last unit checkpointed and examined like any last unit; the request is removed before the final status is written, and `resume` removes an old one before continuing. `train_toy_run` and `train_random_search_run` take `on_start(store)`, called as soon as the folder exists. Since task 5.9 (ADR-042) `UnitResult` has an optional `new_best` flag: a unit that reports a new best network (`current_networks()[0]`) is checkpointed, and examined, even when it is not on the schedule, so the run timeline shows every improvement; random search sets it when it improves (expected number of such units in n units: the harmonic number H_n, about 5 per 100), the toy learner never does.
+*Version 1 (task 5.5, ADR-037):* save/restore is the optional `Resumable` protocol: `state()` → `LearnerState` (named NumPy arrays + a JSON-friendly `info` dict holding counters and every generator's state, `generator_state`), `restore(state)`. A learner without it trains but cannot resume. `experiment/runner.py` v1: `run(learner, store, budget, exams)` and `resume(learner, store)`; `Budget(units, env_steps, wall_clock_s)`, any limit stops the run after the unit that reaches it (overshoot ≤ 1 unit); checkpoint schedule 0, 1, 2, 5, 10, 20, 50, … plus the last unit; at every checkpoint the Driving Exam runs when exams are on and the network drives (7 → 2), its time kept out of the training clock (`exam_wall_clock_s`). Order within a unit: train → metrics line → checkpoint + exam → state (last). Resume cuts the folder back to the state's unit and continues; a killed run (status running) or a failed one can be resumed, identically except for wall-clock times. Since task 5.5b (ADR-038) the wall-clock limit is compared with the training time recorded in the last metrics line, like the step totals, so a run stops after the first unit whose line reaches the limit; the database mirror's time, like exam time, is kept out of the training clock. Since task 5.8 (ADR-041) the runner also stops before the next unit when the run folder holds a stop request (the file `stop_requested`): stop reason `stopped`, status `completed`, the last unit checkpointed and examined like any last unit; the request is removed before the final status is written, and `resume` removes an old one before continuing. `train_toy_run` and `train_random_search_run` take `on_start(store)`, called as soon as the folder exists. Since task 5.9 (ADR-042) `UnitResult` has an optional `new_best` flag: a unit that reports a new best network (`current_networks()[0]`) is checkpointed, and examined, even when it is not on the schedule, so the run timeline shows every improvement; random search sets it when it improves (expected number of such units in n units: the harmonic number H_n, about 5 per 100), the toy learner never does. Since task 6.3 (ADR-047) `run(..., checkpoint_every=k)` also checkpoints (and examines) every unit that is a multiple of k (`runner.checkpoint_due`; k = 5 over 20 units gives 0, 1, 2, 5, 10, 15, 20; None, the default, keeps the schedule alone); k is kept in `meta.json` and `resume` reads it back. The imitation learner (`learn/supervised/imitation.py`, name `imitation`, feedback `labels`, resumable) is behavioural cloning: one unit is one epoch of minibatch gradient descent on the MSE between the network's outputs and the dataset's labels, with whole episodes held back for validation; it reports `demo_frames` = F (every frame of the dataset, validation frames included) in unit 1 only, and 0 environment steps and teacher queries. Since task 6.6 (ADR-049) the DAgger learner (`learn/supervised/dagger.py`, name `dagger`, feedback `labels`, resumable) subclasses it: one unit is one **round**. Round 1 is E epochs of behavioural cloning on the dataset (bit for bit the imitation learner with the same seed: the same "split", "init" and "batches" generators); in every later round the current network drives R cars from fresh seeded random starts (generator "collect"; arc length uniform, ±1 m, ±0.1 rad, at rest) on a training track, the scripted expert labels every running car's state at every step (`ExpertLabelled`; the labels never steer), those frames are **added** to the training frames, and the network, with the optimizer's state, trains E more epochs on all of them. A collected frame (the dataset rule, ADR-044) is one environment step and one **teacher query**: round i reports `env_steps` = `teacher_queries` = M_i, its frames; round 1 reports `demo_frames` = F. The validation set stays the dataset's held-back episodes. Its state adds the collection generator, the round count and every collected frame. If an epoch diverges the network of the last completed round is kept.
 
 Every learning method provides:
 - `name` and `feedback_kind` ∈ {`labels`, `episode_score`, `step_reward`, `none`}
@@ -333,6 +335,10 @@ stop conditions (max env steps, max wall-clock, max units).
 *Task 5.8 (ADR-041), additions without a version change:* the empty file `stop_requested` exists only while another process asks the run to stop; `stop_reason` gains `stopped`. Launched runs leave their printed output in `<runs dir>/.launches/<time>.log` (not a run folder: no `meta.json`, ignored by every reader and by the database).
 
 *Version 1 (task 5.5, ADR-037), as built:* `run_version: 1`; `exams/unit_<n>.json` (exam cards); `state/latest.npz` (the learner's state after the latest unit plus the runner's unit, totals and clocks; replaced atomically: written as `latest.tmp.npz`, then renamed); meta.json adds `budget`, `exams`, `stop_reason` (units, env_steps, wall_clock, diverged, error), `resumed_at` (UTC times) and `exam_wall_clock_s`. Version-0 folders are still read.
+
+*Task 6.3 (ADR-047), additions without a version change:* meta.json gains `checkpoint_every` (k, or null; absent in older folders, read as null), and imitation runs gain `dataset` = `{id, sha256, demo_frames, train_frames, val_episodes}`: the exact dataset learned from, the SHA-256 checksum of its `dataset.npz`, its frame count F, the training frames and the held-back episode numbers. Imitation metrics lines hold `loss`, `loss_steer`, `loss_throttle`, `val_loss`, `val_loss_steer`, `val_loss_throttle` (the last three only with a validation set), `loss_before` and `grad_norm`.
+
+*Task 6.6 (ADR-049), additions without a version change:* DAgger runs (method `dagger`) have imitation's `dataset` in meta.json and, once the run has ended (also after `nd resume`) with at least one collected frame, `dagger_dataset`: the id of the dataset v1 holding its collected frames (§6.16). Their metrics lines (one per round) hold imitation's fields after the round's last epoch (`loss_before` and `grad_norm` from its first epoch, on the round's aggregated frames), `train_frames`, `epochs` (cumulative) and the collection drive's `onpolicy_loss`, `onpolicy_loss_steer`, `onpolicy_loss_throttle` (the network's squared error against the expert's labels on its own states, before training on them), `collect_frames`, `collect_finished` and `collect_crashed` (shares of the R drives); in round 1 these six are null. `teacher_queries_total` is the first method's non-zero teacher budget.
 
 ```
 runs/<YYYYMMDD-HHMMSS>-<method>-<tag>/
@@ -375,7 +381,7 @@ that is not a network (the policy is then rebuilt from the run's config). Each t
 batch in start order: a network's output differs by about 1e-16 between batch sizes, so a
 recording matches a card only when made the same way.
 
-### 6.15 Config file (toy and random_search: config v1, ADR-032, ADR-040)
+### 6.15 Config file (toy, random_search, imitation and dagger: config v1, ADR-032, ADR-040, ADR-047, ADR-049)
 A YAML file; `method` picks the model in `experiment/config.py` (`toy`, and since task 5.7
 `random_search`; later methods add their own model). Unknown fields, wrong types, unknown names and out-of-range numbers are
 refused, every problem listed as `field.path: message`. A toy config:
@@ -409,7 +415,42 @@ Only the named optimizer's own settings are allowed; their defaults are those of
 and `training.epochs`; an invalid config exits with status 2 and creates no run folder.
 
 *Random search (task 5.7, ADR-040, `configs/random_search.yaml`):* `method: random_search`, `seed`, `tag`; `network` (a driving network: 7 inputs first, 2 outputs last; default [7, 16, 16, 2], tanh / tanh, xavier); `search.candidates_per_unit` (≥ 1, default 20); `fitness` (`track`, which must have split `train`, default `train_loop_01`; `start_fractions` in [0, 1) and `lateral_offsets`, default the Driving Exam's 5 × 2 starts; `target_laps`, default 2); `budget` (`units`, `env_steps`, `wall_clock_s`: at least one); `exams` (default true). `nd train` and `nd sweep` pick the method from the file; `--units` overrides `budget.units` (`--epochs` is for toy configs only, and the other way round). `nd resume --run <folder>` rebuilds the learner from the run's resolved `config.yaml` (`runner.learner_from_config`) and continues it with `runner.resume`; it refuses runs whose learner saves no state (toy) and finished runs (status 2).
-## 7. Server API (api v1.14, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033, ADR-035, ADR-041, ADR-042)
+
+*Imitation (task 6.3, ADR-047, `configs/imitation.yaml`):* `method: imitation`, `seed`, `tag`; `network` (a driving network, as for random search); `data` (`dataset`: a dataset id, or a selector `<teacher>-<tag>` meaning the newest dataset of that teacher and tag, `learn/supervised/demos.find_dataset`; `sha256`: 64 lowercase hexadecimal digits or null, default null; `val_fraction` in [0, 1), default 0.2: the share of whole episodes held back, round(v · E), at least 1); `training` (`epochs` required ≥ 1, `loss` mse | huber, default mse, `batch_size` ≥ 1, default 256); `optimizer` (as for toys); `checkpoint_every` (≥ 1 or null, default null); `exams` (default true). Validation does not look for the dataset. The runner (`runner.pin_dataset`) finds it in `--datasets-dir` (default `<repo>/data/demos`), refuses it when `sha256` is given and differs, and writes the run folder's config with the exact id and the checksum, so `nd train --config runs/<id>/config.yaml` and `nd resume` learn from the very same frames or refuse. `--epochs` overrides `training.epochs`; `--units` is refused. `nd train`, `nd sweep` and `nd resume` take `--datasets-dir`; `nd sweep` pins the dataset once for all seeds and summarises the final validation loss.
+
+*DAgger (task 6.6, ADR-049, `configs/dagger.yaml`):* `method: dagger`, `seed`, `tag`; `network`, `data`, `optimizer`, `checkpoint_every` and `exams` as for imitation; `training` (`epochs_per_round` E ≥ 1, default 30; `loss`; `batch_size`); `dagger` (`rounds` ≥ 1, required: the run's units; `track`, a training track, default `train_loop_01`; `random_starts` R ≥ 1, default 10; `target_laps` ≥ 1, default 2; since the task 6.6 follow-up (ADR-050) `start_lateral_m` a in [0, 4.5], default 1.0, and `start_heading_rad` h in [0, π/4], default 0.1: each collection start is moved sideways uniformly on ±a and turned on ±h; `configs/dagger_wide.yaml` uses 3.0 and 0.35). `--units` overrides `dagger.rounds`, `--epochs` is refused. The dataset is pinned as for imitation (`runner.pin_dataset`). `runner.train_dagger_run` runs it and then saves the collected frames (`runner.save_dagger_dataset`) into `--datasets-dir` (default `<repo>/data/demos`); `nd resume` of a DAgger run saves them when it ends. `nd sweep` summarises the final validation loss and the final on-policy error. The shipped config (10 rounds × 30 epochs = 300, S5a's length; checkpoint and exam every round) took 5.5–6.3 minutes per seed in task 6.6 (5 seeds side by side; about 4 min training and collecting, 1.5 min exams) and collected 149,000–178,000 frames.
+### 6.16 Demonstration dataset (dataset v1, task 6.1, ADR-044)
+A folder `data/demos/<YYYYMMDD-HHMMSS>-<teacher>-<tag>/` (git-ignored; `-2`, `-3`, … when the name
+exists), written and read by `learn/supervised/demos.py` (`save_dataset`, `DemoDataset.load`):
+
+```
+data/demos/<dataset_id>/
+  dataset.npz   observation (F, 7), label (F, 2), episode (F,), step (F,), x, y, psi, v (F,)
+  meta.json     dataset_version 1, dataset_id, tag, created_at, teacher {kind, params}, track,
+                track_split, starts, episodes [{index, start_kind, start_s0_m, start_lateral_m,
+                start_heading_offset_rad, start_speed_mps, status, frames}], demo_frames, env_steps,
+                straight_share, observation/action/physics versions and names, dt, world_config,
+                car_params, git_commit, git_dirty, neurodrive_version
+```
+
+- A **frame** (row) is one car at one step t while it was still driving: car i contributes steps
+  0 .. n_i − 1, n_i being the steps it drove before its episode ended (`EpisodeMetrics.steps`).
+  Rows are in episode order, then step order. `demo_frames` = F = the number of rows, the
+  budget an imitation learner reports; `env_steps` = the car-steps driven while recording (= F).
+- `observation` is o_t, exactly what the student sees (observation v1); `label` is the teacher's
+  action for that state, clipped to [−1, 1] (for a demonstration, the action it drove with).
+  `x, y, psi, v` are kept for drawing only and are never inputs.
+- Teachers: `expert` (`nd demo-record`); `dagger` (task 6.6, ADR-049: the frames a DAgger run collected, saved as `<time>-dagger-<run tag>` when the run ends: the network drove, the expert labelled; `teacher` = `{kind: "dagger", labeller: "expert", params}`, every episode has `start_kind` `dagger` and its `round`, and the metadata adds `teacher_queries` (= F), `dagger` {base_dataset, epochs_per_round, rounds} and `dagger_run`, the run id); `keyboard` (task 6.1b, ADR-051: a person driving one car in the live session, recorded by `DemoRecorder`; `teacher` = `{kind: "keyboard", params: {}}`, `starts` = `{kind: "live", seed}` (`seed` null for the track's fixed start), every episode has `start_kind` `live` and its start pose, and its `status` is the car's outcome or `stopped` for a drive cut short by Reset or Save; the label is the clipped key input, steer and throttle each in {−1, 0, +1}); since task 6.7 (ADR-052) datasets of one teacher can be merged (`nd demo-merge`: `starts` = `{kind: "merged", sources}`, `merged_from`, every episode keeps `source_dataset` and `source_index`) and the expert can record from another dataset's starts (`nd demo-record --starts-from <dataset> [--match-frames]`: `starts` = `{kind: "from_dataset", source_dataset, match_frames}`, `start_kind` `from_dataset`, status `truncated` for a drive cut at the source's frame count). The expert records
+  from the Driving Exam's starts on a **training** track (held-out tracks are refused) plus
+  `random_starts` seeded random starts (arc length uniform on the lap, ±1 m sideways, ±0.1 rad,
+  from the `starts` stream of `make_rng(seed)`; default 10, seed 0; since the task 6.6 follow-up,
+  ADR-050, `nd demo-record --start-lateral A --start-heading H` widens the two ranges, recorded in
+  `starts.random_lateral_m` and `starts.random_heading_rad`); episodes are numbered exam
+  starts first. The same options give an identical dataset apart from `dataset_id`, `created_at`
+  and provenance.
+- Shown by the dataset inspector (task 6.2, ADR-045; dense coverage and the comparator, ADR-046): `GET datasets` and `GET datasets/{id}` (§7).
+
+## 7. Server API (api v1.20, ADR-051, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033, ADR-035, ADR-041, ADR-042, ADR-045, ADR-046, ADR-047, ADR-048, ADR-049)
 
 REST (`/api/...`):
 - `GET health` → `{status: "ok", version}` (`version` is the NeuroDrive package version)
@@ -458,7 +499,27 @@ REST (`/api/...`):
   creating its folder or takes more than 60 s. `POST runs/{id}/stop` → `{run_id, stop_requested:
   true}`: writes the run folder's stop request (any running run, also one started in a terminal);
   404 unknown run; 409 when the run has already ended, or when this server launched it and its
-  process has gone (killed: `nd resume` continues it).
+  process has gone (killed: `nd resume` continues it). *Since api v1.17 (task 6.3, ADR-047):*
+  `method` may also be `imitation` (`length_field` `epochs`, `task` null); a launched imitation run
+  finds its dataset in the default `<repo>/data/demos`. *Since api v1.19 (task 6.6, ADR-049):*
+  `method` may also be `dagger` (`length_field` `units`: its rounds, `length` = `dagger.rounds`;
+  the launch's `units` override sets the rounds).
+- `GET datasets`, `GET datasets/{id}`: demonstration datasets (dataset v1, §6.16)
+  *As built (task 6.2, ADR-045, api v1.15):* the server reads the dataset folders in `nd serve
+  --datasets-dir` (default `<repo>/data/demos`). `GET datasets` → `{datasets: [{dataset_id, teacher,
+  tag, track, created_at, demo_frames, episodes, finished, straight_share}]}` newest first (a folder
+  whose name is not a dataset id or whose `meta.json` cannot be read is left out). `GET
+  datasets/{id}` → `{dataset_id, meta, labels, observations, map}`, computed by
+  `experiment/dataset_view.py`: `labels` (steer, throttle) and `observations` (the 7 inputs in
+  observation v1 order) are histograms `{name, lo, hi, edges, counts, min, max, covered}` over the
+  quantity's fixed range (labels [−1, 1], rays and speed [0, 1], heading error [−1, 1]) in 20 equal
+  bins, `counts[b]` = frames in [edges[b], edges[b+1]) with the last bin closed, so the counts add up
+  to F; `covered` = (max − min) / (hi − lo). *Since api v1.16 (6.2 follow-up, ADR-046):* also
+  `dense`, the dense coverage d = (summed length of the bins holding at least `dense_threshold` =
+  τ·F frames, τ = 1 %, each clipped to [min, max]) / (hi − lo) ≤ `covered`. `map` = `{stride, x, y, steer, throttle, episode}`:
+  every k-th row, k = ⌈F / 4000⌉ (positions to 2 decimals, labels to 4). Unknown or malformed id →
+  404; a folder that does not load as dataset v1 → 400 with the reason. Shown in the Experiment
+  page's "Datasets" tab, which can compare two datasets ("Compare with": it fetches both details).
 - `POST replay` {run, unit, track, seed, focus_cars} → Episode Recording
   *Not built (task 5.9, ADR-042):* a checkpoint is replayed in the live session instead (the
   `"checkpoint"` driver below), so every view and tool works on it; `POST replay` stays planned
@@ -471,7 +532,7 @@ REST (`/api/...`):
 
 WebSocket `/ws/live` (one independent session per connection):
 - `hello` is sent first, on connect: `{type: "hello", version, api}` (`api` is the message-contract
-  version, currently `"v1.14"`).
+  version, currently `"v1.20"`).
 - client → server (each has a `type` field):
   - `load_scenario {track, policy, n_cars, seed}`: `policy` is `"keyboard"`, `"constant"`,
     `"neuron"`, `"random_networks"` (every car is driven by its own random [7,16,16,2] network;
@@ -489,6 +550,23 @@ WebSocket `/ws/live` (one independent session per connection):
     traces, explanations, `what_if`, trail and `inspect_step` like the random-networks driver. An
     unknown run or unit, a network that is not 7 → 2, or a run without checkpoints (the expert
     baseline) is refused with `error`, and the loaded scenario stays.
+    Since api v1.18 (task 6.5, ADR-048) also an optional `start_shift {lateral_m, heading_rad}`
+    (±5 m, ±π/2; positive = left) for `"checkpoint"` and `"expert"`: every exam start is moved
+    sideways by `lateral_m` and turned by `heading_rad`, at rest (`experiment/exam.py:
+    shifted_starts`, the function Study S5b drives, so a shifted replay ends car for car as the
+    study's drive). With `"expert"` the expert then drives those 10 starts (`n_cars`, `seed`
+    ignored). A shift with any other driver is refused with `error`; the scenario stays.
+  - `record_start`, `record_stop {save, tag}` (since api v1.20, task 6.1b, ADR-051): keyboard
+    demonstrations. `record_start` is accepted only with the keyboard driver, exactly one car, a
+    training track and the session at step 0 (and a server with a datasets folder); otherwise it is
+    answered with `error` and nothing is recorded. While recording, every physics step in which the
+    car is running becomes a frame (the observation it saw, the clipped action it was given); each
+    drive from step 0 is an episode, closed by the car's outcome, by `reset` (status `stopped`) or by
+    `record_stop`. `load_scenario` is refused while recording. `record_stop` with `save` true writes
+    the dataset `<time>-keyboard-<tag>` (§6.16) into the server's datasets folder and answers
+    `dataset_saved` then `recording`; with `save` false it forgets the recording; saving with no
+    frames is refused and the recording stays open; `tag` is 1 to 40 letters, digits, `_` or `-`
+    (default `default`).
   - `play`, `pause`, `step` (exactly one physics step, even while paused), `reset` (back to
     step 0 with the same scenario and seed; stays paused or playing as before),
     `set_speed {speed}` (0.1 to 8, default 1), `select_car {index}` (default 0),
@@ -514,7 +592,8 @@ WebSocket `/ws/live` (one independent session per connection):
   - `scenario {track, policy, n_cars, seed, dt, time_limit, target_laps, v_max, wheelbase,
     car_half_width, ray_angles, ray_range, trail_seconds}`: no geometry (use
     `GET tracks/{name}`). `trail_seconds` (60) is how much of the drive the session remembers.
-    Since api v1.14 also `checkpoint` (the replayed `{run, unit}`, else null).
+    Since api v1.14 also `checkpoint` (the replayed `{run, unit}`, else null), since api v1.18
+    `start_shift` (the shift of the exam starts, else null).
   - `frame {step, time, playing, speed, cars, selected}`: `cars` holds one array per quantity, one
     entry per car: `x`, `y`, `psi`, `v`, `alive`, `progress`, `status` (0 running, 1 crashed,
     2 finished, 3 stalled, 4 timeout), `action` (a [steer, throttle] pair per car; the last action
@@ -563,6 +642,11 @@ WebSocket `/ws/live` (one independent session per connection):
     car physics run for 2 s from the car's pose, once holding the real action and once the
     what-if action; `real` and `what_if` are [x, y] points (one per physics step), the `_end`
     entries [x, y, heading]. The Environment view draws the paths and a see-through ghost car.
+  - `recording {on, episodes, frames}` (api v1.20): the keyboard recording's state: the drives with
+    at least one frame so far and the frames recorded. Sent after `record_start`, with every frame
+    while recording, after a `reset` and, with `on` false, after `record_stop`.
+  - `dataset_saved {dataset_id, frames, episodes}` (api v1.20): the answer to a saving
+    `record_stop`; the dataset is listed by `GET datasets`.
   - `episode_end {step, time, status, progress, laps}`: sent once when every car has stopped; the
     session then pauses. `status` holds a name per car (`crashed`, `finished`, `stalled`,
     `timeout`).
@@ -652,6 +736,9 @@ view shows a replay banner and, by default, colours every line by its change sin
 checkpoint (`changeStroke` in `views/network/diff.ts`: blue up, orange down, strength |change|,
 unchanged lines not drawn); the chart has a cursor; the card's 10 per-car results for the track are
 listed, the selected car's row highlighted, and clicking a row selects that car.
+*Since task 6.5 (ADR-048):* two inputs, sideways shift (m) and heading (°, sent in radians), are
+sent with the replay as `start_shift`; with a shift the card is hidden (it describes the unshifted
+starts), and "Watch the expert from these starts" loads the expert from the same shifted starts.
 
 ### 8.3 Output-neuron inspector (built up over phases)
 1. Readout: the value plus its physical meaning ("−0.93 = hard left").

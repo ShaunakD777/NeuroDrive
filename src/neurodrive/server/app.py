@@ -1,5 +1,5 @@
-"""The FastAPI application: health, track data, run folders, live driving over a WebSocket, and
-launching and following training runs (task 5.8).
+"""The FastAPI application: health, track data, run folders, live driving over a WebSocket,
+launching and following training runs (task 5.8), and demonstration datasets (task 6.2).
 
 REST is request and response (the browser asks once, the server answers once). A WebSocket stays
 open, so the server can push messages without being asked each time, which live driving and
@@ -16,6 +16,8 @@ from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnec
 
 from neurodrive import __version__
 from neurodrive.core.activations import ACTIVATIONS
+from neurodrive.learn.supervised.demos import DEFAULT_DATASETS_DIR
+from neurodrive.server.datasets import DatasetLibrary
 from neurodrive.server.live import LiveSession, TrackLibrary
 from neurodrive.server.runs import RunLibrary
 from neurodrive.server.runs_watch import Launcher, LaunchError, RunsHub, RunsWatcher
@@ -26,6 +28,8 @@ from neurodrive.server.schemas import (
     CheckpointNetwork,
     CompareResponse,
     ConfigListResponse,
+    DatasetDetail,
+    DatasetListResponse,
     ExamCardResponse,
     HealthResponse,
     HelloMessage,
@@ -53,6 +57,7 @@ def create_app(
     runs_dir: Path | None = None,
     configs_dir: Path | None = None,
     launcher: Launcher | None = None,
+    datasets_dir: Path | None = None,
 ) -> FastAPI:
     """Build the app. A function, so each test can get a fresh one (and its own folders).
 
@@ -61,6 +66,7 @@ def create_app(
     app = FastAPI(title="NeuroDrive", version=__version__)
     tracks = TrackLibrary(DEFAULT_TRACKS_DIR if tracks_dir is None else tracks_dir)
     runs = RunLibrary(DEFAULT_RUNS_DIR if runs_dir is None else runs_dir)
+    datasets = DatasetLibrary(DEFAULT_DATASETS_DIR if datasets_dir is None else datasets_dir)
     if launcher is None:
         configs = DEFAULT_CONFIGS_DIR if configs_dir is None else configs_dir
         launcher = Launcher(runs.runs_dir, configs)
@@ -176,6 +182,20 @@ def create_app(
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from None
 
+    # Demonstration datasets (api v1.15, task 6.2, ADR-045). Read-only, like the run folders.
+    @app.get("/api/datasets")
+    def list_datasets() -> DatasetListResponse:
+        return datasets.list()
+
+    @app.get("/api/datasets/{dataset_id}")
+    def dataset_detail(dataset_id: str) -> DatasetDetail:
+        try:
+            return datasets.detail(dataset_id)
+        except KeyError:
+            raise missing(f"dataset {dataset_id!r}") from None
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from None
+
     # Launching training runs (api v1.13, task 5.8, ADR-041). The server starts `nd train` as a
     # separate process and never trains itself; /ws/runs reports what the process writes.
     def refused(error: LaunchError) -> HTTPException:
@@ -244,7 +264,7 @@ def create_app(
                 for message in session.tick(time.monotonic()):
                     await send(message)
 
-        session = LiveSession(tracks, runs)
+        session = LiveSession(tracks, runs, datasets.datasets_dir)
         await send(HelloMessage(version=__version__))
         timer = asyncio.create_task(ticker())
         try:

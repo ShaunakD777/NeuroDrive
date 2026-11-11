@@ -430,9 +430,14 @@ driving, distribution shift (compounding errors), DAgger.
 documented with evidence; the DAgger improvement is measured on held-out tracks.
 **Risks:** noisy human labels; most frames being "go straight".
 
-**6.1 Demonstration recorder:** `learn/supervised/demos.py`, `nd demo-record` (expert or
-keyboard via the live session), stored datasets with metadata. Verify: dataset shapes; frames
-counted as demonstration budget.
+**6.1a Demonstration recorder (split from 6.1, ADR-044):** `learn/supervised/demos.py` (dataset v1,
+ARCHITECTURE §6.16), `nd demo-record` (the expert: the exam's starts on a training track plus
+seeded random starts), stored datasets with metadata in `data/demos/`. Verify: dataset shapes;
+frames counted as demonstration budget.
+**6.1b Keyboard demonstrations (ADR-044):** recording the keyboard driver in the live session
+(record commands, the next api version), a Record button in the Environment view, the same dataset format with
+teacher `keyboard`. Verify: a recorded drive's frames equal the session's steps; server and browser
+tests. Needed by 6.7 at the latest.
 **6.2 Dataset inspector:** `web/src/views/experiment/DatasetView.tsx` (action histograms, the
 observations covered on a track map). Verify: displays the expert dataset.
 **6.3 Imitation learner:** `learn/supervised/imitation.py`, `configs/imitation.yaml`

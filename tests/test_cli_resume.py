@@ -128,4 +128,4 @@ def test_nd_train_and_nd_sweep_run_random_search(small_config, tmp_path):
     bad = runner.invoke(
         app, ["train", "--config", str(small_config), "--epochs", "3", "--runs-dir", str(tmp_path)]
     )
-    assert bad.exit_code == 2 and "--epochs is for toy configs" in bad.output
+    assert bad.exit_code == 2 and "--epochs is for toy and imitation configs" in bad.output

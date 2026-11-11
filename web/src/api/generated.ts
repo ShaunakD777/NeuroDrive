@@ -190,14 +190,16 @@ export interface CompareRun {
  * One training config of ``GET /api/configs``: a YAML file in ``configs/`` that ``nd train``
  * accepts.
  *
- * ``length_field`` names what the run's length counts (``epochs`` for toy configs, ``units``
- * for random search) and ``length`` is the file's value (null when a random-search budget has
- * no unit limit). ``task`` is the toy task (null for random search).
+ * ``length_field`` names what the run's length counts (``epochs`` for toy and imitation
+ * configs, ``units`` for random search and for DAgger, whose units are rounds) and ``length``
+ * is the file's value (null when a random-search budget has no unit limit). ``task`` is the toy
+ * task (null for the others). ``imitation`` was added in api v1.17 (task 6.3), ``dagger`` in
+ * api v1.19 (task 6.6).
  */
 export interface ConfigInfo {
   length: number | null;
   length_field: "epochs" | "units";
-  method: "toy" | "random_search";
+  method: "toy" | "random_search" | "imitation" | "dagger";
   name: string;
   seed: number;
   tag: string;
@@ -214,18 +216,158 @@ export interface ConfigListResponse {
  * One training config of ``GET /api/configs``: a YAML file in ``configs/`` that ``nd train``
  * accepts.
  *
- * ``length_field`` names what the run's length counts (``epochs`` for toy configs, ``units``
- * for random search) and ``length`` is the file's value (null when a random-search budget has
- * no unit limit). ``task`` is the toy task (null for random search).
+ * ``length_field`` names what the run's length counts (``epochs`` for toy and imitation
+ * configs, ``units`` for random search and for DAgger, whose units are rounds) and ``length``
+ * is the file's value (null when a random-search budget has no unit limit). ``task`` is the toy
+ * task (null for the others). ``imitation`` was added in api v1.17 (task 6.3), ``dagger`` in
+ * api v1.19 (task 6.6).
  */
 export interface ConfigInfo {
   length: number | null;
   length_field: "epochs" | "units";
-  method: "toy" | "random_search";
+  method: "toy" | "random_search" | "imitation" | "dagger";
   name: string;
   seed: number;
   tag: string;
   task: string | null;
+}
+
+/**
+ * Answer to ``GET /api/datasets/{id}``: the metadata as stored, the 2 label histograms
+ * (steer, throttle), the 7 observation histograms (observation v1 order) and the map.
+ */
+export interface DatasetDetail {
+  dataset_id: string;
+  labels: DatasetHistogram[];
+  map: DatasetMap;
+  meta: {
+    [k: string]: unknown;
+  };
+  observations: DatasetHistogram[];
+}
+/**
+ * One quantity's histogram (``experiment/dataset_view.py``).
+ *
+ * ``edges`` are the B + 1 bin edges from ``lo`` to ``hi`` (6 decimals); ``counts[b]`` is the
+ * number of frames in [edges[b], edges[b + 1]) (the last bin includes ``hi``), so the counts add
+ * up to the dataset's frames. ``min`` and ``max`` are the smallest and largest value (null for
+ * an empty dataset) and ``covered`` = (max − min) / (hi − lo), the share of the range reached.
+ * ``dense`` (api v1.16, ADR-046) is the dense coverage d ≤ ``covered``: the summed length of the
+ * bins holding at least ``dense_threshold`` = τ·F frames (τ = 1 %), each clipped to [min, max],
+ * divided by (hi − lo).
+ */
+export interface DatasetHistogram {
+  counts: number[];
+  covered: number;
+  dense: number;
+  dense_threshold: number;
+  edges: number[];
+  hi: number;
+  lo: number;
+  max: number | null;
+  min: number | null;
+  name: string;
+}
+/**
+ * Every ``stride``-th frame of a dataset, for the track map: its position (metres, 2
+ * decimals), its steer and throttle label (4 decimals) and its episode number.
+ */
+export interface DatasetMap {
+  episode: number[];
+  steer: number[];
+  stride: number;
+  throttle: number[];
+  x: number[];
+  y: number[];
+}
+
+/**
+ * One quantity's histogram (``experiment/dataset_view.py``).
+ *
+ * ``edges`` are the B + 1 bin edges from ``lo`` to ``hi`` (6 decimals); ``counts[b]`` is the
+ * number of frames in [edges[b], edges[b + 1]) (the last bin includes ``hi``), so the counts add
+ * up to the dataset's frames. ``min`` and ``max`` are the smallest and largest value (null for
+ * an empty dataset) and ``covered`` = (max − min) / (hi − lo), the share of the range reached.
+ * ``dense`` (api v1.16, ADR-046) is the dense coverage d ≤ ``covered``: the summed length of the
+ * bins holding at least ``dense_threshold`` = τ·F frames (τ = 1 %), each clipped to [min, max],
+ * divided by (hi − lo).
+ */
+export interface DatasetHistogram {
+  counts: number[];
+  covered: number;
+  dense: number;
+  dense_threshold: number;
+  edges: number[];
+  hi: number;
+  lo: number;
+  max: number | null;
+  min: number | null;
+  name: string;
+}
+
+/**
+ * Answer to ``GET /api/datasets``: every readable dataset folder, newest first.
+ */
+export interface DatasetListResponse {
+  datasets: DatasetSummary[];
+}
+/**
+ * One entry of ``GET /api/datasets``: a dataset folder's headline from its ``meta.json``.
+ *
+ * ``finished`` is how many of the ``episodes`` ended by completing their laps; ``straight_share``
+ * is q, the share of frames with |steer| < 0.1.
+ */
+export interface DatasetSummary {
+  created_at: string;
+  dataset_id: string;
+  demo_frames: number;
+  episodes: number;
+  finished: number;
+  straight_share: number;
+  tag: string;
+  teacher: string;
+  track: string;
+}
+
+/**
+ * Every ``stride``-th frame of a dataset, for the track map: its position (metres, 2
+ * decimals), its steer and throttle label (4 decimals) and its episode number.
+ */
+export interface DatasetMap {
+  episode: number[];
+  steer: number[];
+  stride: number;
+  throttle: number[];
+  x: number[];
+  y: number[];
+}
+
+/**
+ * A recording was written as dataset v1 (api v1.20); it is listed by ``GET datasets``.
+ */
+export interface DatasetSavedMessage {
+  dataset_id: string;
+  episodes: number;
+  frames: number;
+  type: "dataset_saved";
+}
+
+/**
+ * One entry of ``GET /api/datasets``: a dataset folder's headline from its ``meta.json``.
+ *
+ * ``finished`` is how many of the ``episodes`` ended by completing their laps; ``straight_share``
+ * is q, the share of frames with |steer| < 0.1.
+ */
+export interface DatasetSummary {
+  created_at: string;
+  dataset_id: string;
+  demo_frames: number;
+  episodes: number;
+  finished: number;
+  straight_share: number;
+  tag: string;
+  teacher: string;
+  track: string;
 }
 
 /**
@@ -607,12 +749,19 @@ export interface LaunchResponse {
  * on ``track``: ``checkpoint`` names it, and the cars are placed at the exam's starts on that
  * track in the exam's order (car k = exam start k, 10 cars), all driven by that one network as
  * one batch, exactly as the exam drove them. ``n_cars`` and ``seed`` are then ignored.
+ *
+ * ``start_shift`` (api v1.18, task 6.5, ADR-048) moves every one of those 10 starts sideways
+ * and turns it (see :class:`StartShift`); the starts are those of
+ * ``experiment/exam.py: shifted_starts``, the function Study S5b drives. It is allowed for the
+ * ``"checkpoint"`` driver and for ``"expert"``, which then also drives the 10 shifted exam
+ * starts (``n_cars`` and ``seed`` ignored), so the teacher can be watched from the same start.
  */
 export interface LoadScenario {
   checkpoint: CheckpointRef | null;
   n_cars: number;
   policy: "keyboard" | "constant" | "neuron" | "random_networks" | "expert" | "checkpoint";
   seed: number | null;
+  start_shift: StartShift | null;
   track: string;
   type: "load_scenario";
 }
@@ -622,6 +771,15 @@ export interface LoadScenario {
 export interface CheckpointRef {
   run: string;
   unit: number;
+}
+/**
+ * One shift for every exam start (api v1.18, task 6.5, ADR-048): ``lateral_m`` metres added to
+ * each start's sideways offset (positive = left) and ``heading_rad`` radians added to its
+ * heading (positive = pointing left of the road). The cars still start at rest.
+ */
+export interface StartShift {
+  heading_rad: number;
+  lateral_m: number;
 }
 
 /**
@@ -771,6 +929,39 @@ export interface Play {
 }
 
 /**
+ * Start recording a keyboard demonstration (api v1.20, task 6.1b, ADR-051).
+ *
+ * Allowed only with the keyboard driver, one car, a training track and the session at step 0.
+ * Answered with ``recording``; otherwise with ``error`` and nothing is recorded.
+ */
+export interface RecordStart {
+  type: "record_start";
+}
+
+/**
+ * End the recording: ``save`` true writes it as a dataset ``<time>-keyboard-<tag>`` in the
+ * server's datasets folder (answered with ``dataset_saved`` and ``recording``); false forgets it.
+ * ``tag`` is letters, digits, ``_`` and ``-``.
+ */
+export interface RecordStop {
+  save: boolean;
+  tag: string;
+  type: "record_stop";
+}
+
+/**
+ * Where a keyboard recording stands (api v1.20): ``on``, the drives (episodes) with at least
+ * one frame so far and the frames recorded. Sent when recording starts or stops, after a reset
+ * and with every frame while recording.
+ */
+export interface RecordingMessage {
+  episodes: number;
+  frames: number;
+  on: boolean;
+  type: "recording";
+}
+
+/**
  * Return to step 0 of the loaded scenario (same seed, so the same start) and send a frame.
  */
 export interface Reset {
@@ -901,7 +1092,8 @@ export interface RunSummary {
  * relative to the heading (left positive), ``ray_range`` the sensor range in metres. Track
  * geometry is not included: fetch ``GET /api/tracks/{track}``. ``trail_seconds`` is how much
  * of the drive the session remembers for the decision trail (ADR-027). ``checkpoint`` is the
- * replayed network for the ``"checkpoint"`` driver (api v1.14), else null.
+ * replayed network for the ``"checkpoint"`` driver (api v1.14), else null. ``start_shift`` is
+ * the shift of the exam starts the cars began from (api v1.18), else null.
  */
 export interface ScenarioMessage {
   car_half_width: number;
@@ -912,6 +1104,7 @@ export interface ScenarioMessage {
   ray_angles: number[];
   ray_range: number;
   seed: number | null;
+  start_shift: StartShift | null;
   target_laps: number;
   time_limit: number;
   track: string;
@@ -926,6 +1119,15 @@ export interface ScenarioMessage {
 export interface CheckpointRef {
   run: string;
   unit: number;
+}
+/**
+ * One shift for every exam start (api v1.18, task 6.5, ADR-048): ``lateral_m`` metres added to
+ * each start's sideways offset (positive = left) and ``heading_rad`` radians added to its
+ * heading (positive = pointing left of the road). The cars still start at rest.
+ */
+export interface StartShift {
+  heading_rad: number;
+  lateral_m: number;
 }
 
 /**

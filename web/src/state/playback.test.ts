@@ -67,6 +67,7 @@ const scenario: ScenarioMessage = {
   n_cars: 2,
   seed: null,
   checkpoint: null,
+  start_shift: null,
   dt: 1 / 30,
   time_limit: 92,
   target_laps: 2,

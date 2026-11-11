@@ -1417,3 +1417,267 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   the slow, general drivers that random search found early? Does the genetic algorithm (Phase 7),
   which builds on its best networks, fall into the same trap sooner? What causes the neuron-view
   browser test to fail once in a while?
+
+### 2026-11-04 — Task 6.1a Demonstration recorder
+- Concept: behavioural cloning starts with a dataset of (observation, label) pairs, where the label
+  is what the teacher did in that exact moment. A demonstration frame is one such row, one car at
+  one step while it was still driving, and frames are the budget currency of imitation. The
+  teacher (the scripted expert) drives using privileged state; the dataset keeps only the seven
+  numbers the student will see, with positions beside them for drawing only.
+- Key equation(s) in words: F = n_1 + … + n_N, where n_i is the number of steps car i drove before
+  its episode ended (car A crashing after 3 steps and car B finishing after 5 give 8 frames, not
+  the 10 actions the runner logged). q = the share of labels with |steer| < 0.1 (steers 0.02,
+  −0.05, 0.4, 0.01, −0.6 give 3/5 = 0.6).
+- What we observed: the expert on `train_loop_01` from the exam's 10 starts plus 10 seeded random
+  starts finishes all 20 drives: 39,338 frames (4.7 MB, 15 s). 88 % of the frames steer nearly
+  straight, and the largest steering label is only ±0.29: the expert never needs a sharp
+  correction, because it never leaves the centreline. The random starts were all within ±1 m and
+  ±0.1 rad, so even they barely leave the expert's usual path. Replaying any episode alone from its
+  stored start with its stored labels reproduces the stored observations bit for bit.
+- Surprise or difficulty: the planted "keep the frozen frames" bug was not caught by the budget
+  test, because the budget and the per-episode counts came from the same counter. It was caught by
+  the tests that compare against something independent (a separate expert drive and a replay).
+  A check that only compares a program with itself proves little.
+- Open question: with 88 % straight frames and no recovery examples, will a cloned network learn
+  to steer back from the edge at all (Study S5b)? Would random starts with larger offsets help
+  plain cloning, or is that the job of DAgger?
+
+### 2026-11-04 — Task 6.2 Dataset inspector
+- Concept: a dataset is only as useful as what it covers. A histogram over an input's *whole*
+  range shows the situations the teacher produced often (tall bars) and the ones it never produced
+  (empty bins); the covered range c = (max − min) / (hi − lo) turns that into one number per input.
+  Seeing the dataset before training tells you where a cloned network will have to guess.
+- Key equation(s) in words: count_b = the number of frames whose value lies in bin b, an interval
+  of width w = (hi − lo) / 20 (the last bin also takes hi, so the counts add up to the frames);
+  c = (largest value − smallest value) / (hi − lo); the map keeps every k-th frame,
+  k = ⌈F / 4000⌉ (39,338 frames → k = 10, 3,934 points).
+- What we observed: on the 6.1a expert dataset, 99.6 % of the steering labels fall in three bins
+  around 0 (−0.2 to 0.1), and steering covers only 28 % of its range. The far rays cover 6.5 %
+  (0.10 to 0.17: the walls are always about the same distance away), the heading error 3.4 %
+  (−0.038 to 0.031: the car always points along the road), while speed (98 %) and throttle (91 %)
+  vary widely. On the 12 m wide road the expert stays within ±1.5 m of the centreline. On the map
+  the bends show up as orange (left) and blue (right) bands and the straights as grey.
+- Surprise or difficulty: on a fixed −1..+1 colour scale the map was almost all grey, because the
+  expert's hardest steering is only ±0.29; the map now colours on the dataset's own ±largest
+  |label| and says so in its legend. The covered range can also flatter a dataset: the left ray
+  "covers 83 %" only because 1,154 frames read exactly 1.0 (nothing in range), while only 58 lie
+  between 0.5 and 1. Min-to-max says how far the values reach, not how densely they fill it.
+- Open question: should coverage count only bins that hold some minimum number of frames, so a
+  handful of outliers cannot make an input look well covered? And which observations will the
+  cloned network get wrong first once it drifts off the centreline (Study S5b)?
+
+### 2026-11-04 — Task 6.2 follow-up: dense coverage and a dataset comparator
+- Concept: *reaching* part of a range is not the same as *filling* it. Training minimises the
+  average error over all frames, so a stretch of the range that holds 0.3 % of the frames carries
+  0.3 % of the loss and can be fitted badly without the loss noticing. The dense coverage counts
+  only the stretches with enough frames; comparing two datasets bin by bin shows what one adds to
+  the other.
+- Key equation(s) in words: a bin is dense when it holds at least τ = 1 % of the frames;
+  d = (the summed length of the dense bins, each clipped to [min, max]) / (hi − lo), so d never
+  exceeds the reach c. Worked example: [0.1, 0.15, 0.2, 0.3, 0.9] in 4 bins with τ = 0.3 reach
+  c = 0.8 but are dense only over [0.1, 0.25], d = 0.15. Comparing: each bar is count / F of its
+  own dataset, so sizes do not matter.
+- What we observed: on the 6.1a expert dataset the left ray reaches 83 % but is dense over 30 %,
+  the right ray 45 % against 15 %, speed 98 % against 53 % (the start-up frames: 120 per bin from
+  20 drives, 0.3 % of the data), steer 28 % against 15 %. Compared with the dataset from the exam
+  starts alone, the 10 random starts double the right ray's reach (21 % → 45 %) but leave its
+  dense part the same, 15 %: the off-centre frames they add are too few to learn from.
+- Surprise or difficulty: whole bins overstate a narrow quantity. The heading error spans only
+  0.069 but straddles 0, so it touches two bins of width 0.1; counted whole they would claim
+  10 % dense against 3.4 % reached. Clipping each dense bin to [min, max] fixes it, and the planted
+  bug without the clipping failed 5 tests.
+- Open question: is 1 % the right line? It is a judgement about what training "feels"; Study S5b
+  can test it by checking whether the cloned network's errors grow where the dataset stops being
+  dense, or already where it stops reaching.
+
+### 2026-11-04 — Task 6.3 Imitation learner
+- Concept: behavioural cloning is plain supervised learning on a teacher's driving: the inputs are
+  the 7 sensor readings it saw and the targets its (steer, throttle). The loss only measures how
+  well the network copies the teacher on the teacher's own frames; driving then puts the network
+  in states of its own making, where small errors can carry it to places the data never covered.
+  Validation holds back whole drives, because frames 1/30 s apart are near-copies (data leakage).
+- Key equation(s) in words: L = (1 / 2N) · Σ over frames and both outputs of (output − label)²,
+  so L = (L_steer + L_throttle) / 2. Worked example: labels (0.1, 1.0), (−0.2, 0.5), outputs
+  (0.0, 0.8), (−0.2, 0.9) give L = 0.21 / 4 = 0.0525, L_steer = 0.005, L_throttle = 0.1. One epoch is
+  ⌈N / B⌉ Adam steps: ⌈31,455 / 256⌉ = 123. Held back: round(0.2 · 20) = 4 whole episodes.
+- What we observed: the real `configs/imitation.yaml` run (seed 0, 100 epochs, an exam after
+  each) brought the training loss from 0.110 to 0.0070 and the validation loss with it (0.0070:
+  the held-back drives were on the same track, so they were nearly as easy). The network lapped
+  its training track from all 10 starts after a single epoch, and at epoch 2 also finished 3 of
+  the 4 held-out tracks; but as the loss kept falling the driving got worse: full laps in 36 of
+  the first 45 epochs and only 12 of the last 55, and the epoch-100 network, the best by loss,
+  crashes from every start of its own training track 10-33 s in, at normal speed. The loss is
+  dominated by throttle late on (0.014 against 0.00015 for steer).
+- Surprise or difficulty: my scratch trial (another split, another seed) kept lapping the training
+  track to epoch 300, so I predicted that in the Brief; this run did not. One run is one seed: 6.4
+  must look at several before saying how often this happens. Also, the exam is 45 times the cost
+  of training (424 s against 9.6 s), so how often to examine is now the main cost of a run.
+- Open question: what does the late network do wrong where the early one did not, given that its
+  steering loss is lower? Study S5a (6.4) asks whether lower validation loss ever means better
+  driving across seeds; S5b (6.5) opens a crash in the Network view to find out.
+
+### 2026-11-04 — Task 6.4 Study S5a: loss vs driving
+- Concept: a training loss is a proxy for what we want. Whether it is a good proxy can be measured:
+  of every two checkpoints, how often is the lower-loss one also the better driver (pairwise
+  agreement; 1 = perfect, 0.5 = coin flip, below 0.5 = the wrong way round). And a checkpoint must
+  be chosen without the held-out tracks: the last one, the lowest loss, or the training-track exam.
+- Key equation(s) in words: A = agree / (agree + disagree) over the pairs whose losses and scores
+  differ. Worked example: losses 0.10, 0.08, 0.05, 0.03 with progress 0.6, 0.8, 0.3, 0.3 give 1
+  agreeing pair, 4 disagreeing, 1 left out: A = 0.2. The training-exam rule keeps the epochs that
+  finish most training starts and, among them, the lowest loss.
+- What we observed: 10 seeds x 300 epochs. The validation loss fell 28-fold (0.117 to 0.0042) in
+  every seed, almost all of it throttle; the held-out driving peaked at about 0.75 median progress
+  over epochs 3-15 and then collapsed to about 0.10, below the hand-wired neuron. Median agreement
+  0.36 (interval 0.21-0.44): the loss ranks checkpoints the wrong way round. Every seed laps the
+  training loop by epoch 5 (the phase goal), but the lowest-loss networks mostly do not. The rules:
+  last 0.104, lowest loss 0.105, training exam 0.129 (+0.025, interval excludes 0), and, post hoc,
+  the earliest full lap 0.711. Seed 0's lowest-loss network crashes on its own training track
+  at 30 m/s after the left ray opens to 1.0; the expert brakes there at 22 m/s, and its data holds
+  not one frame with that view at high speed.
+- Surprise or difficulty: the pre-registered training-exam rule barely helped, because its
+  tie-break (lowest loss) drags it to late epochs. The rule that worked was the one we did not
+  choose (earliest lap, D3 option B): it must be tested on new seeds before being trusted. Also, a
+  claim I read off the scatter plot by eye was wrong (8 high-progress points do have low loss);
+  counting fixed it.
+- Open question: why do the late networks drive faster on the approach while copying the
+  expert's throttle better on its own frames? Study S5b (6.5) inspects it; DAgger (6.6) adds
+  expert labels for the states the student itself reaches.
+
+### 2026-11-10 — Task 6.5 Study S5b: failure study
+- Concept: distribution shift made measurable. Start S5a's clones from shifted starts the teacher
+  never used (the exam's starts on the training loop moved sideways and turned), count only the
+  starts the expert recovers from, and ask two questions of every state the clone drives through:
+  how far is it from the nearest demonstration frame (novelty), and how far is the clone's action
+  from the expert's label for that very state (on-policy error)?
+- Key equation(s) in words: novelty d(o) = the distance in the 7 inputs to the nearest dataset
+  frame; novel when d > tau, the 99th percentile of each dataset frame's distance to the nearest
+  frame of another expert drive (tau = 0.042). Worked example: frames (0.98, 0.3), (0.5, 1.0),
+  (0.7, 0.3) and the state (0.98, 1.0) give d = 0.48, although each value occurs alone. On-policy
+  error L_on = (1 / 2T) sum of squared differences from the expert's labels on the clone's own
+  states (example: 2.37 / 6 = 0.395), the validation loss's formula on the learner's states.
+- What we observed: 32 drivers x 300 starts, the expert recovers from 290. Early clones
+  (epochs 1-5) finish 0.70 of them (1.0 from the exam's own starts; difference -0.30, interval
+  -0.38 to -0.27); late clones 0.00 (4 seeds 0.43-0.56); the hand-wired neuron 1.00. Every crash
+  is from a novel state, but early clones crash within 2 s of the start (median 1.2 s), still in
+  the shifted pose, while late clones crash after a recovery (median 8.6 s) at top speed as their
+  novelty climbs. Late minus early on-policy error: -0.12 on familiar states, +0.26 on novel
+  states (H4): longer training makes a better copy where the expert drove and a worse guesser
+  elsewhere. H3 failed in 3 seeds: early clones are poor at the throttle everywhere. The inspected
+  early crash steers -0.26 where the expert steers -0.72, almost exactly the label of the nearest
+  frame (a car at rest on the centreline, -0.245); its steer barely reacts to the heading-error
+  input (+0.06), because the expert's data never varied it.
+- Surprise or difficulty: H2's "every crash is from a novel state" is close to true by
+  construction for the early clones, and early clones spend 54 % of their steps in novel states on
+  drives they finish, so novelty is necessary but not sufficient. The tight tau comes from the
+  expert's 20 drives being nearly copies of each other (median distance 0.000007). Also, the grid
+  counts central offsets twice (starts 5-9 of one shift are starts 0-4 of the next), noticed only
+  after the Brief; a distinct-pose count gives the same answers. Two heredoc edits failed on
+  backslashes and quotes; the Edit tool was safer.
+- Open question: why do all networks fail when turned 30 degrees left, from almost every offset,
+  but not 30 degrees right? Does DAgger (6.6), whose expert labels are exactly this study's
+  on-policy labels, raise the shifted-start completion and teach the heading-error input?
+
+### 2026-11-10 — Task 6.6 DAgger
+- Concept: DAgger (Dataset Aggregation). Round 1 is behavioural cloning; in every later round the
+  network drives from fresh random starts, the scripted expert labels every state it reached
+  ("what would you do here?"), the labelled frames are added to everything collected so far, and
+  the network trains on all of it again. Every label is a teacher query, the budget currency no
+  learner had spent before.
+- Key equation(s) in words: the round's frames M = the steps each car drove while still running,
+  summed over the cars; each frame is one environment step and one teacher query (3 + 5 = 8).
+  The on-policy error is the mean squared difference between what the network did and the
+  expert's label, over those frames and both outputs (2.37 / 6 = 0.395). Cloning's mistakes can
+  grow like T²ε over a drive of T steps, DAgger's like Tε (Ross et al.).
+- What we observed: with the dataset's narrow starts (±1 m, ±0.1 rad), seeds 0-4, 10 rounds of
+  30 epochs, the on-policy error fell tenfold (0.13-0.21 in round 2 to 0.009-0.039 in round 10)
+  and the network still lapped the training loop after 300 epochs in every seed, where S5a's
+  epoch-300 clones mostly did not. But it finished only 0.543 of S5b's shifted starts (V1, V2
+  not supported): good near its own starts, worse than S5a's early clones when turned 30°. Its
+  data covered 4.5 % of the heading-error range, hardly more than the expert's 3.4 %. In the
+  follow-up (ADR-050) wider collection starts (±3 m, ±20°) raised it to 0.836 (W1 supported).
+  Cloning on expert demonstrations from the same wide starts reached 0.764 with a far wider
+  spread; DAgger-wide beat it in 3 of 5 seeds (W2 not supported). One DAgger-wide seed collapsed
+  in its very last round (W3 not supported).
+- Surprise or difficulty: I predicted the narrow DAgger data would cover much more of the heading
+  error than the expert's; it did not, because a network that drives well never makes large
+  heading mistakes. DAgger corrects the shift the learner causes itself, not shifts that come
+  from outside. Most of the gain in the follow-up came from the width of the starts, which the
+  wide clone shares. DAgger's own contribution was reliability: no flicker between checkpoints.
+- Open question: with 10 seeds and the held-out tracks, does DAgger beat cloning from the same
+  starts, at the same number of teacher labels? And which checkpoint should be kept, when the
+  last round can collapse? Both are for Study S5c (6.7).
+
+### 2026-11-11 — Task 6.1b Keyboard demonstrations
+- Concept: a second kind of teacher. The live session already observes, acts and steps; the
+  recorder is a passenger in that loop that writes down, for every step in which the car is
+  running, the observation the car saw and the (clipped) action it was given. Frames are the
+  budget currency exactly as for the expert (ADR-044).
+- Key equation(s) in words: F = n_1 + ... + n_k, the sum over recorded drives of the steps the
+  car drove (a crash after 3 steps plus a drive stopped after 5 gives 8); q, the share of nearly
+  straight steering labels, shows how coarse the data is (steers 0, 0, +1, 0, -1 give 3/5).
+- What we observed: the recorded rows equal the session's own decision memory bit for bit, and
+  each drive replayed alone from its stored start with its stored labels passes through the
+  stored observations bit for bit. Planted bugs (no clipping; observation read after the step)
+  failed one test each. In the browser, Record, hold the up arrow, Save puts a `keyboard`
+  dataset in the Datasets tab.
+- Surprise or difficulty: the real design questions were not about code but about meaning: a
+  recording needs a replayable start (so it must begin at step 0), and keys drive every car at
+  once (so recording is limited to one car). Writing a file from a browser click is also new,
+  so the server builds the file name and only validates the tag.
+- Open question: how different will a clone of these nine-valued labels be from the expert's
+  clone, and does DAgger help a human teacher more or less? That is Study S5c (6.7).
+
+### 2026-11-11 — Task 6.7 Study S5c: teachers, DAgger
+- Concept: a controlled comparison needs the same starts and the same amount of data. The
+  scripted expert drove from the 22 starting poses the person had driven and kept as many
+  frames per drive as the person (a matched dataset); DAgger and a plain clone were compared at
+  about equal numbers of expert labels (the clone's 196,765 frames against DAgger's 39,338
+  demonstrations plus about 164,000 teacher queries, a ratio of 0.97).
+- Key equation(s) in words: for each seed, the difference of the two arms' held-out progress;
+  the study reports the median of those 10 differences and a bootstrap interval; an interval
+  that contains 0 means no clear difference.
+- What we observed: the person's labels are bang-bang (three distinct steering values, 75 % at
+  full lock, 60 times the expert's step-to-step steering change), and a clone of them never lapped the training
+  loop in any of 10 seeds and scored 0.08 on the held-out tracks, below the hand-wired neuron.
+  The matched expert clone beat it in every seed (median +0.42, interval excluding 0) but was
+  bimodal (5 seeds at 0.7 or more, 5 at 0.10-0.25). DAgger-wide was not clearly better than a
+  wide clone (+0.11, interval -0.12 to +0.45); and DAgger on the person's data lifted the clone
+  from 0.08 to 0.23 and made it lap the training loop in 9 of 10 seeds.
+- Surprise or difficulty: the pre-registered checkpoint rule (the lowest validation loss among
+  the checkpoints that lap the training loop best) picked late epochs for the big datasets, and
+  the wide clone scored 0.12 with it and 0.75 with the post hoc earliest-lap rule. The choice
+  of epoch moved the result six-fold, more than the choice of method, so two of my hypotheses
+  (T3, D-1) were decided by the tie-break. Also found while writing the Brief: one recording
+  session has one start, which I had told the user wrongly; `nd demo-merge` fixed it.
+- Open question: would a smoother human demonstration (a gamepad, or a filtered keyboard) lift
+  the human clone, and does an early-epoch rule chosen before looking make DAgger's advantage
+  appear or vanish? Phase 8 will compare imitation with evolution; which checkpoint rule to use
+  for imitation there is still open.
+
+### 2026-11-11 — Phase 6 complete (tag `phase-6`)
+- What was built: demonstration datasets (dataset v1) recorded from the scripted expert, from a
+  DAgger run's collected frames, or from the keyboard in the live session (api v1.20); a dataset
+  inspector with coverage, comparison and a track map; the imitation learner (behavioural cloning
+  with validation loss and an exam at every checkpoint); DAgger with teacher queries counted in
+  the budget and configurable collection starts; replays from shifted starts; `nd demo-merge` and
+  expert recording from another dataset's starts; and studies S5a, S5b and S5c with the 6.6
+  follow-up. 1,859 Python tests (one skipped without PyTorch) and 171 web unit tests passed at
+  the closing check; the browser tests were not re-run for this closing check.
+- What was learned: a low imitation loss is not good driving (S5a: the loss fell 28-fold while
+  held-out progress collapsed from about 0.75 to about 0.10; the loss ranks checkpoints the wrong
+  way round); every clone fails from states the teacher never visited (S5b: early clones finish
+  0.70 of shifted starts, late clones 0.00); DAgger corrects the shift the learner causes itself
+  and is more reliable than cloning, but most of its gain in the follow-up came from wider
+  collection starts, and against a wide clone at about equal labels it was not clearly better on
+  the held-out tracks (S5c: +0.11, interval -0.12 to +0.45); a keyboard teacher gave a clone that
+  never lapped the training loop, worse than a matched expert clone in every seed; and the epoch
+  you read can matter more than the method, so the stopping rule must be fixed in advance.
+- Decisions: ADR-044 to ADR-052 (datasets; inspector; dense coverage; imitation learner and
+  pinned datasets; shifted-start replays; DAgger; wide collection starts; keyboard recording;
+  merging and matched teacher comparison).
+- Fixed along the way: a Windows file-lock error that killed one study run (resumed with
+  `nd resume`); several report claims corrected after checking them against the data.
+- Open questions: would a smoother human teacher lift the human clone? Does an early-epoch rule
+  chosen before looking make DAgger's advantage appear or vanish (T3 and D-1 were decided by the
+  pre-registered tie-break)? Which checkpoint rule should imitation use when Phase 8 compares it
+  with evolution?

@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
-API_VERSION = "v1.14"
+API_VERSION = "v1.20"
 
 
 class WireModel(BaseModel):
@@ -87,6 +87,15 @@ class CheckpointRef(CommandModel):
     unit: int = Field(ge=0)
 
 
+class StartShift(CommandModel):
+    """One shift for every exam start (api v1.18, task 6.5, ADR-048): ``lateral_m`` metres added to
+    each start's sideways offset (positive = left) and ``heading_rad`` radians added to its
+    heading (positive = pointing left of the road). The cars still start at rest."""
+
+    lateral_m: float = Field(ge=-5.0, le=5.0)
+    heading_rad: float = Field(ge=-1.5708, le=1.5708)
+
+
 class LoadScenario(CommandModel):
     """Load a track and a driver; the session starts paused at step 0.
 
@@ -102,6 +111,12 @@ class LoadScenario(CommandModel):
     on ``track``: ``checkpoint`` names it, and the cars are placed at the exam's starts on that
     track in the exam's order (car k = exam start k, 10 cars), all driven by that one network as
     one batch, exactly as the exam drove them. ``n_cars`` and ``seed`` are then ignored.
+
+    ``start_shift`` (api v1.18, task 6.5, ADR-048) moves every one of those 10 starts sideways
+    and turns it (see :class:`StartShift`); the starts are those of
+    ``experiment/exam.py: shifted_starts``, the function Study S5b drives. It is allowed for the
+    ``"checkpoint"`` driver and for ``"expert"``, which then also drives the 10 shifted exam
+    starts (``n_cars`` and ``seed`` ignored), so the teacher can be watched from the same start.
     """
 
     type: Literal["load_scenario"] = "load_scenario"
@@ -112,6 +127,7 @@ class LoadScenario(CommandModel):
     n_cars: int = Field(default=1, ge=1, le=100)
     seed: int | None = Field(default=None, ge=0)
     checkpoint: CheckpointRef | None = None
+    start_shift: StartShift | None = None
 
 
 class Play(CommandModel):
@@ -197,6 +213,26 @@ class InspectStep(CommandModel):
     step: int = Field(ge=0)
 
 
+class RecordStart(CommandModel):
+    """Start recording a keyboard demonstration (api v1.20, task 6.1b, ADR-051).
+
+    Allowed only with the keyboard driver, one car, a training track and the session at step 0.
+    Answered with ``recording``; otherwise with ``error`` and nothing is recorded.
+    """
+
+    type: Literal["record_start"] = "record_start"
+
+
+class RecordStop(CommandModel):
+    """End the recording: ``save`` true writes it as a dataset ``<time>-keyboard-<tag>`` in the
+    server's datasets folder (answered with ``dataset_saved`` and ``recording``); false forgets it.
+    ``tag`` is letters, digits, ``_`` and ``-``."""
+
+    type: Literal["record_stop"] = "record_stop"
+    save: bool
+    tag: str = Field(default="default", pattern=r"^[A-Za-z0-9_-]{1,40}$")
+
+
 Command = Annotated[
     LoadScenario
     | Play
@@ -208,7 +244,9 @@ Command = Annotated[
     | KeyState
     | SetParam
     | WhatIf
-    | InspectStep,
+    | InspectStep
+    | RecordStart
+    | RecordStop,
     Field(discriminator="type"),
 ]
 COMMAND_ADAPTER: TypeAdapter[Command] = TypeAdapter(Command)
@@ -224,7 +262,8 @@ class ScenarioMessage(WireModel):
     relative to the heading (left positive), ``ray_range`` the sensor range in metres. Track
     geometry is not included: fetch ``GET /api/tracks/{track}``. ``trail_seconds`` is how much
     of the drive the session remembers for the decision trail (ADR-027). ``checkpoint`` is the
-    replayed network for the ``"checkpoint"`` driver (api v1.14), else null.
+    replayed network for the ``"checkpoint"`` driver (api v1.14), else null. ``start_shift`` is
+    the shift of the exam starts the cars began from (api v1.18), else null.
     """
 
     type: Literal["scenario"] = "scenario"
@@ -233,6 +272,7 @@ class ScenarioMessage(WireModel):
     n_cars: int
     seed: int | None
     checkpoint: CheckpointRef | None = None
+    start_shift: StartShift | None = None
     dt: float
     time_limit: float
     target_laps: int
@@ -475,6 +515,26 @@ class EpisodeEndMessage(WireModel):
     laps: list[int]
 
 
+class RecordingMessage(WireModel):
+    """Where a keyboard recording stands (api v1.20): ``on``, the drives (episodes) with at least
+    one frame so far and the frames recorded. Sent when recording starts or stops, after a reset
+    and with every frame while recording."""
+
+    type: Literal["recording"] = "recording"
+    on: bool
+    episodes: int
+    frames: int
+
+
+class DatasetSavedMessage(WireModel):
+    """A recording was written as dataset v1 (api v1.20); it is listed by ``GET datasets``."""
+
+    type: Literal["dataset_saved"] = "dataset_saved"
+    dataset_id: str
+    frames: int
+    episodes: int
+
+
 class ErrorMessage(WireModel):
     """A bad message or a command that cannot run now. The connection stays open."""
 
@@ -635,13 +695,15 @@ class ConfigInfo(WireModel):
     """One training config of ``GET /api/configs``: a YAML file in ``configs/`` that ``nd train``
     accepts.
 
-    ``length_field`` names what the run's length counts (``epochs`` for toy configs, ``units``
-    for random search) and ``length`` is the file's value (null when a random-search budget has
-    no unit limit). ``task`` is the toy task (null for random search).
+    ``length_field`` names what the run's length counts (``epochs`` for toy and imitation
+    configs, ``units`` for random search and for DAgger, whose units are rounds) and ``length``
+    is the file's value (null when a random-search budget has no unit limit). ``task`` is the toy
+    task (null for the others). ``imitation`` was added in api v1.17 (task 6.3), ``dagger`` in
+    api v1.19 (task 6.6).
     """
 
     name: str
-    method: Literal["toy", "random_search"]
+    method: Literal["toy", "random_search", "imitation", "dagger"]
     task: str | None
     seed: int
     tag: str
@@ -805,6 +867,80 @@ class CompareResponse(WireModel):
     skipped: list[str]
 
 
+# ── demonstration datasets (api v1.15, task 6.2, ADR-045) ──────────────────────────────────────
+
+
+class DatasetSummary(WireModel):
+    """One entry of ``GET /api/datasets``: a dataset folder's headline from its ``meta.json``.
+
+    ``finished`` is how many of the ``episodes`` ended by completing their laps; ``straight_share``
+    is q, the share of frames with |steer| < 0.1.
+    """
+
+    dataset_id: str
+    teacher: str
+    tag: str
+    track: str
+    created_at: str
+    demo_frames: int
+    episodes: int
+    finished: int
+    straight_share: float
+
+
+class DatasetListResponse(WireModel):
+    """Answer to ``GET /api/datasets``: every readable dataset folder, newest first."""
+
+    datasets: list[DatasetSummary]
+
+
+class DatasetHistogram(WireModel):
+    """One quantity's histogram (``experiment/dataset_view.py``).
+
+    ``edges`` are the B + 1 bin edges from ``lo`` to ``hi`` (6 decimals); ``counts[b]`` is the
+    number of frames in [edges[b], edges[b + 1]) (the last bin includes ``hi``), so the counts add
+    up to the dataset's frames. ``min`` and ``max`` are the smallest and largest value (null for
+    an empty dataset) and ``covered`` = (max − min) / (hi − lo), the share of the range reached.
+    ``dense`` (api v1.16, ADR-046) is the dense coverage d ≤ ``covered``: the summed length of the
+    bins holding at least ``dense_threshold`` = τ·F frames (τ = 1 %), each clipped to [min, max],
+    divided by (hi − lo).
+    """
+
+    name: str
+    lo: float
+    hi: float
+    edges: list[float]
+    counts: list[int]
+    min: float | None
+    max: float | None
+    covered: float
+    dense: float
+    dense_threshold: float
+
+
+class DatasetMap(WireModel):
+    """Every ``stride``-th frame of a dataset, for the track map: its position (metres, 2
+    decimals), its steer and throttle label (4 decimals) and its episode number."""
+
+    stride: int
+    x: list[float]
+    y: list[float]
+    steer: list[float]
+    throttle: list[float]
+    episode: list[int]
+
+
+class DatasetDetail(WireModel):
+    """Answer to ``GET /api/datasets/{id}``: the metadata as stored, the 2 label histograms
+    (steer, throttle), the 7 observation histograms (observation v1 order) and the map."""
+
+    dataset_id: str
+    meta: dict[str, Any]
+    labels: list[DatasetHistogram]
+    observations: list[DatasetHistogram]
+    map: DatasetMap
+
+
 WIRE_MODELS: tuple[type[WireModel], ...] = (
     HealthResponse,
     HelloMessage,
@@ -820,6 +956,8 @@ WIRE_MODELS: tuple[type[WireModel], ...] = (
     SelectCar,
     KeyState,
     SetParam,
+    RecordStart,
+    RecordStop,
     ScenarioMessage,
     CarColumns,
     NeuronReadout,
@@ -837,6 +975,8 @@ WIRE_MODELS: tuple[type[WireModel], ...] = (
     ActivationCurves,
     FrameMessage,
     EpisodeEndMessage,
+    RecordingMessage,
+    DatasetSavedMessage,
     ErrorMessage,
     RunSummary,
     RunListResponse,
@@ -862,4 +1002,9 @@ WIRE_MODELS: tuple[type[WireModel], ...] = (
     CheckpointRef,
     CheckpointDiff,
     ExamCardResponse,
+    DatasetSummary,
+    DatasetListResponse,
+    DatasetHistogram,
+    DatasetMap,
+    DatasetDetail,
 )

@@ -4,6 +4,7 @@ import type {
   ActivationCurves,
   CheckpointRef,
   EpisodeEndMessage,
+  DatasetSavedMessage,
   ErrorMessage,
   ExplanationMessage,
   FrameMessage,
@@ -15,11 +16,15 @@ import type {
   NeuronReadout,
   Pause,
   Play,
+  RecordingMessage,
+  RecordStart,
+  RecordStop,
   Reset,
   ScenarioMessage,
   SelectCar,
   SetParam,
   SetSpeed,
+  StartShift,
   Step,
   TrackGeometry,
   TrackInfo,
@@ -44,7 +49,9 @@ export type Command =
   | KeyState
   | SetParam
   | WhatIf
-  | InspectStep;
+  | InspectStep
+  | RecordStart
+  | RecordStop;
 
 /** The messages the server sends that the store keeps (hello only confirms the connection). */
 export type ServerMessage =
@@ -54,6 +61,8 @@ export type ServerMessage =
   | MomentMessage
   | FrameMessage
   | EpisodeEndMessage
+  | RecordingMessage
+  | DatasetSavedMessage
   | ErrorMessage;
 
 export interface DriveInput {
@@ -112,6 +121,11 @@ export interface ScenarioRequest {
    * places 10 cars at the Driving Exam's starts and ignores `n_cars` and `seed`.
    */
   checkpoint: CheckpointRef | null;
+  /**
+   * The "checkpoint" and "expert" drivers only (task 6.5, ADR-048): every exam start moved
+   * sideways (metres, left positive) and turned (radians, left positive). null: no shift.
+   */
+  start_shift: StartShift | null;
 }
 
 /** The neuron driver's settings, as the server last reported them. */
@@ -160,6 +174,10 @@ export interface LiveState {
    */
   moment: MomentMessage | null;
   episodeEnd: EpisodeEndMessage | null;
+  /** The keyboard recording in progress (api v1.20, task 6.1b): null when none is open. */
+  recording: RecordingMessage | null;
+  /** The dataset the last recording was saved as, until the next recording starts. */
+  savedDataset: DatasetSavedMessage | null;
   /** The last error the server reported, or null. */
   error: string | null;
   /** The steer and throttle last sent as `key_state`. */
@@ -214,6 +232,8 @@ export const initialLive: LiveState = {
   trail: null,
   moment: null,
   episodeEnd: null,
+  recording: null,
+  savedDataset: null,
   error: null,
   keys: NO_KEYS,
 };
@@ -241,6 +261,8 @@ function isServerMessage(value: unknown): value is ServerMessage {
     type === "moment" ||
     type === "frame" ||
     type === "episode_end" ||
+    type === "recording" ||
+    type === "dataset_saved" ||
     type === "error"
   );
 }
@@ -249,7 +271,8 @@ export const useLive = create<LiveState & LiveActions>()((set, get) => ({
   ...initialLive,
 
   setStatus: (status) => {
-    if (status !== "connected") return set({ status });
+    // A lost connection ends the server's session, and any recording with it.
+    if (status !== "connected") return set({ status, recording: null });
     // A second "connected" means the server was lost and found again: a fresh session.
     const reconnect = get().everConnected;
     set({ status, everConnected: true, restoreNeuron: reconnect && get().neuronSettings !== null });
@@ -271,6 +294,7 @@ export const useLive = create<LiveState & LiveActions>()((set, get) => ({
             n_cars: scenario.n_cars,
             seed: scenario.seed,
             checkpoint: scenario.checkpoint,
+            start_shift: scenario.start_shift,
           });
     const fallback = tracks.find((t) => t.name === DEFAULT_TRACK)?.name ?? tracks[0]?.name;
     const track = changes.track ?? base.track ?? fallback;
@@ -284,6 +308,14 @@ export const useLive = create<LiveState & LiveActions>()((set, get) => ({
       seed: changes.seed !== undefined ? changes.seed : (base.seed ?? null),
       // Only a replay names a checkpoint; another track keeps replaying the same one.
       checkpoint: policy === "checkpoint" ? (checkpoint ?? null) : null,
+      // A shift applies only to drivers that start from the exam's starts; it carries over
+      // between them, so the expert can be watched from the starts a checkpoint was given.
+      start_shift:
+        policy === "checkpoint" || policy === "expert"
+          ? changes.start_shift !== undefined
+            ? changes.start_shift
+            : (base.start_shift ?? null)
+          : null,
     };
     set({ wanted: request });
     get().send({ type: "load_scenario", ...request });
@@ -303,6 +335,7 @@ export const useLive = create<LiveState & LiveActions>()((set, get) => ({
           trail: null,
           moment: null,
           episodeEnd: null,
+          recording: null,
           error: null,
           keys: NO_KEYS,
         });
@@ -351,6 +384,13 @@ export const useLive = create<LiveState & LiveActions>()((set, get) => ({
       }
       case "episode_end":
         set({ episodeEnd: message });
+        break;
+      case "recording":
+        // Recording on: the counts; off: forget it. A new recording clears the "saved" note.
+        set(message.on ? { recording: message, savedDataset: null } : { recording: null });
+        break;
+      case "dataset_saved":
+        set({ savedDataset: message });
         break;
       case "error":
         set({ error: message.message });

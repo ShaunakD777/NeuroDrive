@@ -206,7 +206,7 @@ def test_broken_random_search_configs_name_the_field(change, problem):
 
 
 def test_epochs_and_units_belong_to_their_own_method():
-    with pytest.raises(ConfigError, match="--epochs is for toy configs"):
+    with pytest.raises(ConfigError, match="--epochs is for toy and imitation configs"):
         load_config(CONFIGS / "random_search.yaml", epochs=5)
-    with pytest.raises(ConfigError, match="--units is for random_search configs"):
+    with pytest.raises(ConfigError, match="--units is for random_search and dagger configs"):
         load_config(CONFIGS / "toy_xor.yaml", units=5)
