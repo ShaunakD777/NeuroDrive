@@ -224,6 +224,10 @@ Each step, in this order (semi-implicit Euler):
 Note: `o7` uses track knowledge (like the reference video's θ). This is documented and identical
 for every method.
 
+*Task 7.0b (ADR-053), no version change:* the readings are computed faster, from a wall list per
+(10 m cell, 22.5-degree ray-direction bin) instead of per 25 m cell; the lists are conservative,
+so every reading is bit-for-bit that of testing every wall.
+
 **Frozen at task 2.5 (ADR-005):** `OBSERVATION_VERSION = "v1"` and the names of the seven inputs
 are in `env/sensors.py`; `tests/env/test_contract.py` pins them. Changing §6.4 or §6.5 needs an
 ADR and a new version.
@@ -777,6 +781,18 @@ that crash or stall) takes about 0.8 s; one random-search unit (50 networks × 1
 50 cars against 33 ms per frame). Numba cannot run on the development machine: Windows Smart
 App Control blocks its compiled library (`_helperlib`). The options are listed in the task 7.0
 Report and ADR-013; none is implemented yet.
+
+*As built (task 7.0b, ADR-053, 2026-11-11):* the wall grid keeps one list per (10 m cell,
+22.5-degree ray-direction bin), and each ray tests exactly its own list, all of a step's
+(ray, wall) tests in one flat array; every reading is still bit-for-bit the full search's. The
+same worst case now takes **1.71 s on a performance core (best 1.67 s) and 3.95 s on an
+efficiency core (best 3.86 s)**: the **target is met** on both, at 0.34x and 0.79x the budget
+(0.95 ms and 2.20 ms per step). The sensors take 1.19 s (69 %, from 5.88 s), the world step
+0.43 s (25 %), the networks 0.08 s (5 %); the cost per car-step is 17-20 us from 50 to 500 cars
+(it was 65-88 us). A typical early generation takes 0.49 s, one random-search unit (500 cars)
+3.86 s. Each track's lists are built once per process: 1.3 s for the training loop, about 5 s
+for Monza (unpinned), then kept (`edge_grid`). Next in line, if needed, is the world step
+(projection onto the centreline), now a quarter of the time.
 
 ## 10. Testing layers
 See `EXPERIMENT_PROTOCOL.md` §1 for the component verification table.

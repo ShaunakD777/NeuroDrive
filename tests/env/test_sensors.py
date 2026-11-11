@@ -10,6 +10,7 @@ from hypothesis import strategies as st
 
 from neurodrive.core.rng import make_rng
 from neurodrive.env.sensors import (
+    GRID_CELL,
     RAY_ANGLES,
     RAY_RANGE,
     edge_grid,
@@ -253,7 +254,7 @@ def test_wall_grid_readings_are_bit_identical_to_the_full_search(track):
             ray_distances(segments, x[part], y[part], psi[part]),
         )
     assert grid.n_walls == len(segments)
-    assert grid.table.shape[1] < len(segments) / 3  # each car tests well under a third of the walls
+    assert grid.longest_list < len(segments) / 10  # each ray tests well under a tenth of the walls
 
 
 def test_wall_grid_handles_cars_on_cell_edges_and_outside_the_grid():
@@ -280,3 +281,156 @@ def test_wall_grid_rejects_longer_rays_and_works_without_walls():
     assert np.all(ray_readings(empty, [0.0, 3.0], 0.0, 0.0) == 1.0)
     with pytest.raises(ValueError, match="shape"):
         wall_grid(np.zeros((3, 2)))
+
+
+# ── per-direction lists (task 7.0b): conservative, so still exactly the full search ─────────
+
+ALL_TRACKS = sorted((TRACK_FILE.parent).glob("*.json"))
+
+
+def assert_grid_equals_full_search(grid, segments, x, y, psi, angles=RAY_ANGLES, chunk=500):
+    for k in range(0, len(x), chunk):
+        part = slice(k, k + chunk)
+        got = ray_distances(grid, x[part], y[part], psi[part], angles)
+        want = ray_distances(segments, x[part], y[part], psi[part], angles)
+        assert got.tobytes() == want.tobytes()
+
+
+@pytest.mark.parametrize("path", ALL_TRACKS, ids=[p.stem for p in ALL_TRACKS])
+def test_every_track_grid_is_bit_identical_to_the_full_search(path):
+    track = Track.from_json(path)
+    segments, grid = edge_segments(track), edge_grid(track)
+    assert (grid.cell, grid.bins) == (10.0, 16)
+    rng = make_rng(11)
+    lo, hi = segments.reshape(-1, 2).min(axis=0) - 70.0, segments.reshape(-1, 2).max(axis=0) + 70.0
+    on_road = rng.integers(0, len(track.points), 2000)
+    x = np.r_[rng.uniform(lo[0], hi[0], 2000), track.points[on_road, 0] + rng.uniform(-6, 6, 2000)]
+    y = np.r_[rng.uniform(lo[1], hi[1], 2000), track.points[on_road, 1] + rng.uniform(-6, 6, 2000)]
+    psi = rng.uniform(-10.0, 10.0, 4000)  # headings far outside (-pi, pi] too
+    assert_grid_equals_full_search(grid, segments, x, y, psi)
+
+
+def test_rays_exactly_on_bin_edges_and_just_beside_them():
+    segments, grid = edge_segments(TRACK), edge_grid(TRACK)
+    width = 2 * math.pi / grid.bins
+    rng = make_rng(3)
+    spots = rng.integers(0, len(TRACK.points), 40)
+    edges = np.array(
+        [h * width + turn for h in range(grid.bins) for turn in (0.0, 2 * math.pi, -4 * math.pi)]
+    )
+    phi = np.concatenate([edges, edges - 1e-12, edges + 1e-12, np.nextafter(edges, np.inf)])
+    x = np.repeat(TRACK.points[spots, 0], len(phi))
+    y = np.repeat(TRACK.points[spots, 1], len(phi))
+    # one ray straight ahead, so every ray's direction is exactly the chosen angle
+    assert_grid_equals_full_search(grid, segments, x, y, np.tile(phi, len(spots)), angles=[0.0])
+    # the five real rays with the car turned so that the centre ray sits on an edge
+    assert_grid_equals_full_search(grid, segments, x, y, np.tile(phi, len(spots)))
+
+
+def test_cars_exactly_on_cell_edges_and_corners():
+    segments, grid = edge_segments(TRACK), edge_grid(TRACK)
+    (x0, y0), c = grid.origin, grid.cell
+    px, py = TRACK.points[::7, 0], TRACK.points[::7, 1]
+    snap_x = x0 + np.round((px - x0) / c) * c
+    snap_y = y0 + np.round((py - y0) / c) * c
+    x = np.r_[snap_x, snap_x, px, np.nextafter(snap_x, -np.inf)]
+    y = np.r_[snap_y, py, snap_y, np.nextafter(snap_y, -np.inf)]
+    psi = make_rng(5).uniform(-math.pi, math.pi, len(x))
+    assert_grid_equals_full_search(grid, segments, x, y, psi)
+
+
+@settings(max_examples=120, deadline=None)
+@given(
+    random_walls,
+    poses,
+    st.floats(1.0, 30.0),
+    st.sampled_from([1, 4, 7, 16, 33]),
+    st.floats(5.0, 60.0),
+)
+def test_any_cell_size_and_bin_count_gives_the_full_search(walls, cars, cell, bins, reach):
+    segments = np.array([[[a, b], [c, d]] for a, b, c, d in walls]).reshape(-1, 2, 2)
+    x, y, psi = (np.array(column) for column in zip(*cars, strict=True))
+    grid = wall_grid(segments, reach=reach, cell=cell, bins=bins)
+    got = ray_distances(grid, x / 5.0, y / 5.0, psi, max_range=reach)
+    want = ray_distances(segments, x / 5.0, y / 5.0, psi, max_range=reach)
+    assert got.tobytes() == want.tobytes()
+
+
+def test_the_briefs_worked_example_one_cell_one_wedge_two_walls():
+    # W1 behind the cell, W2 ahead of it. The grid's origin is (-70, -48), so one cell is the
+    # square x 0..10, y 2..12, and a ray from (6, 2.5) at angle 0 lies in bin 0 (0 to 22.5 deg).
+    w1, w2 = wall(-20, 5, -20, 6), wall(55, 2, 55, 3)
+    segments = np.concatenate([w1, w2])
+    grid = wall_grid(segments, cell=10.0, bins=16)
+    assert np.allclose(grid.origin, [-70.0, -48.0])
+    key = grid.lists(np.array([6.0]), np.array([2.5]), np.array([[0.0]]))[0, 0]
+    on_list = set(grid.walls[grid.offsets[key] : grid.offsets[key + 1]].tolist())
+    assert on_list == {1}  # W2 kept, W1 (index 0) left off: no ray of bin 0 can reach it
+    assert ray_readings(grid, 6.0, 2.5, 0.0, angles=[0.0])[0, 0] == pytest.approx(49.0 / 50.0)
+    behind = wall_grid(segments, cell=10.0, bins=1)  # without directions W1 stays on the list
+    key1 = behind.lists(np.array([6.0]), np.array([2.5]), np.array([[0.0]]))[0, 0]
+    assert set(behind.walls[behind.offsets[key1] : behind.offsets[key1 + 1]].tolist()) == {0, 1}
+
+
+def test_directions_shorten_the_lists_and_bins_one_is_still_exact():
+    segments = edge_segments(TRACK)
+    plain, binned = wall_grid(segments, bins=1), edge_grid(TRACK)
+    mean = lambda g: g.list_lengths[g.list_lengths > 0].mean()  # noqa: E731
+    assert mean(binned) < 0.3 * mean(plain)
+    rng = make_rng(9)
+    spots = rng.integers(0, len(TRACK.points), 500)
+    x = TRACK.points[spots, 0] + rng.uniform(-6, 6, 500)
+    y = TRACK.points[spots, 1] + rng.uniform(-6, 6, 500)
+    assert_grid_equals_full_search(plain, segments, x, y, rng.uniform(-math.pi, math.pi, 500))
+
+
+@pytest.mark.parametrize("bins", [0, 2, 3, -1, 2.0, True])
+def test_wall_grid_rejects_bin_counts_it_cannot_enclose(bins):
+    with pytest.raises(ValueError, match="bins"):
+        wall_grid(wall(0, 0, 1, 1), bins=bins)
+
+
+def test_edge_grid_is_built_once_per_track_and_cannot_be_changed():
+    grid = edge_grid(TRACK)
+    assert edge_grid(Track.from_json(TRACK_FILE)) is grid  # same edges, same grid object
+    assert edge_grid(MONZA) is not grid
+    for array in (grid.starts, grid.vectors, grid.origin, grid.offsets, grid.walls):
+        with pytest.raises(ValueError):
+            array[0] = 0
+
+
+def test_walls_just_inside_the_range_seen_from_cell_corners():
+    # The hardest place for the lists: a wall almost R away, hit by a ray from the corner of its
+    # cell that points the ray's way, at any angle inside a bin. Two anchor walls fix the grid's
+    # origin at (-250, -250), so cell corners lie on multiples of 10 m. Each car sits just inside
+    # one of the four cells around a corner, and its own short wall stands across its ray at a
+    # distance between 49 and 50 m.
+    rng = make_rng(21)
+    n = 3000
+    corner = rng.integers(-5, 6, (n, 2)) * GRID_CELL
+    nudge = rng.choice([-1e-7, 0.0, 1e-7], (n, 2))
+    car = corner + nudge
+    theta = rng.uniform(0.0, 2 * math.pi, n)
+    dist = rng.uniform(49.0, 50.0, n)
+    direction = np.stack([np.cos(theta), np.sin(theta)], axis=1)
+    across = np.stack([-direction[:, 1], direction[:, 0]], axis=1) * 0.05
+    hit = car + dist[:, None] * direction
+    walls = np.stack([hit - across, hit + across], axis=1)
+    anchors = np.array([[[-200.0, -200.0], [-200.0, -199.0]], [[200.0, 200.0], [200.0, 199.0]]])
+    segments = np.concatenate([walls, anchors])
+    grid = wall_grid(segments)
+    assert np.allclose(grid.origin, [-250.0, -250.0])
+    got = np.concatenate(
+        [
+            ray_distances(grid, car[i : i + 1, 0], car[i : i + 1, 1], theta[i : i + 1], [0.0])
+            for i in range(n)
+        ]
+    )
+    want = np.concatenate(
+        [
+            ray_distances(segments, car[i : i + 1, 0], car[i : i + 1, 1], theta[i : i + 1], [0.0])
+            for i in range(n)
+        ]
+    )
+    assert got.tobytes() == want.tobytes()
+    assert np.mean(want < RAY_RANGE) > 0.9  # nearly every ray really meets its wall

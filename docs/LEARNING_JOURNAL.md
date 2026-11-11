@@ -1708,3 +1708,29 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
 - Open question: which optimisation (per-direction wall lists, a process pool, accepting it until
   the performance pass), and how many starts per network should 7.2 evaluate, given that 10
   starts make a generation about 10x more expensive?
+
+### 2026-11-11 — Task 7.0b Per-direction wall lists for the ray sensors
+- Concept: broad phase and narrow phase; conservative culling (keep too much, never too
+  little, so the exact step gives exactly the same answer); the separating axis test; the
+  Minkowski sum of a grid cell and a ray direction's wedge; ragged lists instead of padding.
+- Key equation(s) in words: a ray of direction phi belongs to bin floor(phi / 22.5 degrees); the
+  region a bin's rays reach from a cell is the square plus a 50 m wedge, its arc enclosed by two
+  tangent lines that meet 50 / cos(11.25 degrees) = 50.98 m out; a wall stays on the list unless
+  its shadow and the region's shadow on some axis are more than 1e-6 m apart.
+- What we observed: every reading stayed bit-for-bit the full search's on every track, on rays
+  exactly on bin edges, on cars exactly on cell corners and on walls 49-50 m away seen from cell
+  corners; the full suite (exact exam cards, replays, study guards) passed unchanged. The worst
+  case fell from 6.74 s to 1.71 s on a performance core and from 10.3 s to 3.95 s on an
+  efficiency core, inside the 5 s target on both. The first version, padding every ray to the
+  longest list of the step, reached only 3.47 and 6.06 s; testing each ray's own walls in one
+  flat array (45 walls on average instead of up to 123) gave the rest.
+- Surprise or difficulty: the prototype promised 3.4x faster rays, but its baseline had been
+  measured slow in the same noisy run; the real first gain was 2.2x, and the efficiency core
+  still missed. A planted bug that cut the wedge's arc off passed every random test: the lost
+  sliver is at most 0.24 m deep, at the end of a 50 m ray, seen from the cell's outermost corner.
+  Only a test aimed at exactly that place (walls 49-50 m away from cars on cell corners) caught
+  it. The two rounding safeguards (1e-6 m, 1e-9 rad) cover each other, so removing either alone
+  is not caught by any test.
+- Open question: the world step (projection onto the centreline) is now a quarter of the time;
+  is a generation with 10 starts per network (500 cars, about 16 s in the worst case over 60 s) fast
+  enough for 7.2?
