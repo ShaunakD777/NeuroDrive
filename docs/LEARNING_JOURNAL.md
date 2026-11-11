@@ -1734,3 +1734,23 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
 - Open question: the world step (projection onto the centreline) is now a quarter of the time;
   is a generation with 10 starts per network (500 cars, about 16 s in the worst case over 60 s) fast
   enough for 7.2?
+
+### 2026-11-11 — Task 7.1 Genome ↔ network
+- Concept: genome and gene; genotype (the list evolution changes) and phenotype (the network that
+  drives); the gene map; permutation symmetry, the first sign of why crossover is awkward.
+- Key equation(s) in words: with s_l the first gene of layer l, the weight from input m into
+  neuron j of layer l is gene s_l + j x n_in + m and its bias is gene s_l + n_out x n_in + j;
+  back again, k = i - s_l gives row k // n_in and column k % n_in while k < n_out x n_in.
+- What we observed: in the default network gene 37 is W0[5,2] (the straight-ahead ray into hidden
+  neuron 5), gene 400 W2[0,0] and gene 433 the throttle bias b2[1]; changing any one gene changes
+  exactly the one parameter at its address, for five network shapes. In the tiny 2-2-1 network the
+  genome (0.5, -1, 0, 1, 0, 0, 1, 2, 0) outputs 0.9093 on (2, 1); setting gene 3 to 0.5 gives
+  0.7279; swapping the hidden neurons changes 6 of the 9 genes and the output stays 0.9093; a
+  child taking six genes from one and three from the other outputs 0.6420, like neither parent.
+  In the default network such a swap moves 48 genes and changes no output.
+- Surprise or difficulty: most of the conversion already existed (tasks 2.1 and 2.3), so the
+  task became the meaning of the genes. A planted column-by-column reading of the weights failed
+  11 tests but not the named-genes test: 37 = 5 x 7 + 2 = 2 x 16 + 5, so gene 37 decodes to W0[5,2]
+  in both orders by coincidence.
+- Open question: how often does uniform crossover of two good drivers make a bad child in
+  practice, and does it matter once the population descends from one ancestor (7.4, 7.9)?

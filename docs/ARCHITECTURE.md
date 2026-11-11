@@ -124,7 +124,7 @@ neurodrive/
 │  ├─ learn/
 │  │  ├─ base.py                 Learner contract (v0 since task 3.7), budget counters
 │  │  ├─ supervised/             toy_tasks.py, train_toy.py, datasets.py, demos.py (dataset v1, §6.16), imitation.py, dagger.py
-│  │  ├─ evolution/              random_search.py, ga.py, es.py, neat/ (genome, species, ...)
+│  │  ├─ evolution/              random_search.py, genome.py (gene map, genome matrices), ga.py, es.py, neat/ (genome, species, ...)
 │  │  ├─ rl/                     returns.py, gaussian_policy.py, reinforce.py, actor_critic.py, ppo.py
 │  │  └─ hybrid/                 distill.py, pretrain_finetune.py
 │  ├─ experiment/
@@ -278,6 +278,13 @@ ADR and a new version.
   of length n_out.
 - **Flat genome order:** W_0 row by row, then b_0, then W_1, b_1, and so on. For [7,16,16,2]:
   128 + 272 + 34 = **434 numbers**.
+- *Gene map (task 7.1, ADR-054, `learn/evolution/genome.py`; the order above is unchanged):*
+  with s_l the first gene of layer l, W_l[j, m] is gene s_l + j·n_in + m and b_l[j] is gene
+  s_l + n_out·n_in + j; `gene_address` / `gene_index` convert both ways (`GeneAddress`, names
+  such as `W0[5,2]`), `layer_slices` gives each layer's ranges (default: W0 0–111, b0 112–127,
+  W1 128–383, b1 384–399, W2 400–431, b2 432–433). A generation is a plain (N, P) matrix:
+  `genomes_of(networks)`, `networks_of(spec, genomes)`, `random_genomes(spec, n, rng)` (equal to
+  `init_population(...).genomes()`); `Population.from_genomes` drives it.
 - File: `.npz` with arrays `W0, b0, W1, b1, ...` plus a `spec` JSON string.
 
 ### 6.9 Forward pass and ForwardTrace
