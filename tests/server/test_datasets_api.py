@@ -166,6 +166,6 @@ def test_detail_dense_coverage(client, datasets_dir):
 
 
 def test_hello_says_the_current_api(client):
-    assert API_VERSION == "v1.19"
+    assert API_VERSION == "v1.20"
     with client.websocket_connect("/ws/live") as ws:
-        assert json.loads(ws.receive_text())["api"] == "v1.19"
+        assert json.loads(ws.receive_text())["api"] == "v1.20"

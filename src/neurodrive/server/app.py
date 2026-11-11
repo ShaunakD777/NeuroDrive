@@ -264,7 +264,7 @@ def create_app(
                 for message in session.tick(time.monotonic()):
                     await send(message)
 
-        session = LiveSession(tracks, runs)
+        session = LiveSession(tracks, runs, datasets.datasets_dir)
         await send(HelloMessage(version=__version__))
         timer = asyncio.create_task(ticker())
         try:

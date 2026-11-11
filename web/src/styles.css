@@ -428,7 +428,8 @@ body {
 
 .controls button,
 .controls select,
-.controls .control-number {
+.controls .control-number,
+.controls .control-text {
   padding: 4px 12px;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -441,6 +442,15 @@ body {
 
 .control-number {
   width: 5.5em;
+}
+
+.control-text {
+  width: 9em;
+  cursor: text;
+}
+
+.controls .control-text[aria-invalid="true"] {
+  border-color: var(--bad, #c0392b);
 }
 
 .controls button:disabled,

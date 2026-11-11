@@ -1606,3 +1606,23 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
 - Open question: with 10 seeds and the held-out tracks, does DAgger beat cloning from the same
   starts, at the same number of teacher labels? And which checkpoint should be kept, when the
   last round can collapse? Both are for Study S5c (6.7).
+
+### 2026-11-11 — Task 6.1b Keyboard demonstrations
+- Concept: a second kind of teacher. The live session already observes, acts and steps; the
+  recorder is a passenger in that loop that writes down, for every step in which the car is
+  running, the observation the car saw and the (clipped) action it was given. Frames are the
+  budget currency exactly as for the expert (ADR-044).
+- Key equation(s) in words: F = n_1 + ... + n_k, the sum over recorded drives of the steps the
+  car drove (a crash after 3 steps plus a drive stopped after 5 gives 8); q, the share of nearly
+  straight steering labels, shows how coarse the data is (steers 0, 0, +1, 0, -1 give 3/5).
+- What we observed: the recorded rows equal the session's own decision memory bit for bit, and
+  each drive replayed alone from its stored start with its stored labels passes through the
+  stored observations bit for bit. Planted bugs (no clipping; observation read after the step)
+  failed one test each. In the browser, Record, hold the up arrow, Save puts a `keyboard`
+  dataset in the Datasets tab.
+- Surprise or difficulty: the real design questions were not about code but about meaning: a
+  recording needs a replayable start (so it must begin at step 0), and keys drive every car at
+  once (so recording is limited to one car). Writing a file from a browser click is also new,
+  so the server builds the file name and only validates the tag.
+- Open question: how different will a clone of these nine-valued labels be from the expert's
+  clone, and does DAgger help a human teacher more or less? That is Study S5c (6.7).

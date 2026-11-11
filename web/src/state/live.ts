@@ -4,6 +4,7 @@ import type {
   ActivationCurves,
   CheckpointRef,
   EpisodeEndMessage,
+  DatasetSavedMessage,
   ErrorMessage,
   ExplanationMessage,
   FrameMessage,
@@ -15,6 +16,9 @@ import type {
   NeuronReadout,
   Pause,
   Play,
+  RecordingMessage,
+  RecordStart,
+  RecordStop,
   Reset,
   ScenarioMessage,
   SelectCar,
@@ -45,7 +49,9 @@ export type Command =
   | KeyState
   | SetParam
   | WhatIf
-  | InspectStep;
+  | InspectStep
+  | RecordStart
+  | RecordStop;
 
 /** The messages the server sends that the store keeps (hello only confirms the connection). */
 export type ServerMessage =
@@ -55,6 +61,8 @@ export type ServerMessage =
   | MomentMessage
   | FrameMessage
   | EpisodeEndMessage
+  | RecordingMessage
+  | DatasetSavedMessage
   | ErrorMessage;
 
 export interface DriveInput {
@@ -166,6 +174,10 @@ export interface LiveState {
    */
   moment: MomentMessage | null;
   episodeEnd: EpisodeEndMessage | null;
+  /** The keyboard recording in progress (api v1.20, task 6.1b): null when none is open. */
+  recording: RecordingMessage | null;
+  /** The dataset the last recording was saved as, until the next recording starts. */
+  savedDataset: DatasetSavedMessage | null;
   /** The last error the server reported, or null. */
   error: string | null;
   /** The steer and throttle last sent as `key_state`. */
@@ -220,6 +232,8 @@ export const initialLive: LiveState = {
   trail: null,
   moment: null,
   episodeEnd: null,
+  recording: null,
+  savedDataset: null,
   error: null,
   keys: NO_KEYS,
 };
@@ -247,6 +261,8 @@ function isServerMessage(value: unknown): value is ServerMessage {
     type === "moment" ||
     type === "frame" ||
     type === "episode_end" ||
+    type === "recording" ||
+    type === "dataset_saved" ||
     type === "error"
   );
 }
@@ -255,7 +271,8 @@ export const useLive = create<LiveState & LiveActions>()((set, get) => ({
   ...initialLive,
 
   setStatus: (status) => {
-    if (status !== "connected") return set({ status });
+    // A lost connection ends the server's session, and any recording with it.
+    if (status !== "connected") return set({ status, recording: null });
     // A second "connected" means the server was lost and found again: a fresh session.
     const reconnect = get().everConnected;
     set({ status, everConnected: true, restoreNeuron: reconnect && get().neuronSettings !== null });
@@ -318,6 +335,7 @@ export const useLive = create<LiveState & LiveActions>()((set, get) => ({
           trail: null,
           moment: null,
           episodeEnd: null,
+          recording: null,
           error: null,
           keys: NO_KEYS,
         });
@@ -366,6 +384,13 @@ export const useLive = create<LiveState & LiveActions>()((set, get) => ({
       }
       case "episode_end":
         set({ episodeEnd: message });
+        break;
+      case "recording":
+        // Recording on: the counts; off: forget it. A new recording clears the "saved" note.
+        set(message.on ? { recording: message, savedDataset: null } : { recording: null });
+        break;
+      case "dataset_saved":
+        set({ savedDataset: message });
         break;
       case "error":
         set({ error: message.message });

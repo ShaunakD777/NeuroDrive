@@ -6,6 +6,7 @@ import { useSelection } from "../../state/selection";
 const SPEEDS = [0.5, 1, 2, 4, 8];
 const MAX_CARS = 100; // the server's limit for one scenario
 const DEFAULT_SEED = 1;
+const DEFAULT_RECORD_TAG = "default";
 
 /** A run id without its leading `YYYYMMDD-HHMMSS-` time stamp. */
 const shortRun = (id: string) => id.replace(/^\d{8}-\d{6}-/, "");
@@ -92,6 +93,9 @@ export function Controls({
   const frame = useLive((s) => s.frame);
   const ended = useLive((s) => s.episodeEnd !== null);
   const connected = useLive((s) => s.status === "connected");
+  const recording = useLive((s) => s.recording);
+  const savedDataset = useLive((s) => s.savedDataset);
+  const [tag, setTag] = useState(DEFAULT_RECORD_TAG);
 
   const ready = connected && scenario !== null && frame !== null;
   const playing = frame?.playing ?? false;
@@ -102,6 +106,9 @@ export function Controls({
   const replay = scenario?.checkpoint ?? null;
   const startShift = scenario?.start_shift ?? null;
   const selected = frame?.selected?.index ?? 0;
+  const isRecording = recording !== null;
+  const keyboard = (scenario?.policy ?? "keyboard") === "keyboard";
+  const tagOk = /^[A-Za-z0-9_-]{1,40}$/.test(tag);
 
   return (
     <div className="controls" role="toolbar" aria-label="Simulation controls">
@@ -111,7 +118,7 @@ export function Controls({
           <select
             data-testid="select-track"
             value={scenario?.track ?? ""}
-            disabled={!connected || tracks.length === 0}
+            disabled={!connected || tracks.length === 0 || isRecording}
             onChange={(e) => {
               loadScenario({ track: e.target.value });
               e.target.blur(); // so the arrow keys drive the car instead of changing this menu
@@ -131,7 +138,7 @@ export function Controls({
           <select
             data-testid="select-policy"
             value={scenario?.policy ?? "keyboard"}
-            disabled={!ready}
+            disabled={!ready || isRecording}
             onChange={(e) => {
               loadScenario({ policy: e.target.value as ScenarioRequest["policy"] });
               e.target.blur();
@@ -156,7 +163,7 @@ export function Controls({
           value={nCars}
           min={1}
           max={MAX_CARS}
-          disabled={!ready || replay !== null}
+          disabled={!ready || replay !== null || isRecording}
           onCommit={(n) => loadScenario({ n_cars: n })}
         />
 
@@ -165,7 +172,7 @@ export function Controls({
             type="checkbox"
             data-testid="check-random-start"
             checked={seed !== null}
-            disabled={!ready || replay !== null}
+            disabled={!ready || replay !== null || isRecording}
             onChange={(e) => {
               loadScenario({ seed: e.target.checked ? DEFAULT_SEED : null });
               e.target.blur();
@@ -180,7 +187,7 @@ export function Controls({
             value={seed}
             min={0}
             max={999_999}
-            disabled={!ready}
+            disabled={!ready || isRecording}
             onCommit={(n) => loadScenario({ seed: n })}
           />
         )}
@@ -211,6 +218,61 @@ export function Controls({
         >
           Reset
         </button>
+
+        {keyboard && !isRecording && (
+          <button
+            type="button"
+            data-testid="btn-record"
+            disabled={!ready}
+            title="Record your driving as a demonstration dataset (one car, a training track, from step 0)"
+            onClick={() => send({ type: "record_start" })}
+          >
+            Record
+          </button>
+        )}
+        {isRecording && (
+          <>
+            <span className="chip" data-kind="bad" data-testid="rec-badge" data-frames={recording.frames} data-episodes={recording.episodes}>
+              ● REC {recording.episodes} {recording.episodes === 1 ? "drive" : "drives"}, {recording.frames} frames
+            </span>
+            <label className="control">
+              <span className="control-label">Tag</span>
+              <input
+                type="text"
+                className="control-text"
+                data-testid="record-tag"
+                value={tag}
+                maxLength={40}
+                aria-invalid={!tagOk}
+                onChange={(e) => setTag(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.currentTarget.blur(); // hand the arrow keys back to driving
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              data-testid="btn-record-save"
+              disabled={!tagOk || recording.frames === 0}
+              onClick={() => send({ type: "record_stop", save: true, tag })}
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              data-testid="btn-record-discard"
+              onClick={() => send({ type: "record_stop", save: false, tag })}
+            >
+              Discard
+            </button>
+          </>
+        )}
+        {savedDataset !== null && !isRecording && (
+          <span className="camera-note" data-testid="record-saved" data-dataset={savedDataset.dataset_id}>
+            Saved {savedDataset.dataset_id}: {savedDataset.episodes} {savedDataset.episodes === 1 ? "drive" : "drives"},{" "}
+            {savedDataset.frames} frames
+          </span>
+        )}
 
         <label className="control">
           <span className="control-label">Speed</span>

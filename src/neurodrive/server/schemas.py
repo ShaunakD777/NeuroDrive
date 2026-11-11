@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
-API_VERSION = "v1.19"
+API_VERSION = "v1.20"
 
 
 class WireModel(BaseModel):
@@ -213,6 +213,26 @@ class InspectStep(CommandModel):
     step: int = Field(ge=0)
 
 
+class RecordStart(CommandModel):
+    """Start recording a keyboard demonstration (api v1.20, task 6.1b, ADR-051).
+
+    Allowed only with the keyboard driver, one car, a training track and the session at step 0.
+    Answered with ``recording``; otherwise with ``error`` and nothing is recorded.
+    """
+
+    type: Literal["record_start"] = "record_start"
+
+
+class RecordStop(CommandModel):
+    """End the recording: ``save`` true writes it as a dataset ``<time>-keyboard-<tag>`` in the
+    server's datasets folder (answered with ``dataset_saved`` and ``recording``); false forgets it.
+    ``tag`` is letters, digits, ``_`` and ``-``."""
+
+    type: Literal["record_stop"] = "record_stop"
+    save: bool
+    tag: str = Field(default="default", pattern=r"^[A-Za-z0-9_-]{1,40}$")
+
+
 Command = Annotated[
     LoadScenario
     | Play
@@ -224,7 +244,9 @@ Command = Annotated[
     | KeyState
     | SetParam
     | WhatIf
-    | InspectStep,
+    | InspectStep
+    | RecordStart
+    | RecordStop,
     Field(discriminator="type"),
 ]
 COMMAND_ADAPTER: TypeAdapter[Command] = TypeAdapter(Command)
@@ -491,6 +513,26 @@ class EpisodeEndMessage(WireModel):
     status: list[str]
     progress: list[float]
     laps: list[int]
+
+
+class RecordingMessage(WireModel):
+    """Where a keyboard recording stands (api v1.20): ``on``, the drives (episodes) with at least
+    one frame so far and the frames recorded. Sent when recording starts or stops, after a reset
+    and with every frame while recording."""
+
+    type: Literal["recording"] = "recording"
+    on: bool
+    episodes: int
+    frames: int
+
+
+class DatasetSavedMessage(WireModel):
+    """A recording was written as dataset v1 (api v1.20); it is listed by ``GET datasets``."""
+
+    type: Literal["dataset_saved"] = "dataset_saved"
+    dataset_id: str
+    frames: int
+    episodes: int
 
 
 class ErrorMessage(WireModel):
@@ -914,6 +956,8 @@ WIRE_MODELS: tuple[type[WireModel], ...] = (
     SelectCar,
     KeyState,
     SetParam,
+    RecordStart,
+    RecordStop,
     ScenarioMessage,
     CarColumns,
     NeuronReadout,
@@ -931,6 +975,8 @@ WIRE_MODELS: tuple[type[WireModel], ...] = (
     ActivationCurves,
     FrameMessage,
     EpisodeEndMessage,
+    RecordingMessage,
+    DatasetSavedMessage,
     ErrorMessage,
     RunSummary,
     RunListResponse,

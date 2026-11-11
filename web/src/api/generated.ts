@@ -343,6 +343,16 @@ export interface DatasetMap {
 }
 
 /**
+ * A recording was written as dataset v1 (api v1.20); it is listed by ``GET datasets``.
+ */
+export interface DatasetSavedMessage {
+  dataset_id: string;
+  episodes: number;
+  frames: number;
+  type: "dataset_saved";
+}
+
+/**
  * One entry of ``GET /api/datasets``: a dataset folder's headline from its ``meta.json``.
  *
  * ``finished`` is how many of the ``episodes`` ended by completing their laps; ``straight_share``
@@ -916,6 +926,39 @@ export interface Pause {
  */
 export interface Play {
   type: "play";
+}
+
+/**
+ * Start recording a keyboard demonstration (api v1.20, task 6.1b, ADR-051).
+ *
+ * Allowed only with the keyboard driver, one car, a training track and the session at step 0.
+ * Answered with ``recording``; otherwise with ``error`` and nothing is recorded.
+ */
+export interface RecordStart {
+  type: "record_start";
+}
+
+/**
+ * End the recording: ``save`` true writes it as a dataset ``<time>-keyboard-<tag>`` in the
+ * server's datasets folder (answered with ``dataset_saved`` and ``recording``); false forgets it.
+ * ``tag`` is letters, digits, ``_`` and ``-``.
+ */
+export interface RecordStop {
+  save: boolean;
+  tag: string;
+  type: "record_stop";
+}
+
+/**
+ * Where a keyboard recording stands (api v1.20): ``on``, the drives (episodes) with at least
+ * one frame so far and the frames recorded. Sent when recording starts or stops, after a reset
+ * and with every frame while recording.
+ */
+export interface RecordingMessage {
+  episodes: number;
+  frames: number;
+  on: boolean;
+  type: "recording";
 }
 
 /**

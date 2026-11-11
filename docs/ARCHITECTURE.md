@@ -440,7 +440,7 @@ data/demos/<dataset_id>/
 - `observation` is o_t, exactly what the student sees (observation v1); `label` is the teacher's
   action for that state, clipped to [−1, 1] (for a demonstration, the action it drove with).
   `x, y, psi, v` are kept for drawing only and are never inputs.
-- Teachers: `expert` (`nd demo-record`); `dagger` (task 6.6, ADR-049: the frames a DAgger run collected, saved as `<time>-dagger-<run tag>` when the run ends: the network drove, the expert labelled; `teacher` = `{kind: "dagger", labeller: "expert", params}`, every episode has `start_kind` `dagger` and its `round`, and the metadata adds `teacher_queries` (= F), `dagger` {base_dataset, epochs_per_round, rounds} and `dagger_run`, the run id); `keyboard` arrives with task 6.1b. The expert records
+- Teachers: `expert` (`nd demo-record`); `dagger` (task 6.6, ADR-049: the frames a DAgger run collected, saved as `<time>-dagger-<run tag>` when the run ends: the network drove, the expert labelled; `teacher` = `{kind: "dagger", labeller: "expert", params}`, every episode has `start_kind` `dagger` and its `round`, and the metadata adds `teacher_queries` (= F), `dagger` {base_dataset, epochs_per_round, rounds} and `dagger_run`, the run id); `keyboard` (task 6.1b, ADR-051: a person driving one car in the live session, recorded by `DemoRecorder`; `teacher` = `{kind: "keyboard", params: {}}`, `starts` = `{kind: "live", seed}` (`seed` null for the track's fixed start), every episode has `start_kind` `live` and its start pose, and its `status` is the car's outcome or `stopped` for a drive cut short by Reset or Save; the label is the clipped key input, steer and throttle each in {−1, 0, +1}). The expert records
   from the Driving Exam's starts on a **training** track (held-out tracks are refused) plus
   `random_starts` seeded random starts (arc length uniform on the lap, ±1 m sideways, ±0.1 rad,
   from the `starts` stream of `make_rng(seed)`; default 10, seed 0; since the task 6.6 follow-up,
@@ -450,7 +450,7 @@ data/demos/<dataset_id>/
   and provenance.
 - Shown by the dataset inspector (task 6.2, ADR-045; dense coverage and the comparator, ADR-046): `GET datasets` and `GET datasets/{id}` (§7).
 
-## 7. Server API (api v1.19, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033, ADR-035, ADR-041, ADR-042, ADR-045, ADR-046, ADR-047, ADR-048, ADR-049)
+## 7. Server API (api v1.20, ADR-051, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033, ADR-035, ADR-041, ADR-042, ADR-045, ADR-046, ADR-047, ADR-048, ADR-049)
 
 REST (`/api/...`):
 - `GET health` → `{status: "ok", version}` (`version` is the NeuroDrive package version)
@@ -532,7 +532,7 @@ REST (`/api/...`):
 
 WebSocket `/ws/live` (one independent session per connection):
 - `hello` is sent first, on connect: `{type: "hello", version, api}` (`api` is the message-contract
-  version, currently `"v1.19"`).
+  version, currently `"v1.20"`).
 - client → server (each has a `type` field):
   - `load_scenario {track, policy, n_cars, seed}`: `policy` is `"keyboard"`, `"constant"`,
     `"neuron"`, `"random_networks"` (every car is driven by its own random [7,16,16,2] network;
@@ -556,6 +556,17 @@ WebSocket `/ws/live` (one independent session per connection):
     shifted_starts`, the function Study S5b drives, so a shifted replay ends car for car as the
     study's drive). With `"expert"` the expert then drives those 10 starts (`n_cars`, `seed`
     ignored). A shift with any other driver is refused with `error`; the scenario stays.
+  - `record_start`, `record_stop {save, tag}` (since api v1.20, task 6.1b, ADR-051): keyboard
+    demonstrations. `record_start` is accepted only with the keyboard driver, exactly one car, a
+    training track and the session at step 0 (and a server with a datasets folder); otherwise it is
+    answered with `error` and nothing is recorded. While recording, every physics step in which the
+    car is running becomes a frame (the observation it saw, the clipped action it was given); each
+    drive from step 0 is an episode, closed by the car's outcome, by `reset` (status `stopped`) or by
+    `record_stop`. `load_scenario` is refused while recording. `record_stop` with `save` true writes
+    the dataset `<time>-keyboard-<tag>` (§6.16) into the server's datasets folder and answers
+    `dataset_saved` then `recording`; with `save` false it forgets the recording; saving with no
+    frames is refused and the recording stays open; `tag` is 1 to 40 letters, digits, `_` or `-`
+    (default `default`).
   - `play`, `pause`, `step` (exactly one physics step, even while paused), `reset` (back to
     step 0 with the same scenario and seed; stays paused or playing as before),
     `set_speed {speed}` (0.1 to 8, default 1), `select_car {index}` (default 0),
@@ -631,6 +642,11 @@ WebSocket `/ws/live` (one independent session per connection):
     car physics run for 2 s from the car's pose, once holding the real action and once the
     what-if action; `real` and `what_if` are [x, y] points (one per physics step), the `_end`
     entries [x, y, heading]. The Environment view draws the paths and a see-through ghost car.
+  - `recording {on, episodes, frames}` (api v1.20): the keyboard recording's state: the drives with
+    at least one frame so far and the frames recorded. Sent after `record_start`, with every frame
+    while recording, after a `reset` and, with `on` false, after `record_stop`.
+  - `dataset_saved {dataset_id, frames, episodes}` (api v1.20): the answer to a saving
+    `record_stop`; the dataset is listed by `GET datasets`.
   - `episode_end {step, time, status, progress, laps}`: sent once when every car has stopped; the
     session then pauses. `status` holds a name per car (`crashed`, `finished`, `stalled`,
     `timeout`).

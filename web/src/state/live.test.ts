@@ -358,3 +358,25 @@ describe("live store: replaying a checkpoint (task 5.9)", () => {
     expect(sent.at(-1)).toMatchObject({ policy: "random_networks", checkpoint: null });
   });
 });
+
+describe("live store: keyboard recording (task 6.1b)", () => {
+  beforeEach(() => useLive.setState({ ...initialLive }));
+
+  it("keeps the recording counts while it is on and forgets them when it is off", () => {
+    const { receive } = useLive.getState();
+    receive({ type: "recording", on: true, episodes: 1, frames: 8 });
+    expect(useLive.getState().recording).toMatchObject({ episodes: 1, frames: 8 });
+    receive({ type: "dataset_saved", dataset_id: "20261111-120000-keyboard-me", frames: 8, episodes: 1 });
+    receive({ type: "recording", on: false, episodes: 0, frames: 0 });
+    expect(useLive.getState().recording).toBeNull();
+    expect(useLive.getState().savedDataset?.frames).toBe(8); // the note stays until the next recording
+    receive({ type: "recording", on: true, episodes: 0, frames: 0 });
+    expect(useLive.getState().savedDataset).toBeNull();
+  });
+
+  it("a lost connection ends the recording (the server's session is gone)", () => {
+    useLive.getState().receive({ type: "recording", on: true, episodes: 1, frames: 3 });
+    useLive.getState().setStatus("disconnected");
+    expect(useLive.getState().recording).toBeNull();
+  });
+});

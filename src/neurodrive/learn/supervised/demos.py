@@ -16,6 +16,10 @@ has its own column because DAgger (task 6.6, ``learn/supervised/dagger.py``) lab
 someone else drove: its datasets have teacher kind ``dagger``, the network drove and the expert
 labelled.
 
+Keyboard demonstrations (task 6.1b, ADR-051): :class:`DemoRecorder` is filled one step at a time
+by the live session while a person drives one car; its dataset has teacher ``keyboard`` and the
+label is the clipped action the car was given.
+
 A dataset is a folder ``<out_dir>/<YYYYMMDD-HHMMSS>-<teacher>-<tag>/`` with
 
 * ``dataset.npz``: ``observation`` (F, 7), ``label`` (F, 2), ``episode`` and ``step`` (F,)
@@ -300,6 +304,132 @@ def record_expert(
         "car_params": asdict(exam_world.params),
     }
     return DemoDataset(meta=meta, **arrays)
+
+
+class DemoRecorder:
+    """Collects the frames of a drive that someone else is steering, one step at a time.
+
+    Used by the live session for keyboard demonstrations (task 6.1b, ADR-051). The session calls
+    :meth:`begin_episode` at step 0 of a drive (with the start the world used), :meth:`add` once
+    per physics step in which the car is still running, just before the world moves (the
+    observation o_t the car saw and the action a_t it was given, clipped to [-1, 1]), and
+    :meth:`end_episode` when the drive ends or is cut short. Rows therefore follow the dataset
+    rule of ADR-044: one per step in which the car was driving. Example: a first drive that
+    crashes after 3 steps and a second that is stopped after 5 give F = 3 + 5 = 8.
+
+    The recorder computes nothing about driving; it stores what it is given, so the dataset is
+    exactly what the session did.
+    """
+
+    def __init__(
+        self,
+        track: Track,
+        config: WorldConfig,
+        dt: float,
+        car_params: Any,
+        *,
+        seed: int | None = None,
+    ) -> None:
+        if track.split != "train":
+            raise ValueError(
+                f"{track.name!r} is a held-out track; demonstrations may only use training tracks "
+                "(EXPERIMENT_PROTOCOL rule 7)"
+            )
+        self.track, self.config, self.dt = track, config, dt
+        self.car_params, self.seed = car_params, seed
+        self._chunks: dict[str, list[np.ndarray]] = {name: [] for name in _ARRAY_FIELDS}
+        self._episodes: list[dict[str, Any]] = []
+        self._open: dict[str, Any] | None = None
+        self._rows: list[tuple[np.ndarray, np.ndarray, float, float, float, float]] = []
+
+    @property
+    def is_open(self) -> bool:
+        """True while an episode is being recorded."""
+        return self._open is not None
+
+    @property
+    def n_frames(self) -> int:
+        """Frames recorded so far, the open episode's included."""
+        return sum(e["frames"] for e in self._episodes) + len(self._rows)
+
+    @property
+    def n_episodes(self) -> int:
+        """Episodes with at least one frame, the open one included."""
+        return len(self._episodes) + (1 if self._rows else 0)
+
+    def begin_episode(self, start: dict[str, np.ndarray]) -> None:
+        """Open an episode for car 0 at the world's start (``World.start``): s0, lateral,
+        heading_offset and speed arrays. Refused while one is open."""
+        if self._open is not None:
+            raise RuntimeError("an episode is already open")
+        self._open = {
+            "start_s0_m": float(start["s0"][0]),
+            "start_lateral_m": float(start["lateral"][0]),
+            "start_heading_offset_rad": float(start["heading_offset"][0]),
+            "start_speed_mps": float(start["speed"][0]),
+        }
+        self._rows = []
+
+    def add(
+        self, observation: Array, action: Array, x: float, y: float, psi: float, v: float
+    ) -> None:
+        """One frame: the observation (7,), the action given (clipped to [-1, 1] here, as the
+        world does) and the car's pose for drawing."""
+        if self._open is None:
+            raise RuntimeError("no episode is open")
+        clipped = np.clip(np.asarray(action, dtype=np.float64), -1.0, 1.0)
+        self._rows.append((np.array(observation, dtype=np.float64), clipped, x, y, psi, v))
+
+    def end_episode(self, status: str) -> None:
+        """Close the open episode with its outcome (``crashed``, ``finished``, ``stalled``,
+        ``timeout`` or, for a drive cut short, ``stopped``). An episode with no frames is
+        dropped. Does nothing when none is open."""
+        if self._open is None:
+            return
+        rows, start = self._rows, self._open
+        self._open, self._rows = None, []
+        if not rows:
+            return
+        index = len(self._episodes)
+        n = len(rows)
+        self._chunks["observation"].append(np.stack([r[0] for r in rows]))
+        self._chunks["label"].append(np.stack([r[1] for r in rows]))
+        self._chunks["episode"].append(np.full(n, index, dtype=np.int64))
+        self._chunks["step"].append(np.arange(n, dtype=np.int64))
+        for k, name in enumerate(("x", "y", "psi", "v"), start=2):
+            self._chunks[name].append(np.array([r[k] for r in rows], dtype=np.float64))
+        self._episodes.append(
+            {"index": index, "start_kind": "live", **start, "status": status, "frames": n}
+        )
+
+    def to_dataset(self) -> DemoDataset:
+        """The recorded frames as dataset v1 (teacher ``keyboard``). Episodes must be closed."""
+        if self._open is not None:
+            raise RuntimeError("close the open episode first")
+        if not self._episodes:
+            raise ValueError("nothing recorded: there are no frames")
+        arrays = {name: np.concatenate(chunks) for name, chunks in self._chunks.items()}
+        frames = int(arrays["observation"].shape[0])
+        meta = {
+            "dataset_version": DATASET_VERSION,
+            "teacher": {"kind": "keyboard", "params": {}},
+            "track": self.track.name,
+            "track_split": self.track.split,
+            "starts": {"kind": "live", "seed": self.seed},
+            "episodes": self._episodes,
+            "demo_frames": frames,
+            "env_steps": frames,
+            "straight_share": straight_share(arrays["label"]),
+            "observation_version": OBSERVATION_VERSION,
+            "observation_names": list(OBSERVATION_NAMES),
+            "action_version": ACTION_VERSION,
+            "action_names": list(ACTION_NAMES),
+            "physics_version": PHYSICS_VERSION,
+            "dt": self.dt,
+            "world_config": asdict(self.config),
+            "car_params": asdict(self.car_params),
+        }
+        return DemoDataset(meta=meta, **arrays)
 
 
 def save_dataset(

@@ -25,6 +25,13 @@ Perturbed starts (task 6.5, ADR-048). With a ``start_shift`` (sideways metres, h
 every exam start is moved by the same shift (``experiment/exam.py: shifted_starts``, the function
 Study S5b drives), for the checkpoint driver and for the expert, which then drives the same 10
 starts. Shift (0, 0) is the plain replay.
+
+Keyboard demonstrations (task 6.1b, ADR-051, api v1.20). ``record_start`` (keyboard driver, one
+car, a training track, step 0) opens a :class:`DemoRecorder`. ``_advance`` hands it the
+observation and the clipped action of every step in which the car is running, just before the
+world moves, so the frames are the session's own steps. A drive ends with the episode, a reset
+or ``record_stop``; ``record_stop`` with ``save`` writes dataset v1 (teacher ``keyboard``) into
+the session's datasets folder.
 """
 
 import json
@@ -53,12 +60,15 @@ from neurodrive.env.sensors import RAY_ANGLES, RAY_RANGE, edge_grid, observe
 from neurodrive.env.track import Track
 from neurodrive.env.world import Status, World, WorldConfig
 from neurodrive.experiment.exam import EXAM_V1, shifted_starts
+from neurodrive.experiment.store import _git_info
 from neurodrive.explain.contributions import neuron_contributions
 from neurodrive.explain.sensitivity import sensitivity
+from neurodrive.learn.supervised.demos import DemoRecorder, save_dataset
 from neurodrive.server.runs import RunLibrary
 from neurodrive.server.schemas import (
     COMMAND_ADAPTER,
     CarColumns,
+    DatasetSavedMessage,
     EpisodeEndMessage,
     ErrorMessage,
     Explanation,
@@ -75,6 +85,9 @@ from neurodrive.server.schemas import (
     OutputReceipt,
     Pause,
     Play,
+    RecordingMessage,
+    RecordStart,
+    RecordStop,
     Reset,
     ScenarioMessage,
     SelectCar,
@@ -209,9 +222,16 @@ class TrackLibrary:
 class LiveSession:
     """One browser connection's simulation: a loaded scenario, a clock and a selected car."""
 
-    def __init__(self, tracks: TrackLibrary, runs: RunLibrary | None = None) -> None:
+    def __init__(
+        self,
+        tracks: TrackLibrary,
+        runs: RunLibrary | None = None,
+        datasets_dir: Path | None = None,
+    ) -> None:
         self.tracks = tracks
         self.runs = runs  # where the "checkpoint" driver finds its networks (None: not offered)
+        self.datasets_dir = datasets_dir  # where a keyboard recording is saved (None: no saving)
+        self._recorder: DemoRecorder | None = None
         self.playing = False
         self.speed = 1.0
         self.selected = 0
@@ -285,10 +305,14 @@ class LiveSession:
             return self._what_if(command)
         if isinstance(command, InspectStep):
             return self._inspect(command)
+        if isinstance(command, RecordStart):
+            return self._record_start()
+        if isinstance(command, RecordStop):
+            return self._record_stop(command)
         if isinstance(command, Reset):
             self._reset_world()
             self._restart_clock()
-            return [self._frame()]
+            return [self._frame(), *self._recording_messages()]
         if isinstance(command, Step):
             if self._world.done:
                 return [ErrorMessage(message="the episode has ended: send reset to start again")]
@@ -326,6 +350,12 @@ class LiveSession:
         self._last_tick = None
 
     def _load(self, command: LoadScenario) -> list[WireModel]:
+        if self._recorder is not None:
+            return [
+                ErrorMessage(
+                    message="a recording is open: save or discard it before loading another one"
+                )
+            ]
         try:
             track = self.tracks.get(command.track)
         except KeyError:
@@ -420,6 +450,9 @@ class LiveSession:
             )
         self._action = np.zeros((scenario.n_cars, 2))
         self._obs_step = -1
+        if self._recorder is not None:  # a reset ends the drive in progress and opens the next
+            self._recorder.end_episode("stopped")
+            self._recorder.begin_episode(self._world.start)
         capacity = round(TRAIL_SECONDS / self._world.dt)
         self._memory = DriveMemory(capacity, scenario.n_cars)  # a new drive: forget the old one
         self._trail_sent = 0
@@ -469,8 +502,14 @@ class LiveSession:
             obs = self._observe()
             action = np.clip(np.asarray(policy.act(obs), dtype=np.float64), -1.0, 1.0)
             self._memory.record(world, obs, action)  # step t: the state, then what was decided
+            recorder = self._recorder
+            if recorder is not None and recorder.is_open and world.running[0]:
+                cars = world.cars
+                recorder.add(obs[0], action[0], cars.x[0], cars.y[0], cars.psi[0], cars.v[0])
             world.step(action[:, 0], action[:, 1])
             self._action = action
+            if recorder is not None and recorder.is_open and world.done:
+                recorder.end_episode(Status(int(world.status[0])).name.lower())
 
     def _frame(self) -> FrameMessage:
         world = self._world
@@ -665,13 +704,70 @@ class LiveSession:
             throttle=r.throttle,
         )
 
+    def _recording_messages(self) -> list[WireModel]:
+        """The ``recording`` status while a recording is open, else nothing."""
+        rec = self._recorder
+        if rec is None:
+            return []
+        return [RecordingMessage(on=True, episodes=rec.n_episodes, frames=rec.n_frames)]
+
+    def _record_start(self) -> list[WireModel]:
+        """Open a recording if the session allows one (ADR-051 D1A, D2A); else say why not."""
+        world, scenario = self._world, self._scenario
+        assert world is not None and scenario is not None
+        if self._recorder is not None:
+            return [ErrorMessage(message="already recording")]
+        if self.datasets_dir is None:
+            return [ErrorMessage(message="this server has no datasets folder to save into")]
+        if scenario.policy != "keyboard":
+            return [ErrorMessage(message="recording needs the keyboard driver (you drive)")]
+        if world.n != 1:
+            return [ErrorMessage(message="recording needs exactly one car: set Cars to 1")]
+        if world.track.split != "train":
+            return [
+                ErrorMessage(
+                    message=f"{world.track.name!r} is a held-out track; demonstrations may only "
+                    "use training tracks"
+                )
+            ]
+        if world.step_count != 0:
+            return [ErrorMessage(message="recording starts at step 0: press Reset first")]
+        self._recorder = DemoRecorder(
+            world.track, world.config, world.dt, world.params, seed=scenario.seed
+        )
+        self._recorder.begin_episode(world.start)
+        return self._recording_messages()
+
+    def _record_stop(self, command: RecordStop) -> list[WireModel]:
+        """End the recording; save it as a dataset or forget it. A drive cut short is kept as
+        ``stopped``; saving with no frames is refused and the recording stays open."""
+        rec, world = self._recorder, self._world
+        if rec is None:
+            return [ErrorMessage(message="not recording")]
+        assert world is not None and self.datasets_dir is not None
+        rec.end_episode("stopped")  # a drive cut short (no-op if it had already ended)
+        saved: list[WireModel] = []
+        if command.save:
+            if rec.n_frames == 0:
+                rec.begin_episode(world.start)
+                return [ErrorMessage(message="nothing recorded yet: drive first, then save")]
+            dataset = rec.to_dataset()
+            folder = save_dataset(dataset, self.datasets_dir, command.tag, provenance=_git_info())
+            saved = [
+                DatasetSavedMessage(
+                    dataset_id=folder.name, frames=dataset.n_frames, episodes=rec.n_episodes
+                )
+            ]
+        self._recorder = None
+        return [*saved, RecordingMessage(on=False, episodes=0, frames=0)]
+
     def _frame_and_end(self) -> list[WireModel]:
         """A frame, followed by ``episode_end`` (and a pause) if every car has now stopped."""
         world = self._world
         assert world is not None
         if world.done:
             self.playing = False  # so the frame already says "paused"
-        messages: list[WireModel] = [self._frame()]
+        messages: list[WireModel] = [self._frame(), *self._recording_messages()]
         if world.done:
             messages.append(
                 EpisodeEndMessage(
