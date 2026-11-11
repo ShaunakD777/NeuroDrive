@@ -1653,3 +1653,31 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   the human clone, and does an early-epoch rule chosen before looking make DAgger's advantage
   appear or vanish? Phase 8 will compare imitation with evolution; which checkpoint rule to use
   for imitation there is still open.
+
+### 2026-11-11 — Phase 6 complete (tag `phase-6`)
+- What was built: demonstration datasets (dataset v1) recorded from the scripted expert, from a
+  DAgger run's collected frames, or from the keyboard in the live session (api v1.20); a dataset
+  inspector with coverage, comparison and a track map; the imitation learner (behavioural cloning
+  with validation loss and an exam at every checkpoint); DAgger with teacher queries counted in
+  the budget and configurable collection starts; replays from shifted starts; `nd demo-merge` and
+  expert recording from another dataset's starts; and studies S5a, S5b and S5c with the 6.6
+  follow-up. 1,859 Python tests (one skipped without PyTorch) and 171 web unit tests passed at
+  the closing check; the browser tests were not re-run for this closing check.
+- What was learned: a low imitation loss is not good driving (S5a: the loss fell 28-fold while
+  held-out progress collapsed from about 0.75 to about 0.10; the loss ranks checkpoints the wrong
+  way round); every clone fails from states the teacher never visited (S5b: early clones finish
+  0.70 of shifted starts, late clones 0.00); DAgger corrects the shift the learner causes itself
+  and is more reliable than cloning, but most of its gain in the follow-up came from wider
+  collection starts, and against a wide clone at about equal labels it was not clearly better on
+  the held-out tracks (S5c: +0.11, interval -0.12 to +0.45); a keyboard teacher gave a clone that
+  never lapped the training loop, worse than a matched expert clone in every seed; and the epoch
+  you read can matter more than the method, so the stopping rule must be fixed in advance.
+- Decisions: ADR-044 to ADR-052 (datasets; inspector; dense coverage; imitation learner and
+  pinned datasets; shifted-start replays; DAgger; wide collection starts; keyboard recording;
+  merging and matched teacher comparison).
+- Fixed along the way: a Windows file-lock error that killed one study run (resumed with
+  `nd resume`); several report claims corrected after checking them against the data.
+- Open questions: would a smoother human teacher lift the human clone? Does an early-epoch rule
+  chosen before looking make DAgger's advantage appear or vanish (T3 and D-1 were decided by the
+  pre-registered tie-break)? Which checkpoint rule should imitation use when Phase 8 compares it
+  with evolution?

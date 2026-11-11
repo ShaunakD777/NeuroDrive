@@ -7,15 +7,13 @@ simulator with three linked views: **Environment**, **Neural Network** and **Exp
 > decisions, and what can their successes and failures teach us about AI?
 
 ## Status
-Phase 5 ("The Driving Exam, baselines and training infrastructure") complete, tagged `phase-5`: a
-track set with held-out tracks, driving metrics, a scripted expert, the Driving Exam v1, learner
-contract v1 with a resumable runner and a SQLite mirror of the run folders, baselines with exam
-cards, random search as the first driving learner, training runs launched and followed from the
-app, a run timeline that replays any checkpoint in every view, and study S4 (random search vs the
-baselines, `docs/studies/`). Phase 4 ("Optimisers and experiment basics") is tagged `phase-4`,
-Phase 3 ("Backpropagation (toy lab)") `phase-3`, Phase 2 ("Multilayer network and Network view")
-`phase-2`, Phase 1 ("One neuron can drive") `phase-1` and Phase 0 (foundations) `phase-0`. Next:
-Phase 6, "Supervised imitation" (see `docs/CHECKLIST.md`).
+Phase 6 ("Supervised imitation") complete, tagged `phase-6`: demonstration datasets (scripted expert,
+keyboard, DAgger), a dataset inspector, the imitation learner, DAgger, and studies S5a-S5c on why a low
+imitation loss is not good driving, where cloning fails, and how teachers and DAgger compare. Phase 5
+("The Driving Exam, baselines and training infrastructure") is tagged `phase-5`, Phase 4 ("Optimisers and
+experiment basics") `phase-4`, Phase 3 ("Backpropagation (toy lab)") `phase-3`, Phase 2 ("Multilayer
+network and Network view") `phase-2`, Phase 1 ("One neuron can drive") `phase-1` and Phase 0 (foundations)
+`phase-0`. Next: Phase 7, "Genetic algorithm" (see `docs/CHECKLIST.md`).
 
 ## Prerequisites
 - [uv](https://docs.astral.sh/uv/) for Python. It downloads Python 3.12 by itself; your system
