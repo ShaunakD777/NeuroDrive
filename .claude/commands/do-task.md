@@ -4,12 +4,14 @@ argument-hint: <task-id, e.g. 1.4>
 ---
 Carry out NeuroDrive task **$ARGUMENTS** using the loop in `docs/WORKFLOW.md` §1.
 
-1. **Read** the task in `docs/ROADMAP.md`, `docs/CHECKLIST.md`, the relevant
-   `docs/ARCHITECTURE.md` contracts and ADRs. Confirm the dependencies are ✅.
+1. **Read** only what the task needs: search `docs/ROADMAP.md` and `docs/CHECKLIST.md` for its
+   ID and read those lines plus the phase header, then only the `docs/ARCHITECTURE.md` §6
+   contracts and ADRs the task names. Do not read whole docs. Confirm the dependencies are ✅.
 2. **Brief** (template `docs/WORKFLOW.md` §2). Save it to
    `task-notes/phase-<N>/task-$ARGUMENTS-brief.md` and update `task-notes/README.md`
-   (`docs/WORKFLOW.md` §2a). If the task is ⚑ or a new architectural decision is needed, stop after
-   the Brief and ask.
+   (`docs/WORKFLOW.md` §2a). If `task-notes/phase-<N>/task-$ARGUMENTS-brief.md` already exists,
+   reuse it: update only the sections a decision changed, and do not re-post the rest. If the task
+   is ⚑ or a new architectural decision is needed, stop after the Brief and ask.
 3. **Implement** only the files named in the Brief. Mark the task ◐ in the checklist. Follow every
    rule in `CLAUDE.md` §3–4 (scope, determinism, seeded randomness, no ML frameworks, layering).
 4. **Verify** by running the task's tests or experiment. Show the commands and summarise the real
