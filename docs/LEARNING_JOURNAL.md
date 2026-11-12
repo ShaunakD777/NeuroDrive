@@ -1775,3 +1775,24 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   the order among them follows the rows. Selection (7.3) must not let the index decide.
 - Open question: with a third of the first generation tied at 0, how much does tie-breaking
   matter for the first generations of selection?
+
+### 2026-11-12 — Task 7.3 Selection operators
+- Concept: selection turns fitness into parents and is the only place where "better" becomes
+  "more children"; selection pressure (the expected copies of the best); tournament selection;
+  linear rank selection; stochastic universal sampling; fair treatment of ties.
+- Key equation(s) in words: a tournament of k draws with replacement is won by the network at
+  place r with probability ((N - r) / N)^k - ((N - r - 1) / N)^k, and a tied fitness level shares
+  (m_le / N)^k - (m_lt / N)^k equally; linear ranking gives place r an expected
+  e(r) = s - 2 (s - 1) r / (N - 1) copies, tied places sharing their mean; SUS gives every network
+  floor(n p) or ceil(n p) copies.
+- What we observed: for F = (0.3, 1.2, 0.3, 1.9) a tournament of 2 gives (0.125, 0.3125, 0.125,
+  0.4375) and rank selection at s = 1.5 gives (0.1667, 0.2917, 0.1667, 0.375), equal to
+  brute-force enumeration of every draw and of every tie order. In a 50-network generation like
+  7.2's (20 at exactly 0) the best gets 2.94 expected copies with k = 3 and 1.5 with s = 1.5, but
+  the 20 stalled networks together get 3.2 of the 50 parents with tournaments and 13.9 with rank
+  selection: linear ranking keeps far more of the useless networks.
+- Surprise or difficulty: a planted bug that gave tournament ties to the lowest index failed only
+  one test at first, because brute-force enumeration used the same first-drawn rule as the code;
+  a direct test (three tied best networks at rows 0, 4, 8 must win equally often) was added.
+- Open question: is s = 1.5 too gentle for the first generations, where most networks are tied
+  at 0, and does the tournament's stronger pressure cost diversity later (7.7, 7.9)?
