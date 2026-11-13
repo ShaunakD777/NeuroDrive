@@ -5,8 +5,10 @@ to stop* (docs/ARCHITECTURE.md §6.12). Each unit, in this order:
 
 1. ``learner.train_unit()``; add its budget increments (environment steps, demonstration
    frames, teacher queries) to the running totals;
-2. append one metrics line (unit, totals, training wall-clock seconds, the learner's metrics);
-   stop with status "diverged" if the unit diverged;
+2. append one metrics line (unit, totals, training wall-clock seconds, the learner's metrics),
+   then the unit's lines for ``extra/<name>.jsonl`` if the learner gave any
+   (``UnitResult.extra``, task 7.5, ADR-056: the GA's population statistics); stop with status
+   "diverged" if the unit diverged;
 3. if the unit is on the checkpoint schedule (0, 1, 2, 5, 10, 20, 50, ...), or the learner
    reports a new best network in it (``UnitResult.new_best``, task 5.9, ADR-042), or it is a
    multiple of ``checkpoint_every`` k when one is set (task 6.3, ADR-047; k = 5 adds 15, 25,
@@ -26,16 +28,17 @@ The last completed unit always gets a checkpoint (and an exam). Exam time and th
 time are measured separately and kept out of the training clock and the budget.
 
 **Resuming** (:func:`resume`): the saved state says which unit U it belongs to; everything later
-(metrics lines, checkpoints, exam cards) is cut away, the learner is restored, random generators
-included, and the loop continues with unit U + 1. Because the state is saved last, a kill at any
-point loses at most the unit in progress, and that unit is recomputed with the same random
-numbers: the run continues exactly as if it had never stopped, except for wall-clock times.
-The mirror's rows of that run are then copied again from the cut-back folder.
+(metrics lines, extra lines, checkpoints, exam cards) is cut away, the learner is restored,
+random generators included, and the loop continues with unit U + 1. Because the state is saved
+last, a kill at any point loses at most the unit in progress, and that unit is recomputed with
+the same random numbers: the run continues exactly as if it had never stopped, except for
+wall-clock times. The mirror's rows of that run are then copied again from the cut-back folder.
 
 ``train_toy_run`` starts a whole toy run from a validated config (``nd train``, task 4.6b),
 ``train_random_search_run`` a random-search run (task 5.7), ``train_imitation_run`` a
 behavioural-cloning run (task 6.3), ``train_dagger_run`` a DAgger run (task 6.6; it also saves
-the frames it collected as a dataset, :func:`save_dagger_dataset`); ``sweep_seeds`` runs one
+the frames it collected as a dataset, :func:`save_dagger_dataset`), ``train_ga_run`` a
+genetic-algorithm run (task 7.5); ``sweep_seeds`` runs one
 config once per seed (``nd sweep``, task 4.7a, ADR-033); ``learner_from_config`` rebuilds the
 learner a run folder's config describes, for ``nd resume`` (task 5.7).
 
@@ -61,6 +64,7 @@ from neurodrive.env.sensors import OBSERVATION_SIZE
 from neurodrive.env.track import Track
 from neurodrive.experiment.config import (
     DaggerRunConfig,
+    GARunConfig,
     ImitationRunConfig,
     RandomSearchRunConfig,
     RunConfig,
@@ -68,6 +72,7 @@ from neurodrive.experiment.config import (
     parse_config,
     resolved,
     to_dagger_settings,
+    to_ga_settings,
     to_imitation_settings,
     to_random_search_settings,
     to_toy_config,
@@ -76,6 +81,7 @@ from neurodrive.experiment.db import DB_NAME, Mirror
 from neurodrive.experiment.exam import DEFAULT_TRACKS_DIR, ExamResult, run_exam
 from neurodrive.experiment.store import RunStore, _git_info
 from neurodrive.learn.base import Learner, Resumable
+from neurodrive.learn.evolution.ga import GALearner
 from neurodrive.learn.evolution.random_search import RandomSearchLearner
 from neurodrive.learn.supervised.dagger import DaggerLearner, collected_dataset
 from neurodrive.learn.supervised.demos import (
@@ -339,6 +345,8 @@ def _loop(
             record = {"unit": unit, **totals, "wall_clock_s": recorded}
             record = {**record, **result.metrics, "diverged": result.diverged}
             store.append_metrics(record)
+            for name, line in result.extra.items():
+                store.append_extra_line(name, {"unit": unit, **line})
             if result.diverged:
                 status, reason = "diverged", "diverged"
                 mirror(record)
@@ -410,7 +418,8 @@ def train_toy_run(
 
 @dataclass(frozen=True)
 class RandomSearchRunResult:
-    """What ``train_random_search_run`` reports: the folder, the status, units, best fitness."""
+    """What ``train_random_search_run`` and ``train_ga_run`` report: the folder, the status,
+    units (generations for the GA), the best fitness and the unit that found it."""
 
     store: RunStore
     status: str
@@ -470,6 +479,9 @@ def learner_from_config(
     if isinstance(config, RandomSearchRunConfig):
         track = Track.from_json(Path(tracks_dir) / f"{config.fitness.track}.json")
         return RandomSearchLearner(to_random_search_settings(config), track, make_rng(config.seed))
+    if isinstance(config, GARunConfig):
+        track = Track.from_json(Path(tracks_dir) / f"{config.fitness.track}.json")
+        return GALearner(to_ga_settings(config), track, make_rng(config.seed))
     if isinstance(config, ImitationRunConfig):
         _, dataset = pin_dataset(config, datasets_dir)
         return ImitationLearner(to_imitation_settings(config), dataset, make_rng(config.seed))
@@ -633,6 +645,17 @@ def train_random_search_run(
     config (``on_start(store)`` is called then, as in :func:`train_toy_run`); then :func:`run`
     with the config's budget and exams setting.
     """
+    return _train_search_run(config, runs_dir, extra_meta, tracks_dir, on_start)
+
+
+def _train_search_run(
+    config: RandomSearchRunConfig | GARunConfig,
+    runs_dir: str | Path,
+    extra_meta: dict | None,
+    tracks_dir: str | Path,
+    on_start: Callable[[RunStore], None] | None,
+) -> RandomSearchRunResult:
+    """The steps of :func:`train_random_search_run`, for random search and the GA."""
     data = resolved(config)
     learner = learner_from_config(data, tracks_dir)
     store = RunStore.create(runs_dir, learner.name, config.tag, data, extra_meta=extra_meta)
@@ -645,6 +668,22 @@ def train_random_search_run(
     return RandomSearchRunResult(
         store, status, len(metrics), last.get("best_fitness"), last.get("best_unit", 0)
     )
+
+
+def train_ga_run(
+    config: GARunConfig,
+    runs_dir: str | Path,
+    extra_meta: dict | None = None,
+    tracks_dir: str | Path = DEFAULT_TRACKS_DIR,
+    on_start: Callable[[RunStore], None] | None = None,
+) -> RandomSearchRunResult:
+    """Train one genetic-algorithm run described by ``config`` under ``runs_dir`` (task 7.5).
+
+    The same steps as :func:`train_random_search_run`: the learner from ``make_rng(seed)``, the
+    run folder with the resolved config, then :func:`run` with the budget and exams setting.
+    One unit is one generation; each adds a line to ``extra/population.jsonl``.
+    """
+    return _train_search_run(config, runs_dir, extra_meta, tracks_dir, on_start)
 
 
 _SEED_PART = re.compile(r"^(\d+)(?:-(\d+))?$")
@@ -682,7 +721,7 @@ def sweep_seeds(
     """Train ``config`` once per seed; returns the sweep id and one result per seed.
 
     The sweep id is ``<YYYYMMDD-HHMMSS>-<method>-<tag>`` (formed like a run id; the method is
-    ``toy_<task>``, ``random_search``, ``imitation`` or ``dagger``). Run k gets seed k, tag
+    ``toy_<task>``, ``random_search``, ``imitation``, ``dagger`` or ``ga``). Run k gets seed k, tag
     ``<tag>-s<k>`` (so its resolved config re-creates it on its own) and ``"sweep": <id>`` in its
     ``meta.json``, plus ``"study": <study>`` when ``study`` is given (ADR-043). Runs are trained
     one after another. An imitation or DAgger config's dataset is pinned once, before the first
@@ -710,6 +749,8 @@ def sweep_seeds(
             results.append(
                 train_dagger_run(one, runs_dir, extra_meta=meta, datasets_dir=datasets_dir)
             )
+        elif isinstance(one, GARunConfig):
+            results.append(train_ga_run(one, runs_dir, extra_meta=meta))
         else:
             results.append(train_random_search_run(one, runs_dir, extra_meta=meta))
     return sweep_id, results

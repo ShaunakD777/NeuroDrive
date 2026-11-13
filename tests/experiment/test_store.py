@@ -100,6 +100,28 @@ def test_extra_arrays(tmp_path):
     np.testing.assert_array_equal(data["y"], y)
 
 
+def test_extra_lines_round_trip_and_are_cut_back(tmp_path):
+    # task 7.5 (ADR-056): per-unit lines in extra/<name>.jsonl, cut back like metrics lines
+    store = new_store(tmp_path)
+    assert store.extra_line_names() == [] and store.read_extra_lines("population") == []
+    for unit in (1, 2, 3):
+        store.append_metrics({"unit": unit})
+        store.append_extra_line("population", {"unit": unit, "fitness": [0.1 * unit, 0.0]})
+        store.append_extra_line("lineage", {"unit": unit, "parents": [[0, unit]]})
+    assert store.extra_line_names() == ["lineage", "population"]
+    assert [r["fitness"] for r in store.read_extra_lines("population")][1] == [0.2, 0.0]
+    store.cut_back(1)
+    assert store.read_extra_lines("population") == [{"unit": 1, "fitness": [0.1, 0.0]}]
+    assert store.read_extra_lines("lineage") == [{"unit": 1, "parents": [[0, 1]]}]
+    assert sorted(p.name for p in (store.path / "extra").iterdir()) == [
+        "lineage.jsonl", "population.jsonl"
+    ]  # fmt: skip
+    with pytest.raises(ValueError, match="unit"):
+        store.append_extra_line("population", {"fitness": [1.0]})
+    with pytest.raises(ValueError, match="extra name"):
+        store.append_extra_line("../escape", {"unit": 1})
+
+
 def test_bad_names_and_missing_folder(tmp_path):
     with pytest.raises(ValueError, match="tag"):
         RunStore.create(tmp_path, "toy", "../escape", CONFIG)

@@ -1,0 +1,36 @@
+# Genetic algorithm (task 7.5, ADR-056): one unit is one generation. Score every network on the
+# training track, keep the best few unchanged (the elite), and fill the rest of the next
+# generation with children: parents picked by tournaments, crossed, then mutated.
+# Train:   uv run python -m neurodrive train --config configs/ga.yaml
+# Resume:  uv run python -m neurodrive resume --run runs/<run_id>
+# Per generation: one metrics line and one line of extra/population.jsonl (every network's fitness).
+# Format: docs/ARCHITECTURE.md section 6.15 (config v1).
+method: ga
+seed: 0
+tag: default
+network:                    # the same driving network as random search (fair-comparison rule 2)
+  layer_sizes: [7, 16, 16, 2]
+  hidden_activation: tanh
+  output_activation: tanh
+  init_scheme: xavier       # the first generation: N fresh draws from this initialisation
+population:
+  size: 50                  # N networks per generation (500 cars: 50 x the 10 starts)
+  elite: 2                  # the best E pass unchanged; scored again, they must keep their fitness
+selection:
+  method: tournament        # tournament | rank
+  tournament_size: 3        # k: the best of 3 random networks becomes a parent
+  rank_pressure: 1.5        # s, used only by rank selection
+variation:
+  crossover_rate: 0.5       # c: half the children mix two parents, half copy one
+  mutation_rate: 0.02       # p: each gene of a child moves with this probability (about 9 of 434)
+  mutation_strength: 0.05   # sigma: the standard deviation of a move
+fitness:                    # random search's: f = progress (up to 1) + a time bonus; mean over starts
+  track: train_loop_01      # a training track; held-out tracks are refused
+  start_fractions: [0.0, 0.2, 0.4, 0.6, 0.8]   # the Driving Exam's starts on this track ...
+  lateral_offsets: [0.0, 1.5]                  # ... centred and 1.5 m to the left
+  target_laps: 2
+budget:                     # any limit reached stops the run after that unit
+  units: 100                # 100 generations = 5,000 networks scored
+  env_steps: null
+  wall_clock_s: null
+exams: true                 # the Driving Exam at every checkpoint and every new best

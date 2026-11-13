@@ -61,7 +61,9 @@ def serve(
 
 _STUDY_HELP = "Study id written into each run's meta.json, e.g. S4 (ADR-043)."
 _EPOCHS_HELP = "Override training.epochs (toy and imitation configs)."
-_UNITS_HELP = "Override budget.units (random_search) or dagger.rounds (dagger configs)."
+_UNITS_HELP = (
+    "Override budget.units (random_search; ga: generations) or dagger.rounds (dagger configs)."
+)
 _DATASETS_HELP = (
     "Folder of demonstration datasets for imitation and DAgger (default: data/demos/); "
     "DAgger also saves the frames it collected there."
@@ -116,12 +118,13 @@ def train(
     study: str | None = typer.Option(None, help=_STUDY_HELP),
     datasets_dir: str | None = typer.Option(None, help=_DATASETS_HELP),
 ) -> None:
-    """Train from a config file (toy, random_search, imitation or dagger), write a run folder."""
+    """Train from a config file (toy, random_search, imitation, dagger, ga); write a run folder."""
     import sys
 
     from neurodrive.experiment.config import (
         ConfigError,
         DaggerRunConfig,
+        GARunConfig,
         ImitationRunConfig,
         ToyRunConfig,
         load_config,
@@ -129,6 +132,7 @@ def train(
     from neurodrive.experiment.runner import (
         pin_dataset,
         train_dagger_run,
+        train_ga_run,
         train_imitation_run,
         train_random_search_run,
         train_toy_run,
@@ -167,6 +171,11 @@ def train(
         typer.echo(f"status: {aggregated.status} after {aggregated.rounds_done} rounds")
         for line in _dagger_lines(aggregated):
             typer.echo(line)
+        return
+    if isinstance(run_config, GARunConfig):
+        evolved = train_ga_run(run_config, runs_dir, meta, on_start=announce)
+        typer.echo(f"status: {evolved.status} after {evolved.units_done} generations")
+        typer.echo(_best_line(evolved))
         return
     if not isinstance(run_config, ToyRunConfig):
         found = train_random_search_run(run_config, runs_dir, meta, on_start=announce)
