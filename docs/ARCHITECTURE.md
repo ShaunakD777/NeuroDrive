@@ -124,7 +124,7 @@ neurodrive/
 │  ├─ learn/
 │  │  ├─ base.py                 Learner contract (v0 since task 3.7), budget counters
 │  │  ├─ supervised/             toy_tasks.py, train_toy.py, datasets.py, demos.py (dataset v1, §6.16), imitation.py, dagger.py
-│  │  ├─ evolution/              random_search.py, genome.py (gene map, genome matrices), ga.py (evaluation and ranking since 7.2), selection.py (tournament and rank selection, 7.3), es.py, neat/ (genome, species, ...)
+│  │  ├─ evolution/              random_search.py, genome.py (gene map, genome matrices), ga.py (evaluation and ranking since 7.2), selection.py (tournament and rank selection, 7.3), variation.py (Gaussian mutation and uniform crossover, 7.4), es.py, neat/ (genome, species, ...)
 │  │  ├─ rl/                     returns.py, gaussian_policy.py, reinforce.py, actor_critic.py, ppo.py
 │  │  └─ hybrid/                 distill.py, pretrain_finetune.py
 │  ├─ experiment/
