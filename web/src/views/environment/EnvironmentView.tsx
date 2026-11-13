@@ -68,6 +68,7 @@ export function EnvironmentView({
 
   const geometry = useLive((s) => s.geometry);
   const frame = useLive((s) => s.frame);
+  const race = useLive((s) => s.scenario?.population ?? null);
   // The rays the shared selection points at (a selected neuron, input or weight), for tests.
   const highlightAttribute = useSelectedRays().join(",");
   // The selected output's sensitivity to each ray, when an output is selected (task 2.10).
@@ -325,6 +326,7 @@ export function EnvironmentView({
           data-highlighted-rays={highlightAttribute}
           data-ray-sensitivity={sensitivityAttribute}
           data-ghost={ghostAttribute}
+          data-race={race === null ? "" : `${race.unit}:${race.start}:${race.ghost_unit ?? ""}`}
           style={{ width: size.w, height: size.h }}
           data-dragging={dragging ? "true" : undefined}
           onPointerDown={onPointerDown}
@@ -346,8 +348,21 @@ export function EnvironmentView({
             Follow car
           </button>
         )}
-        {!compact && (ghost !== null || sensitivityRow !== null) && (
+        {!compact && (ghost !== null || sensitivityRow !== null || race !== null) && (
           <div className="stage-legends">
+            {race !== null && (
+              <div className="stage-legend stage-legend-passthrough" data-testid="race-legend">
+                <strong>Generation {race.unit}</strong>, {race.size} networks from start {race.start + 1}. Colour = the
+                GA&apos;s fitness rank (F over all {race.n_starts} starts):{" "}
+                <span className="rank-swatches" aria-hidden="true">
+                  {[1, 2, 3, 4, 5].map((k) => (
+                    <span key={k} className="rank-swatch" style={{ background: `var(--rank-${k})` }} />
+                  ))}
+                </span>{" "}
+                best fifth → worst fifth. Ringed = elite (last generation&apos;s best, unchanged); faded = stopped
+                {race.ghost_unit !== null && <>; dashed see-through = ghost, generation {race.ghost_unit}&apos;s champion</>}.
+              </div>
+            )}
             {ghost !== null && (
               <div className="stage-legend" data-testid="ghost-legend">
                 <strong>What-if ghost:</strong> where car {(frame?.selected?.index ?? 0) + 1} would

@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 
+import type { PopulationInfo } from "../../api/generated";
 import { type ScenarioRequest, useLive } from "../../state/live";
 import { useSelection } from "../../state/selection";
+import { defaultGhost } from "./population";
 
 const SPEEDS = [0.5, 1, 2, 4, 8];
 const MAX_CARS = 100; // the server's limit for one scenario
@@ -10,6 +12,17 @@ const DEFAULT_RECORD_TAG = "default";
 
 /** A run id without its leading `YYYYMMDD-HHMMSS-` time stamp. */
 const shortRun = (id: string) => id.replace(/^\d{8}-\d{6}-/, "");
+
+/**
+ * The ghost's generation after moving the race to generation `unit`: one behind if it was one
+ * behind (the default), kept if it is still earlier, none if there was none.
+ */
+export function ghostAfterMove(info: PopulationInfo, unit: number): number | null {
+  const ghost = info.ghost_unit;
+  if (ghost === null) return null;
+  if (ghost === info.unit - 1 || ghost >= unit) return defaultGhost(unit);
+  return ghost;
+}
 
 /**
  * A whole-number box that applies its value when the user finishes (Enter, leaving the box, or
@@ -104,6 +117,9 @@ export function Controls({
   const seed = scenario?.seed ?? null;
   // A replayed checkpoint (task 5.9) always drives the exam's 10 starts: cars and start are fixed.
   const replay = scenario?.checkpoint ?? null;
+  // A raced GA generation (task 7.6): one car per network, on the run's own track and start.
+  const race = scenario?.population ?? null;
+  const fixedCars = replay !== null || race !== null;
   const startShift = scenario?.start_shift ?? null;
   const selected = frame?.selected?.index ?? 0;
   const isRecording = recording !== null;
@@ -118,7 +134,8 @@ export function Controls({
           <select
             data-testid="select-track"
             value={scenario?.track ?? ""}
-            disabled={!connected || tracks.length === 0 || isRecording}
+            disabled={!connected || tracks.length === 0 || isRecording || race !== null}
+            title={race !== null ? "A GA generation races on the track its fitness was measured on" : undefined}
             onChange={(e) => {
               loadScenario({ track: e.target.value });
               e.target.blur(); // so the arrow keys drive the car instead of changing this menu
@@ -149,6 +166,11 @@ export function Controls({
             <option value="neuron">Neuron (you set its weights)</option>
             <option value="random_networks">Random networks (one per car)</option>
             <option value="expert">Expert (scripted, reads the track)</option>
+            {race !== null && (
+              <option value="population">
+                GA generation: {shortRun(race.run)} · generation {race.unit}
+              </option>
+            )}
             {replay !== null && (
               <option value="checkpoint">
                 Checkpoint: {shortRun(replay.run)} · unit {replay.unit} ({startShift === null ? "exam starts" : "shifted starts"})
@@ -163,7 +185,7 @@ export function Controls({
           value={nCars}
           min={1}
           max={MAX_CARS}
-          disabled={!ready || replay !== null || isRecording}
+          disabled={!ready || fixedCars || isRecording}
           onCommit={(n) => loadScenario({ n_cars: n })}
         />
 
@@ -172,7 +194,7 @@ export function Controls({
             type="checkbox"
             data-testid="check-random-start"
             checked={seed !== null}
-            disabled={!ready || replay !== null || isRecording}
+            disabled={!ready || fixedCars || isRecording}
             onChange={(e) => {
               loadScenario({ seed: e.target.checked ? DEFAULT_SEED : null });
               e.target.blur();
@@ -192,6 +214,48 @@ export function Controls({
           />
         )}
       </div>
+
+      {race !== null && (
+        <div className="controls-row" data-testid="race-controls">
+          <IntField
+            label="Generation"
+            testId="race-generation"
+            value={race.unit}
+            min={1}
+            max={race.last_unit}
+            disabled={!ready}
+            onCommit={(n) =>
+              loadScenario({ population: { run: race.run, unit: n, start: race.start, ghost_unit: ghostAfterMove(race, n) } })
+            }
+          />
+          <span className="camera-note">of {race.last_unit}</span>
+          <IntField
+            label="Start"
+            testId="race-start"
+            value={race.start + 1}
+            min={1}
+            max={race.n_starts}
+            disabled={!ready}
+            onCommit={(n) =>
+              loadScenario({ population: { run: race.run, unit: race.unit, start: n - 1, ghost_unit: race.ghost_unit } })
+            }
+          />
+          <span className="camera-note" data-testid="race-start-place">
+            {race.start_s0_m.toFixed(0)} m along, {race.start_lateral_m.toFixed(1)} m left
+          </span>
+          <IntField
+            label="Ghost: generation (0 = none)"
+            testId="race-ghost"
+            value={race.ghost_unit ?? 0}
+            min={0}
+            max={race.unit - 1}
+            disabled={!ready || race.unit === 1}
+            onCommit={(n) =>
+              loadScenario({ population: { run: race.run, unit: race.unit, start: race.start, ghost_unit: n === 0 ? null : n } })
+            }
+          />
+        </div>
+      )}
 
       <div className="controls-row">
         <button
@@ -307,7 +371,11 @@ export function Controls({
             >
               {Array.from({ length: nCars }, (_, i) => (
                 <option key={i} value={i}>
-                  Car {i + 1}
+                  {race !== null && i === race.ghost_car
+                    ? `Ghost (generation ${race.ghost_unit}'s best)`
+                    : race !== null
+                      ? `Car ${i + 1} (rank ${race.ranks[i] + 1})`
+                      : `Car ${i + 1}`}
                 </option>
               ))}
             </select>

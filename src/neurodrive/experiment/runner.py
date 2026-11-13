@@ -347,6 +347,8 @@ def _loop(
             store.append_metrics(record)
             for name, line in result.extra.items():
                 store.append_extra_line(name, {"unit": unit, **line})
+            for name, arrays in result.arrays.items():
+                store.save_unit_arrays(name, unit, arrays)
             if result.diverged:
                 status, reason = "diverged", "diverged"
                 mirror(record)

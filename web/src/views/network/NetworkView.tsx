@@ -15,8 +15,9 @@ import { NeuronView } from "./NeuronView";
 import { previousCheckpoint } from "./diff";
 
 /**
- * The Network page: which picture to show depends on the driver. The random-networks driver and a
- * replayed checkpoint (task 5.9) get the selected car's multilayer network (the full diagram, or
+ * The Network page: which picture to show depends on the driver. The random-networks driver, a
+ * replayed checkpoint (task 5.9) and a raced GA generation (task 7.6) get the selected car's
+ * multilayer network (the full diagram, or
  * the compact summary in a drawer); every other driver keeps the Neuron view (which also explains
  * how to switch to it).
  */
@@ -28,7 +29,8 @@ export function NetworkView({
   headerExtra?: ReactNode;
 }) {
   const policy = useLive((s) => s.scenario?.policy ?? null);
-  if (policy !== "random_networks" && policy !== "checkpoint")
+  // A raced GA generation (task 7.6) is one network per car, like the random networks.
+  if (policy !== "random_networks" && policy !== "checkpoint" && policy !== "population")
     return <NeuronView compact={compact} headerExtra={headerExtra} />;
   return <MultilayerView compact={compact} headerExtra={headerExtra} />;
 }

@@ -375,9 +375,13 @@ export interface DatasetSummary {
 /**
  * Sent once when every car has stopped; the session then pauses.
  *
- * ``status`` has one name per car: crashed, finished, stalled or timeout.
+ * ``status`` has one name per car: crashed, finished, stalled or timeout. ``fitness`` (api v1.22,
+ * population driver only, else null) is each car's fitness on this start, f = p + c (1 - t / T)
+ * (the GA's ``start_fitness``: p the progress as a share of the target laps, c 1 for a finish,
+ * t its time, T the time limit), exactly the per-start fitness the GA scored.
  */
 export interface EpisodeEndMessage {
+  fitness: number[] | null;
   laps: number[];
   progress: number[];
   status: string[];
@@ -757,11 +761,18 @@ export interface LaunchResponse {
  * ``experiment/exam.py: shifted_starts``, the function Study S5b drives. It is allowed for the
  * ``"checkpoint"`` driver and for ``"expert"``, which then also drives the 10 shifted exam
  * starts (``n_cars`` and ``seed`` ignored), so the teacher can be watched from the same start.
+ *
+ * ``"population"`` (api v1.22, task 7.6, ADR-057) races a whole GA generation: ``population``
+ * names it (see :class:`PopulationRef`). Car i is row i of the generation, every car starts at
+ * the chosen evaluation start of the run's fitness track (that track replaces ``track``), and
+ * the ghost, if asked for, is the last car. Each car's drive is exactly the drive the GA scored
+ * for that network at that start. ``n_cars`` and ``seed`` are then ignored.
  */
 export interface LoadScenario {
   checkpoint: CheckpointRef | null;
   n_cars: number;
-  policy: "keyboard" | "constant" | "neuron" | "random_networks" | "expert" | "checkpoint";
+  policy: "keyboard" | "constant" | "neuron" | "random_networks" | "expert" | "checkpoint" | "population";
+  population: PopulationRef | null;
   seed: number | null;
   start_shift: StartShift | null;
   track: string;
@@ -772,6 +783,18 @@ export interface LoadScenario {
  */
 export interface CheckpointRef {
   run: string;
+  unit: number;
+}
+/**
+ * A GA generation to race (api v1.22, task 7.6, ADR-057): generation ``unit`` of GA run
+ * ``run``, every network from evaluation start ``start`` (0-based, in the run's fitness layout:
+ * every lateral offset with every start fraction, offsets in the outer loop), and, when
+ * ``ghost_unit`` is set, that earlier generation's champion as one extra car (the ghost).
+ */
+export interface PopulationRef {
+  ghost_unit: number | null;
+  run: string;
+  start: number;
   unit: number;
 }
 /**
@@ -1095,14 +1118,16 @@ export interface RunSummary {
  * geometry is not included: fetch ``GET /api/tracks/{track}``. ``trail_seconds`` is how much
  * of the drive the session remembers for the decision trail (ADR-027). ``checkpoint`` is the
  * replayed network for the ``"checkpoint"`` driver (api v1.14), else null. ``start_shift`` is
- * the shift of the exam starts the cars began from (api v1.18), else null.
+ * the shift of the exam starts the cars began from (api v1.18), else null. ``population`` is the
+ * raced GA generation for the ``"population"`` driver (api v1.22), else null.
  */
 export interface ScenarioMessage {
   car_half_width: number;
   checkpoint: CheckpointRef | null;
   dt: number;
   n_cars: number;
-  policy: "keyboard" | "constant" | "neuron" | "random_networks" | "expert" | "checkpoint";
+  policy: "keyboard" | "constant" | "neuron" | "random_networks" | "expert" | "checkpoint" | "population";
+  population: PopulationInfo | null;
   ray_angles: number[];
   ray_range: number;
   seed: number | null;
@@ -1120,6 +1145,38 @@ export interface ScenarioMessage {
  */
 export interface CheckpointRef {
   run: string;
+  unit: number;
+}
+/**
+ * The raced GA generation (api v1.22, task 7.6, ADR-057), sent with the scenario.
+ *
+ * ``unit`` is the generation g and ``last_unit`` the latest saved one; ``start`` the evaluation
+ * start raced (0-based) of ``n_starts``, at ``start_s0_m`` metres along the track and
+ * ``start_lateral_m`` metres left of the centre line. Per row i (car i) of the ``size``
+ * networks: ``fitness`` F_i (the generation's fitness, the mean over all its starts),
+ * ``ranks`` its place in the GA's ranking (0 = best; equal F keeps the lower row first),
+ * ``finished`` and ``crashed`` (how many of its starts it finished or crashed on). ``elite``
+ * lists the rows that are elites (copies of the previous generation's best), ``champion`` the
+ * best row. ``ghost_unit`` is the ghost's generation, ``ghost_car`` its car index (``size``,
+ * the last car) and ``ghost_fitness`` its F; all three null without a ghost.
+ */
+export interface PopulationInfo {
+  champion: number;
+  crashed: number[];
+  elite: number[];
+  finished: number[];
+  fitness: number[];
+  ghost_car: number | null;
+  ghost_fitness: number | null;
+  ghost_unit: number | null;
+  last_unit: number;
+  n_starts: number;
+  ranks: number[];
+  run: string;
+  size: number;
+  start: number;
+  start_lateral_m: number;
+  start_s0_m: number;
   unit: number;
 }
 /**

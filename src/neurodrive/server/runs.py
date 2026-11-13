@@ -10,14 +10,18 @@ look like a run folder name (``<YYYYMMDD-HHMMSS>-<method>-<tag>``, letters, digi
 import math
 import re
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
 from neurodrive.core.nn.network import Network
+from neurodrive.experiment.config import ConfigError, GARunConfig, parse_config, to_ga_settings
 from neurodrive.experiment.stats import curve_bands, summarise
 from neurodrive.experiment.store import RunStore
 from neurodrive.experiment.toy_view import toy_checkpoint_view
+from neurodrive.learn.evolution.ga import GASettings
 from neurodrive.server.schemas import (
     CheckpointDiff,
     CheckpointList,
@@ -62,6 +66,21 @@ def _network(run_id: str, unit: int, net: Network) -> CheckpointNetwork:
     )
 
 
+@dataclass(frozen=True)
+class GAGeneration:
+    """One saved generation of a GA run (task 7.6, ADR-057): its genome matrix (N, P), the
+    run's GA settings and fitness track, the generation's ``extra/population.jsonl`` line
+    (fitness, finished, crashed, elite, champion) and the latest saved generation."""
+
+    run: str
+    unit: int
+    settings: GASettings
+    track: str
+    genomes: np.ndarray
+    line: dict[str, Any]
+    last_unit: int
+
+
 class RunLibrary:
     """Read-only access to the run folders in ``runs_dir`` (it may not exist yet)."""
 
@@ -76,6 +95,47 @@ class RunLibrary:
         if not (path / "meta.json").is_file():
             raise KeyError(run_id)
         return RunStore.open(path)
+
+    def ga_generation(self, run_id: str, unit: int) -> GAGeneration:
+        """Generation ``unit`` of GA run ``run_id``; ``ValueError`` in plain words if the run is
+        unknown, not a GA run, has no saved generations, or not this one."""
+        try:
+            store = self.store(run_id)
+        except KeyError:
+            raise ValueError(f"unknown run {run_id!r}") from None
+        data = store.read_config()
+        if data.get("method") != "ga":
+            raise ValueError(
+                f"run {run_id!r} is a {data.get('method')} run; population mode needs a GA run"
+            )
+        try:
+            config = parse_config(data, source=run_id)
+        except ConfigError as error:
+            raise ValueError(
+                f"run {run_id!r} has a config this version cannot read: {error}"
+            ) from None
+        assert isinstance(config, GARunConfig)
+        units = store.unit_array_units("generations")
+        if not units:
+            raise ValueError(
+                f"run {run_id!r} has no saved generations (trained before task 7.6): train it "
+                "again to race its generations"
+            )
+        lines = {r["unit"]: r for r in store.read_extra_lines("population")}
+        if unit not in units or unit not in lines:
+            raise ValueError(
+                f"run {run_id!r} has no saved generation {unit}; saved: {units[0]} to {units[-1]}"
+            )
+        genomes = store.load_unit_arrays("generations", unit)["genomes"]
+        return GAGeneration(
+            run=run_id,
+            unit=unit,
+            settings=to_ga_settings(config),
+            track=config.fitness.track,
+            genomes=np.asarray(genomes, dtype=np.float64),
+            line=lines[unit],
+            last_unit=units[-1],
+        )
 
     def list(self) -> RunListResponse:
         runs = []

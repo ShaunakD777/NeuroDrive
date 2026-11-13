@@ -1,5 +1,6 @@
 import { useLive } from "../../state/live";
 import { useMoment } from "../../state/playback";
+import { carRole, roleLabel } from "./population";
 import { describeStatus, formatRayAngle, formatSpeed } from "./status";
 
 /** A horizontal bar showing a value between -1 and +1, filled from the middle. */
@@ -29,6 +30,7 @@ export function Hud({ compact }: { compact: boolean }) {
   const error = useLive((s) => s.error);
   const status = useLive((s) => s.status);
   const moment = useMoment();
+  const episodeEnd = useLive((s) => s.episodeEnd);
 
   if (frame === null || scenario === null) {
     return (
@@ -49,6 +51,11 @@ export function Hud({ compact }: { compact: boolean }) {
   const time = moment?.time ?? frame.time;
   const rays = moment?.rays ?? frame.selected?.rays ?? [];
   const laps = geometry === null ? null : progress / geometry.length;
+  // A raced GA generation (task 7.6): what the GA said about this car, and, once the race has
+  // ended, its fitness on this start (the server computes it exactly as the GA did).
+  const race = scenario.population ?? null;
+  const role = carRole(race, i);
+  const raceF = episodeEnd?.fitness?.[i] ?? null;
 
   return (
     <>
@@ -65,6 +72,26 @@ export function Hud({ compact }: { compact: boolean }) {
             {text.label}
           </span>
         </div>
+        {!compact && race !== null && role !== null && (
+          <div className="hud-race" data-testid="hud-race" data-kind={role.kind} data-place={role.place ?? ""}>
+            <div className="hud-row">
+              <span data-testid="hud-race-role">{roleLabel(race, role)}</span>
+            </div>
+            <div className="hud-row">
+              <span className="hud-label">Fitness F</span>
+              <span data-testid="hud-race-fitness">{role.fitness === null ? "–" : role.fitness.toFixed(3)}</span>
+              <span className="hud-muted">
+                {role.kind === "ghost"
+                  ? `in generation ${race.ghost_unit}`
+                  : `mean of ${race.n_starts} starts: finished ${race.finished[i]}, crashed ${race.crashed[i]}`}
+              </span>
+            </div>
+            <div className="hud-row">
+              <span className="hud-label">f this start</span>
+              <span data-testid="hud-race-start-fitness">{raceF === null ? "after the race" : raceF.toFixed(3)}</span>
+            </div>
+          </div>
+        )}
         {!compact && (
           <>
             <div className="hud-row">

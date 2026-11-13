@@ -53,6 +53,11 @@ z = (-2, 1) give (0.0, 0.5). Generation g + 1 = ((0.2, 0.4), (0.6, 0.4), (0.5, -
 
 *Diversity* D is the mean Euclidean distance between the genomes of all N (N - 1) / 2 pairs:
 (0, 0), (3, 4), (0, 4) are 5, 3 and 4 apart, so D = 4.
+
+Every unit also hands back the genome matrix it scored (``UnitResult.arrays["generations"]``,
+task 7.6, ADR-057): the runner saves it as ``extra/generations/unit_<g>.npz``, row i being the
+network whose fitness is entry i of that unit's ``extra/population.jsonl`` line, so any
+generation can race again in the live view.
 """
 
 from dataclasses import dataclass, field
@@ -439,13 +444,15 @@ class GALearner:
             "elite": list(range(e)) if self.elite_fitness is not None else [],
             "champion": champion,
         }
-        bred = next_generation(self.genomes, f, self.settings.breeding, self.generators)
+        scored_genomes = self.genomes  # generation g, the matrix just scored (task 7.6)
+        bred = next_generation(scored_genomes, f, self.settings.breeding, self.generators)
         self.genomes, self.elite_fitness = bred.genomes, f[bred.elite].copy()
         return UnitResult(
             metrics=metrics,
             env_steps=scored.env_steps,
             new_best=improved,
             extra={"population": line},
+            arrays={"generations": {"genomes": scored_genomes.copy()}},
         )
 
     def current_networks(self) -> list[Network]:

@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
-API_VERSION = "v1.21"
+API_VERSION = "v1.22"
 
 
 class WireModel(BaseModel):
@@ -96,6 +96,18 @@ class StartShift(CommandModel):
     heading_rad: float = Field(ge=-1.5708, le=1.5708)
 
 
+class PopulationRef(CommandModel):
+    """A GA generation to race (api v1.22, task 7.6, ADR-057): generation ``unit`` of GA run
+    ``run``, every network from evaluation start ``start`` (0-based, in the run's fitness layout:
+    every lateral offset with every start fraction, offsets in the outer loop), and, when
+    ``ghost_unit`` is set, that earlier generation's champion as one extra car (the ghost)."""
+
+    run: str
+    unit: int = Field(ge=1)
+    start: int = Field(default=0, ge=0)
+    ghost_unit: int | None = Field(default=None, ge=1)
+
+
 class LoadScenario(CommandModel):
     """Load a track and a driver; the session starts paused at step 0.
 
@@ -117,17 +129,24 @@ class LoadScenario(CommandModel):
     ``experiment/exam.py: shifted_starts``, the function Study S5b drives. It is allowed for the
     ``"checkpoint"`` driver and for ``"expert"``, which then also drives the 10 shifted exam
     starts (``n_cars`` and ``seed`` ignored), so the teacher can be watched from the same start.
+
+    ``"population"`` (api v1.22, task 7.6, ADR-057) races a whole GA generation: ``population``
+    names it (see :class:`PopulationRef`). Car i is row i of the generation, every car starts at
+    the chosen evaluation start of the run's fitness track (that track replaces ``track``), and
+    the ghost, if asked for, is the last car. Each car's drive is exactly the drive the GA scored
+    for that network at that start. ``n_cars`` and ``seed`` are then ignored.
     """
 
     type: Literal["load_scenario"] = "load_scenario"
     track: str
-    policy: Literal["keyboard", "constant", "neuron", "random_networks", "expert", "checkpoint"] = (
-        "keyboard"
-    )
+    policy: Literal[
+        "keyboard", "constant", "neuron", "random_networks", "expert", "checkpoint", "population"
+    ] = "keyboard"
     n_cars: int = Field(default=1, ge=1, le=100)
     seed: int | None = Field(default=None, ge=0)
     checkpoint: CheckpointRef | None = None
     start_shift: StartShift | None = None
+    population: PopulationRef | None = None
 
 
 class Play(CommandModel):
@@ -255,6 +274,39 @@ COMMAND_ADAPTER: TypeAdapter[Command] = TypeAdapter(Command)
 # ── server → client ────────────────────────────────────────────────────────────────────────────
 
 
+class PopulationInfo(WireModel):
+    """The raced GA generation (api v1.22, task 7.6, ADR-057), sent with the scenario.
+
+    ``unit`` is the generation g and ``last_unit`` the latest saved one; ``start`` the evaluation
+    start raced (0-based) of ``n_starts``, at ``start_s0_m`` metres along the track and
+    ``start_lateral_m`` metres left of the centre line. Per row i (car i) of the ``size``
+    networks: ``fitness`` F_i (the generation's fitness, the mean over all its starts),
+    ``ranks`` its place in the GA's ranking (0 = best; equal F keeps the lower row first),
+    ``finished`` and ``crashed`` (how many of its starts it finished or crashed on). ``elite``
+    lists the rows that are elites (copies of the previous generation's best), ``champion`` the
+    best row. ``ghost_unit`` is the ghost's generation, ``ghost_car`` its car index (``size``,
+    the last car) and ``ghost_fitness`` its F; all three null without a ghost.
+    """
+
+    run: str
+    unit: int
+    last_unit: int
+    start: int
+    n_starts: int
+    start_s0_m: float
+    start_lateral_m: float
+    size: int
+    fitness: list[float]
+    ranks: list[int]
+    finished: list[int]
+    crashed: list[int]
+    elite: list[int]
+    champion: int
+    ghost_unit: int | None = None
+    ghost_car: int | None = None
+    ghost_fitness: float | None = None
+
+
 class ScenarioMessage(WireModel):
     """Sent after ``load_scenario``: what was loaded and the constants needed to draw it.
 
@@ -263,16 +315,20 @@ class ScenarioMessage(WireModel):
     geometry is not included: fetch ``GET /api/tracks/{track}``. ``trail_seconds`` is how much
     of the drive the session remembers for the decision trail (ADR-027). ``checkpoint`` is the
     replayed network for the ``"checkpoint"`` driver (api v1.14), else null. ``start_shift`` is
-    the shift of the exam starts the cars began from (api v1.18), else null.
+    the shift of the exam starts the cars began from (api v1.18), else null. ``population`` is the
+    raced GA generation for the ``"population"`` driver (api v1.22), else null.
     """
 
     type: Literal["scenario"] = "scenario"
     track: str
-    policy: Literal["keyboard", "constant", "neuron", "random_networks", "expert", "checkpoint"]
+    policy: Literal[
+        "keyboard", "constant", "neuron", "random_networks", "expert", "checkpoint", "population"
+    ]
     n_cars: int
     seed: int | None
     checkpoint: CheckpointRef | None = None
     start_shift: StartShift | None = None
+    population: PopulationInfo | None = None
     dt: float
     time_limit: float
     target_laps: int
@@ -504,7 +560,10 @@ class FrameMessage(WireModel):
 class EpisodeEndMessage(WireModel):
     """Sent once when every car has stopped; the session then pauses.
 
-    ``status`` has one name per car: crashed, finished, stalled or timeout.
+    ``status`` has one name per car: crashed, finished, stalled or timeout. ``fitness`` (api v1.22,
+    population driver only, else null) is each car's fitness on this start, f = p + c (1 - t / T)
+    (the GA's ``start_fitness``: p the progress as a share of the target laps, c 1 for a finish,
+    t its time, T the time limit), exactly the per-start fitness the GA scored.
     """
 
     type: Literal["episode_end"] = "episode_end"
@@ -513,6 +572,7 @@ class EpisodeEndMessage(WireModel):
     status: list[str]
     progress: list[float]
     laps: list[int]
+    fitness: list[float] | None = None
 
 
 class RecordingMessage(WireModel):

@@ -24,6 +24,13 @@
   --series-6: #008300;
   --series-7: #6250d6;
   --series-8: #e34948;
+  /* GA rank bands (task 7.6): the palette's blue ramp, steps 700, 600, 500, 400, 300 from the best
+     fifth of a generation to the worst; checked as an ordinal ramp on #ffffff: all checks pass. */
+  --rank-1: #0d366b;
+  --rank-2: #184f95;
+  --rank-3: #256abf;
+  --rank-4: #3987e5;
+  --rank-5: #6da7ec;
   color-scheme: light;
 }
 
@@ -50,6 +57,12 @@
     --series-6: #008300;
     --series-7: #9085e9;
     --series-8: #e66767;
+    /* On the dark surface (#1b1f27) the best fifth is the lightest: steps 100 to 500, all pass. */
+    --rank-1: #cde2fb;
+    --rank-2: #9ec5f4;
+    --rank-3: #6da7ec;
+    --rank-4: #3987e5;
+    --rank-5: #256abf;
     color-scheme: dark;
   }
 }
@@ -1305,15 +1318,42 @@ body {
   align-items: flex-end;
   gap: 6px;
   max-width: min(360px, calc(100% - 20px));
+  pointer-events: none; /* the box around the legends: clicks reach the track (task 7.6) */
 }
 
 .stage-legend {
+  pointer-events: auto;
   padding: 6px 10px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--surface);
   color: var(--text);
   font-size: 0.8rem;
+}
+
+/* A legend with nothing to click lets clicks through to the cars under it (task 7.6). */
+.stage-legend.stage-legend-passthrough {
+  pointer-events: none;
+}
+
+.rank-swatches {
+  display: inline-flex;
+  gap: 2px;
+  vertical-align: middle;
+}
+
+.rank-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 10px;
+  border-radius: 2px;
+  border: 1px solid var(--border);
+}
+
+.hud-race {
+  padding-bottom: 4px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
 }
 
 .ray-legend-pos {

@@ -263,6 +263,18 @@ def test_the_scores_and_budget_are_the_evaluations(five_generations):
     assert all(r.extra["population"]["elite"] == [0] for r in results[1:])
 
 
+def test_each_unit_hands_back_the_matrix_it_scored(five_generations):
+    # task 7.6 (ADR-057): the runner saves it as extra/generations/unit_<g>.npz
+    learner, before, results = five_generations
+    for genomes, r in zip(before, results, strict=True):
+        (saved,) = r.arrays["generations"].values()
+        assert list(r.arrays["generations"]) == ["genomes"]
+        assert np.array_equal(saved, genomes)  # generation g, not the bred generation g + 1
+    assert not np.array_equal(results[-1].arrays["generations"]["genomes"], learner.genomes)
+    # a copy: later breeding or restoring never changes what was handed back
+    assert results[-1].arrays["generations"]["genomes"] is not learner.genomes
+
+
 def test_the_checkpoint_is_the_generations_best(five_generations):
     learner, before, results = five_generations
     champion = results[-1].extra["population"]["champion"]

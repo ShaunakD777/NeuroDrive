@@ -3,6 +3,7 @@ import { create } from "zustand";
 import type {
   ActivationCurves,
   CheckpointRef,
+  PopulationRef,
   EpisodeEndMessage,
   DatasetSavedMessage,
   ErrorMessage,
@@ -109,7 +110,7 @@ export function updateTrail(trail: Trail | null, car: number, points: TrailPoint
 /** What a `load_scenario` message asks for. */
 export interface ScenarioRequest {
   track: string;
-  policy: "keyboard" | "constant" | "neuron" | "random_networks" | "expert" | "checkpoint";
+  policy: "keyboard" | "constant" | "neuron" | "random_networks" | "expert" | "checkpoint" | "population";
   n_cars: number;
   /**
    * null: every car starts at the track's start line; a number: a seeded random start. With
@@ -126,6 +127,12 @@ export interface ScenarioRequest {
    * sideways (metres, left positive) and turned (radians, left positive). null: no shift.
    */
   start_shift: StartShift | null;
+  /**
+   * The "population" driver only (task 7.6, ADR-057): the GA generation to race, the start and the
+   * ghost's generation. The server races it on the run's own fitness track (it replaces `track`)
+   * with one car per network, and ignores `n_cars` and `seed`.
+   */
+  population: PopulationRef | null;
 }
 
 /** The neuron driver's settings, as the server last reported them. */
@@ -295,6 +302,14 @@ export const useLive = create<LiveState & LiveActions>()((set, get) => ({
             seed: scenario.seed,
             checkpoint: scenario.checkpoint,
             start_shift: scenario.start_shift,
+            population: scenario.population
+              ? {
+                  run: scenario.population.run,
+                  unit: scenario.population.unit,
+                  start: scenario.population.start,
+                  ghost_unit: scenario.population.ghost_unit,
+                }
+              : null,
           });
     const fallback = tracks.find((t) => t.name === DEFAULT_TRACK)?.name ?? tracks[0]?.name;
     const track = changes.track ?? base.track ?? fallback;
@@ -316,6 +331,9 @@ export const useLive = create<LiveState & LiveActions>()((set, get) => ({
             ? changes.start_shift
             : (base.start_shift ?? null)
           : null,
+      // Only a race names a generation; changing it keeps the run, start and ghost unless given.
+      population:
+        policy === "population" ? (changes.population ?? base.population ?? null) : null,
     };
     set({ wanted: request });
     get().send({ type: "load_scenario", ...request });

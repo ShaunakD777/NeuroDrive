@@ -6,6 +6,7 @@ import { connectLive, type LiveConnection } from "../../api/ws";
 import { useLive } from "../../state/live";
 import { applyRunsMessage, defaultMetric, initialRunsWatch, plottableKeys, series, watchRun } from "../../state/runsWatch";
 import { useSelection } from "../../state/selection";
+import { defaultGhost } from "../environment/population";
 import { formatNumber, shortName } from "./charts";
 import { LiveChart } from "./LiveChart";
 
@@ -69,6 +70,7 @@ export function Timeline({ headerExtra }: { headerExtra?: ReactNode }) {
   const replaying = useLive((s) => s.scenario?.checkpoint ?? null);
   const replayedShift = useLive((s) => s.scenario?.start_shift ?? null);
   const policy = useLive((s) => s.scenario?.policy ?? null);
+  const raced = useLive((s) => s.scenario?.population ?? null);
   const selectedCar = useLive((s) => s.frame?.selected?.index ?? null);
   const selectCar = useSelection((s) => s.selectCar);
 
@@ -150,6 +152,17 @@ export function Timeline({ headerExtra }: { headerExtra?: ReactNode }) {
     replaying !== null && replaying.run === runId && replaying.unit === unit && sameShift(replayedShift, shift);
   const expertShown = policy === "expert" && replayedShift !== null && sameShift(replayedShift, shift);
   const run = runs?.find((r) => r.run_id === runId) ?? null;
+  // A GA run (task 7.6): the checkpoint of unit u is generation u's champion, so the slider's unit
+  // names a generation to race (unit 0 is the first generation before it was scored).
+  const generation = unit === null ? null : Math.max(1, unit);
+  const isRaced = raced !== null && raced.run === runId && raced.unit === generation;
+  function raceGeneration() {
+    if (runId === null || generation === null) return;
+    loadScenario({
+      policy: "population",
+      population: { run: runId, unit: generation, start: 0, ghost_unit: defaultGhost(generation) },
+    });
+  }
 
   return (
     <section className="view toylab" data-testid="timeline">
@@ -258,7 +271,19 @@ export function Timeline({ headerExtra }: { headerExtra?: ReactNode }) {
           <button type="button" onClick={() => replay(unit)} data-testid="timeline-replay" disabled={isReplayed}>
             {isReplayed ? "Replaying in the Environment view" : "Replay this checkpoint"}
           </button>
+          {run?.method === "ga" && (
+            <button type="button" onClick={raceGeneration} data-testid="timeline-race" disabled={isRaced}>
+              {isRaced ? `Generation ${generation} races in the Environment view` : `Race generation ${generation}`}
+            </button>
+          )}
         </div>
+      )}
+      {run?.method === "ga" && unit !== null && (
+        <p className="hint" data-testid="timeline-race-hint">
+          {isRaced
+            ? `All ${raced?.size} networks of generation ${generation} race from start 1 in the Environment view, coloured by their fitness rank, with ${raced?.ghost_unit === null ? "no ghost" : `generation ${raced?.ghost_unit}'s champion as a ghost`}; press Play there and click any car to see its network. Change the generation, start and ghost there.`
+            : `"Race generation ${generation}" puts the whole generation (not only its champion) on the track in the Environment view.`}
+        </p>
       )}
       {unit !== null && (
         <p className="hint">

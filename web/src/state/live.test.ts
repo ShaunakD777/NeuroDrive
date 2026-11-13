@@ -40,6 +40,7 @@ const scenario: ScenarioMessage = {
   seed: null,
   checkpoint: null,
   start_shift: null,
+  population: null,
   dt: 1 / 30,
   time_limit: 90,
   target_laps: 2,
@@ -146,6 +147,7 @@ describe("live store: commands", () => {
       seed: null,
       checkpoint: null,
       start_shift: null,
+      population: null,
     });
     expect(sent).toEqual([
       {
@@ -156,6 +158,7 @@ describe("live store: commands", () => {
         seed: null,
         checkpoint: null,
         start_shift: null,
+        population: null,
       },
     ]);
   });
@@ -174,6 +177,7 @@ describe("live store: commands", () => {
       seed: 7,
       checkpoint: null,
       start_shift: null,
+      population: null,
     });
     loadScenario({ seed: null }); // null means "fixed start", it is not "unchanged"
     expect(sent.at(-1)).toMatchObject({ n_cars: 5, seed: null });
@@ -202,6 +206,19 @@ describe("live store: commands", () => {
     expect(sent.at(-1)).toMatchObject({ policy: "constant", start_shift: null });
     loadScenario({ policy: "checkpoint", checkpoint, start_shift: null });
     expect(sent.at(-1)).toMatchObject({ policy: "checkpoint", start_shift: null });
+  });
+
+  it("names a GA generation only for the population driver (task 7.6)", () => {
+    const { loadScenario } = useLive.getState();
+    const population = { run: "r", unit: 5, start: 2, ghost_unit: 4 };
+    loadScenario({ track: "train_loop_01", policy: "population", population });
+    expect(sent.at(-1)).toMatchObject({ policy: "population", population, checkpoint: null, start_shift: null });
+    loadScenario({}); // a reload with no change keeps the same race
+    expect(sent.at(-1)).toMatchObject({ policy: "population", population });
+    loadScenario({ population: { ...population, unit: 6, ghost_unit: 5 } });
+    expect(sent.at(-1)).toMatchObject({ population: { run: "r", unit: 6, start: 2, ghost_unit: 5 } });
+    loadScenario({ policy: "expert" });
+    expect(sent.at(-1)).toMatchObject({ policy: "expert", population: null });
   });
 
   it("can ask for the neuron driver and keeps it when other settings change", () => {

@@ -10,6 +10,7 @@ import yaml
 from typer.testing import CliRunner
 
 from neurodrive.cli import app
+from neurodrive.env.track import Track
 from neurodrive.experiment.config import (
     ConfigError,
     GARunConfig,
@@ -19,9 +20,15 @@ from neurodrive.experiment.config import (
 )
 from neurodrive.experiment.runner import learner_from_config, sweep_seeds, train_ga_run
 from neurodrive.experiment.store import RunStore
-from neurodrive.learn.evolution.ga import BreedingSettings, GALearner, GASettings
+from neurodrive.learn.evolution.ga import (
+    BreedingSettings,
+    GALearner,
+    GASettings,
+    evaluate_genomes,
+)
 
 REPO = Path(__file__).resolve().parents[2]
+TRAIN = Track.from_json(REPO / "tracks" / "train_loop_01.json")
 runner = CliRunner()
 
 
@@ -117,6 +124,31 @@ def test_a_short_run_writes_one_population_line_per_generation(tmp_path):
     assert isinstance(learner, GALearner) and learner.settings.population == 5
 
 
+def test_every_scored_generation_is_saved(tmp_path):
+    """Task 7.6 (ADR-057): extra/generations/unit_<g>.npz is the matrix generation g was scored
+    with, so scoring it again gives that unit's population line exactly."""
+    config = parse_config(config_data())
+    store = train_ga_run(config, tmp_path).store
+    settings = to_ga_settings(config)
+    lines = store.read_extra_lines("population")
+    assert store.unit_array_names() == ["generations"]
+    assert store.unit_array_units("generations") == [1, 2, 3]
+    for line in lines:
+        genomes = store.load_unit_arrays("generations", line["unit"])["genomes"]
+        assert genomes.shape == (5, settings.spec.n_parameters) and genomes.dtype == np.float64
+        scored = evaluate_genomes(genomes, TRAIN, settings)
+        assert scored.fitness.tolist() == line["fitness"]  # bit for bit
+        assert scored.best == line["champion"]
+    # with E = 1 row 0 of generation g + 1 is generation g's champion, copied exactly
+    for before, after in zip(lines, lines[1:], strict=False):
+        old = store.load_unit_arrays("generations", before["unit"])["genomes"]
+        new = store.load_unit_arrays("generations", after["unit"])["genomes"]
+        assert np.array_equal(new[0], old[before["champion"]])
+    # and generation 1's file is the learner's first draw (same seed, same matrix)
+    first = learner_from_config(store.read_config()).genomes
+    assert np.array_equal(store.load_unit_arrays("generations", 1)["genomes"], first)
+
+
 def test_a_failed_run_resumes_exactly_extra_lines_included(tmp_path, monkeypatch):
     config = parse_config(config_data(budget={"units": 4}))
     reference = train_ga_run(config, tmp_path / "a").store
@@ -136,12 +168,17 @@ def test_a_failed_run_resumes_exactly_extra_lines_included(tmp_path, monkeypatch
     assert store.read_meta()["status"] == "failed" and len(store.read_metrics()) == 2
     # a line that a kill left behind after the saved state must be cut away on resume
     store.append_extra_line("population", {"unit": 3, "fitness": [9.9]})
+    store.save_unit_arrays("generations", 3, {"genomes": np.zeros((5, 3))})
     answer = runner.invoke(app, ["resume", "--run", str(folder)])
     assert answer.exit_code == 0, answer.output
     assert "status: completed after 4 units (2 were kept)" in answer.output
     assert "best fitness:" in answer.output
     assert metrics_of(store) == metrics_of(reference)
     assert store.read_extra_lines("population") == reference.read_extra_lines("population")
+    assert store.unit_array_units("generations") == [1, 2, 3, 4]
+    for unit in range(1, 5):
+        mine = store.load_unit_arrays("generations", unit)["genomes"]
+        assert np.array_equal(mine, reference.load_unit_arrays("generations", unit)["genomes"])
     assert store.checkpoint_units() == reference.checkpoint_units()
     for unit in store.checkpoint_units():
         assert store.load_checkpoint(unit).equals(reference.load_checkpoint(unit))
