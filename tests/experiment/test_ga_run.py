@@ -115,6 +115,12 @@ def test_a_short_run_writes_one_population_line_per_generation(tmp_path):
     assert [m["unit"] for m in metrics] == [1, 2] == [line["unit"] for line in lines]
     assert all(len(line["fitness"]) == 5 for line in lines)
     assert [line["elite"] for line in lines] == [[], [0]]
+    # task 7.8 (ADR-060): extra/lineage.jsonl, one line per generation, saying how it was made
+    lineage = store.read_extra_lines("lineage")
+    assert [line["unit"] for line in lineage] == [1, 2]
+    assert lineage[0]["rows"] == [{"origin": "random"}] * 5
+    assert lineage[1]["rows"][0] == {"origin": "elite", "parents": [lines[0]["champion"]]}
+    assert all(row["origin"] == "child" for row in lineage[1]["rows"][1:])
     assert metrics[1]["elite_drift"] == 0.0
     assert 0 < metrics[0]["env_steps_total"] < metrics[1]["env_steps_total"]
     assert metrics[0]["generation_best_fitness"] == max(lines[0]["fitness"])
@@ -201,6 +207,7 @@ def test_a_failed_run_resumes_exactly_extra_lines_included(tmp_path, monkeypatch
     assert store.read_meta()["status"] == "failed" and len(store.read_metrics()) == 2
     # a line that a kill left behind after the saved state must be cut away on resume
     store.append_extra_line("population", {"unit": 3, "fitness": [9.9]})
+    store.append_extra_line("lineage", {"unit": 3, "rows": None})
     store.save_unit_arrays("generations", 3, {"genomes": np.zeros((5, 3))})
     answer = runner.invoke(app, ["resume", "--run", str(folder)])
     assert answer.exit_code == 0, answer.output
@@ -208,6 +215,8 @@ def test_a_failed_run_resumes_exactly_extra_lines_included(tmp_path, monkeypatch
     assert "best fitness:" in answer.output
     assert metrics_of(store) == metrics_of(reference)
     assert store.read_extra_lines("population") == reference.read_extra_lines("population")
+    assert store.read_extra_lines("lineage") == reference.read_extra_lines("lineage")
+    assert len(store.read_extra_lines("lineage")) == 4
     assert store.unit_array_units("generations") == [1, 2, 3, 4]
     for unit in range(1, 5):
         mine = store.load_unit_arrays("generations", unit)

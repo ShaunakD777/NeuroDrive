@@ -19,6 +19,9 @@ from neurodrive.learn.evolution.ga import (
     GASettings,
     diversity,
     evaluate_genomes,
+    first_lineage,
+    lineage_record,
+    main_parent,
     next_generation,
     ranking,
 )
@@ -90,6 +93,24 @@ def test_the_briefs_worked_example():
     assert bred.parents_a.tolist() == [3, 1, 3] and bred.parents_b.tolist() == [1, 0, 3]
     assert bred.crossover.crossed.tolist() == [True, False, False]
     assert bred.mutation.mutated.sum(axis=1).tolist() == [1, 0, 2]
+    # task 7.8: the same breeding as lineage records (the 7.8 Brief's worked example)
+    assert lineage_record(bred) == [
+        {"origin": "elite", "parents": [3]},
+        {"origin": "child", "parents": [3, 1], "crossed": True, "from_b": [0], "mutated": [0]},
+        {"origin": "child", "parents": [1, 0], "crossed": False, "from_b": [], "mutated": []},
+        {"origin": "child", "parents": [3, 3], "crossed": False, "from_b": [], "mutated": [0, 1]},
+    ]
+
+
+def test_the_main_parent_is_the_one_that_gave_more_genes():
+    child = {"origin": "child", "parents": [4, 9], "crossed": True, "mutated": []}
+    assert main_parent({**child, "from_b": [0]}, 2) == 4  # 1 gene each: a tie goes to a
+    assert main_parent({**child, "from_b": [0, 1]}, 3) == 9  # b gave 2 of 3
+    assert main_parent({**child, "from_b": [2]}, 3) == 4
+    assert main_parent({**child, "crossed": False, "from_b": []}, 5) == 4
+    assert main_parent({"origin": "elite", "parents": [7]}, 5) == 7
+    assert main_parent({"origin": "random"}, 5) is None
+    assert first_lineage(3) == [{"origin": "random"}] * 3
 
 
 def test_the_diversity_example():
@@ -278,6 +299,49 @@ def test_each_unit_hands_back_the_matrix_it_scored(five_generations):
     assert not np.array_equal(results[-1].arrays["generations"]["genomes"], learner.genomes)
     # a copy: later breeding or restoring never changes what was handed back
     assert results[-1].arrays["generations"]["genomes"] is not learner.genomes
+
+
+def test_each_line_says_exactly_how_its_generation_was_made(five_generations):
+    # task 7.8 (ADR-060): line g describes generation g (the matrix scored in unit g)
+    _, before, results = five_generations
+    p = SMALL.spec.n_parameters
+    assert results[0].extra["lineage"] == {"rows": [{"origin": "random"}] * 6}
+    seen_crossed = seen_mutated = False
+    for k in range(1, 5):
+        rows = results[k].extra["lineage"]["rows"]
+        old, new = before[k - 1], before[k]
+        assert len(rows) == 6
+        for i, row in enumerate(rows):
+            if i < SMALL.breeding.elite:
+                assert row["origin"] == "elite"
+                assert np.array_equal(new[i], old[row["parents"][0]])  # an exact copy
+                continue
+            assert row["origin"] == "child"
+            a, b = row["parents"]
+            from_b = np.zeros(p, dtype=bool)
+            from_b[row["from_b"]] = True
+            mutated = np.zeros(p, dtype=bool)
+            mutated[row["mutated"]] = True
+            source = np.where(from_b, old[b], old[a])
+            # every gene not mutated is its source parent's gene, exactly
+            assert np.array_equal(new[i][~mutated], source[~mutated])
+            # every mutated gene was moved (sigma = 0.2, so never by exactly 0 here)
+            assert np.all(new[i][mutated] != source[mutated])
+            assert row["crossed"] or not row["from_b"]
+            seen_crossed |= row["crossed"] and 0 < len(row["from_b"]) < p
+            seen_mutated |= bool(row["mutated"])
+    assert seen_crossed and seen_mutated
+
+
+def test_a_state_from_before_lineage_writes_an_unknown_line():
+    a = GALearner(SMALL, TRACK, make_rng(11))
+    a.train_unit()
+    old = a.state()
+    del old.info["lineage"]  # as saved by task 7.5-7.7
+    b = GALearner(SMALL, TRACK, make_rng(11))
+    b.restore(old)
+    assert b.train_unit().extra["lineage"] == {"rows": None}
+    assert b.train_unit().extra["lineage"]["rows"][0]["origin"] == "elite"  # known again
 
 
 def test_the_checkpoint_is_the_generations_best(five_generations):

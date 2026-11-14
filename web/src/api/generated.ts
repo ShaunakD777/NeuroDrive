@@ -13,6 +13,64 @@ export interface ActivationCurves {
 }
 
 /**
+ * Answer to ``GET /api/runs/{id}/generations/{g}/ancestry?row=r`` (api v1.25, task 7.8,
+ * ADR-060): the line of descent of row ``row`` of generation ``unit`` (default its champion),
+ * through each network's main parent (the parent that gave more genes, a on a tie) back to
+ * generation 1. ``steps`` run from generation ``unit`` backwards. Numbers keep 6 significant
+ * digits.
+ */
+export interface Ancestry {
+  n_genes: number;
+  row: number;
+  run_id: string;
+  steps: AncestryStepView[];
+  unit: number;
+}
+/**
+ * One network on a line of descent (api v1.25, task 7.8, ADR-060): generation ``unit``,
+ * ``row``, its fitness F and ``rank`` (0 = best), ``origin`` ("random", "elite", "child" or
+ * "unknown"), ``parents`` (rows of the previous generation), ``crossed`` (children only),
+ * ``main_parent`` (the next step's row; null at the end), the genes taken from the main and the
+ * other parent, the number of mutated genes, and ``distance`` from the main parent's genome.
+ */
+export interface AncestryStepView {
+  crossed: boolean | null;
+  distance: number | null;
+  fitness: number;
+  from_main: number | null;
+  from_other: number | null;
+  main_parent: number | null;
+  mutated: number | null;
+  origin: "random" | "elite" | "child" | "unknown";
+  parents: number[];
+  rank: number;
+  row: number;
+  unit: number;
+}
+
+/**
+ * One network on a line of descent (api v1.25, task 7.8, ADR-060): generation ``unit``,
+ * ``row``, its fitness F and ``rank`` (0 = best), ``origin`` ("random", "elite", "child" or
+ * "unknown"), ``parents`` (rows of the previous generation), ``crossed`` (children only),
+ * ``main_parent`` (the next step's row; null at the end), the genes taken from the main and the
+ * other parent, the number of mutated genes, and ``distance`` from the main parent's genome.
+ */
+export interface AncestryStepView {
+  crossed: boolean | null;
+  distance: number | null;
+  fitness: number;
+  from_main: number | null;
+  from_other: number | null;
+  main_parent: number | null;
+  mutated: number | null;
+  origin: "random" | "elite" | "child" | "unknown";
+  parents: number[];
+  rank: number;
+  row: number;
+  unit: number;
+}
+
+/**
  * The state of every car as one array per quantity (entry i belongs to car i).
  *
  * ``status``: 0 running, 1 crashed, 2 finished, 3 stalled, 4 timeout. ``action`` holds the last
@@ -950,6 +1008,46 @@ export interface OutputReceipt {
 export interface NetworkTrace {
   activations: number[][];
   weighted_sums: number[][];
+}
+
+/**
+ * Answer to ``GET /api/runs/{id}/generations/{g}/rows/{r}/mutation`` (api v1.25, task 7.8,
+ * ADR-060): what made network ``row`` of generation ``unit`` differ from its parents.
+ *
+ * ``weight_delta[l][j][i]`` = the mutation nudge of W_l[j, i] (child minus the value it
+ * inherited from the parent that gene came from; 0 when not mutated), ``bias_delta`` likewise;
+ * ``max_abs_delta`` = D, the largest |nudge|; ``weight_change`` = nudge / D (between -1 and 1;
+ * the same shape as a checkpoint diff, so the diagram draws it the same way).
+ * ``weight_mutated`` / ``bias_mutated`` mark the mutated genes, ``weight_from_other`` /
+ * ``bias_from_other`` the genes taken from the other parent. ``parents_fitness`` and
+ * ``parents_rank`` follow ``parents``; ``fitness`` and ``rank`` are the network's own.
+ */
+export interface MutationView {
+  bias_change: number[][];
+  bias_delta: number[][];
+  bias_from_other: boolean[][];
+  bias_mutated: boolean[][];
+  crossed: boolean | null;
+  fitness: number;
+  layer_sizes: number[];
+  main_parent: number;
+  max_abs_delta: number;
+  n_from_other: number;
+  n_genes: number;
+  n_mutated: number;
+  origin: "elite" | "child";
+  other_parent: number | null;
+  parents: number[];
+  parents_fitness: number[];
+  parents_rank: number[];
+  rank: number;
+  row: number;
+  run_id: string;
+  unit: number;
+  weight_change: number[][][];
+  weight_delta: number[][][];
+  weight_from_other: boolean[][][];
+  weight_mutated: boolean[][][];
 }
 
 /**

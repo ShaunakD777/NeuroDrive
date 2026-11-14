@@ -1,5 +1,6 @@
 import type {
   ActivationCurves,
+  Ancestry,
   CheckpointDiff,
   CheckpointList,
   CompareResponse,
@@ -11,6 +12,7 @@ import type {
   GenerationStarts,
   LaunchRequest,
   LaunchResponse,
+  MutationView,
   RunDetail,
   RunListResponse,
   RunMetrics,
@@ -71,6 +73,16 @@ export async function fetchEvolution(runId: string, start: number | null = null)
 /** How every network of generation `unit` drove from every start (`GET .../generations/{g}/starts`, ADR-059). */
 export async function fetchGenerationStarts(runId: string, unit: number): Promise<GenerationStarts> {
   return getJson<GenerationStarts>(`${runPath(runId)}/generations/${unit}/starts`);
+}
+
+/** The line of descent of a network of generation `unit` (default its champion; task 7.8, ADR-060). */
+export async function fetchAncestry(runId: string, unit: number, row: number | null = null): Promise<Ancestry> {
+  return getJson<Ancestry>(`${runPath(runId)}/generations/${unit}/ancestry${row === null ? "" : `?row=${row}`}`);
+}
+
+/** What made row `row` of generation `unit` differ from its parents (task 7.8, ADR-060). */
+export async function fetchMutation(runId: string, unit: number, row: number): Promise<MutationView> {
+  return getJson<MutationView>(`${runPath(runId)}/generations/${unit}/rows/${row}/mutation`);
 }
 
 /** The units that have a checkpoint (`GET /api/runs/{id}/checkpoints`). */

@@ -19,11 +19,14 @@ import numpy as np
 from neurodrive.core.nn.network import Network
 from neurodrive.experiment.config import ConfigError, GARunConfig, parse_config, to_ga_settings
 from neurodrive.experiment.evolution_view import evolution_view, generation_starts
+from neurodrive.experiment.lineage_view import ancestry, as_layers, mutation_change
 from neurodrive.experiment.stats import curve_bands, summarise
 from neurodrive.experiment.store import RunStore
 from neurodrive.experiment.toy_view import toy_checkpoint_view
-from neurodrive.learn.evolution.ga import GASettings
+from neurodrive.learn.evolution.ga import GASettings, ranking
 from neurodrive.server.schemas import (
+    Ancestry,
+    AncestryStepView,
     CheckpointDiff,
     CheckpointList,
     CheckpointNetwork,
@@ -33,6 +36,7 @@ from neurodrive.server.schemas import (
     EvolutionView,
     ExamCardResponse,
     GenerationStarts,
+    MutationView,
     RunDetail,
     RunListResponse,
     RunMetrics,
@@ -261,6 +265,109 @@ class RunLibrary:
             finish_time=[[_sig(t) for t in row] for row in grid.finish_time],
             finish_share=_sig_array(grid.finish_share),
             start_mean=_sig_array(grid.start_mean),
+        )
+
+    def _lineage(self, run_id: str, unit: int) -> GAGeneration:
+        """Generation ``unit`` of a GA run that records its lineage (task 7.8); ``KeyError`` for
+        an unknown run, ``ValueError`` in plain words otherwise."""
+        self.store(run_id)  # KeyError for an unknown run (404), before any other refusal
+        gen = self.ga_generation(run_id, unit)
+        if not self.store(run_id).read_extra_lines("lineage"):
+            raise ValueError(
+                f"run {run_id!r} records no lineage (trained before task 7.8): train it again to "
+                "see where its networks came from"
+            )
+        return gen
+
+    def ancestry(self, run_id: str, unit: int, row: int | None = None) -> Ancestry:
+        """The line of descent of row ``row`` (default: the champion) of generation ``unit`` of GA
+        run ``run_id`` (task 7.8, ADR-060), back to generation 1 through the main parents."""
+        gen = self._lineage(run_id, unit)
+        store = self.store(run_id)
+        p = gen.settings.spec.n_parameters
+        lineage = store.read_extra_lines("lineage")
+        population = store.read_extra_lines("population")
+        saved = set(store.unit_array_units("generations"))
+        genomes = {
+            u: store.load_unit_arrays("generations", u)["genomes"]
+            for u in range(1, unit + 1)
+            if u in saved
+        }
+        steps = ancestry(lineage, population, unit, row, p, genomes)
+        return Ancestry(
+            run_id=run_id,
+            unit=unit,
+            row=steps[0].row,
+            n_genes=p,
+            steps=[
+                AncestryStepView(
+                    unit=s.unit,
+                    row=s.row,
+                    fitness=_sig(s.fitness),  # type: ignore[arg-type]
+                    rank=s.rank,
+                    origin=s.origin,  # type: ignore[arg-type]
+                    parents=s.parents,
+                    crossed=s.crossed,
+                    main_parent=s.main_parent,
+                    from_main=s.from_main,
+                    from_other=s.from_other,
+                    mutated=s.mutated,
+                    distance=None if s.distance is None else _sig(s.distance),
+                )
+                for s in steps
+            ],
+        )
+
+    def mutation(self, run_id: str, unit: int, row: int) -> MutationView:
+        """What made row ``row`` of generation ``unit`` of GA run ``run_id`` differ from its
+        parents (task 7.8, ADR-060): the mutation nudges and the genes from the other parent, in
+        the network's weight and bias shapes."""
+        gen = self._lineage(run_id, unit)
+        store = self.store(run_id)
+        n = gen.genomes.shape[0]
+        if not 0 <= row < n:
+            raise ValueError(f"generation {unit} has {n} networks; there is no row {row}")
+        if unit == 1:
+            raise ValueError("a network of generation 1 is random: it has no parent to compare")
+        lines = {r["unit"]: r for r in store.read_extra_lines("lineage")}
+        rows = (lines.get(unit) or {}).get("rows")
+        if rows is None:
+            raise ValueError(f"the origins of generation {unit} are unknown (no lineage line)")
+        before = self.ga_generation(run_id, unit - 1)
+        d = mutation_change(rows[row], gen.genomes[row], before.genomes)
+        spec = gen.settings.spec
+        dw, db = as_layers(spec, d.delta)
+        cw, cb = as_layers(spec, d.change)
+        mw, mb = as_layers(spec, d.mutated.astype(np.float64))
+        ow, ob = as_layers(spec, d.from_other.astype(np.float64))
+        _, ranks = ranking(gen.line["fitness"])
+        _, old_ranks = ranking(before.line["fitness"])
+        return MutationView(
+            run_id=run_id,
+            unit=unit,
+            row=row,
+            origin=d.origin,  # type: ignore[arg-type]
+            parents=d.parents,
+            parents_fitness=[_sig(float(before.line["fitness"][p])) for p in d.parents],  # type: ignore[misc]
+            parents_rank=[int(old_ranks[p]) for p in d.parents],
+            crossed=d.crossed,
+            main_parent=d.main_parent,
+            other_parent=d.other_parent,
+            fitness=_sig(float(gen.line["fitness"][row])),  # type: ignore[arg-type]
+            rank=int(ranks[row]),
+            n_genes=spec.n_parameters,
+            n_mutated=d.n_mutated,
+            n_from_other=d.n_from_other,
+            layer_sizes=list(spec.layer_sizes),
+            weight_delta=[_sig_array(w) for w in dw],
+            bias_delta=[_sig_array(b) for b in db],
+            max_abs_delta=_sig(d.max_abs_delta),  # type: ignore[arg-type]
+            weight_change=[np.round(w, 4).tolist() for w in cw],
+            bias_change=[np.round(b, 4).tolist() for b in cb],
+            weight_mutated=[(w > 0).tolist() for w in mw],
+            bias_mutated=[(b > 0).tolist() for b in mb],
+            weight_from_other=[(w > 0).tolist() for w in ow],
+            bias_from_other=[(b > 0).tolist() for b in ob],
         )
 
     def checkpoints(self, run_id: str) -> CheckpointList:

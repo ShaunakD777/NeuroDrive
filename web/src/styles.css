@@ -891,6 +891,12 @@ body {
   stroke: var(--warn);
 }
 
+/* a gene taken from a GA network's second parent, in the mutation diff (task 7.8) */
+.net-edge-other {
+  stroke: var(--text-muted);
+  stroke-dasharray: 3 3;
+}
+
 .net-edges .net-edge {
   pointer-events: none;
 }
@@ -2222,4 +2228,44 @@ body {
   stroke: var(--accent);
   stroke-width: 2;
   stroke-dasharray: 4 3;
+}
+
+/* The line of descent in the Evolution panel (task 7.8) */
+.ancestry {
+  margin-top: 12px;
+}
+
+.ancestry-best {
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+  opacity: 0.7;
+}
+
+.ancestry-path {
+  fill: none;
+  stroke: var(--series-1);
+  stroke-width: 2;
+}
+
+.ancestry-mark {
+  stroke: var(--series-1);
+  stroke-width: 1.5;
+  fill: var(--series-1);
+}
+
+.ancestry-mark-elite {
+  fill: var(--surface);
+}
+
+.ancestry-mark-random {
+  fill: var(--text-muted);
+  stroke: var(--text-muted);
+}
+
+.ancestry-mark-unknown {
+  fill: none;
+  stroke: var(--bad);
+  stroke-width: 2;
 }

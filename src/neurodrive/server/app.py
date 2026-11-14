@@ -23,6 +23,7 @@ from neurodrive.server.runs import RunLibrary
 from neurodrive.server.runs_watch import Launcher, LaunchError, RunsHub, RunsWatcher
 from neurodrive.server.schemas import (
     ActivationCurves,
+    Ancestry,
     CheckpointDiff,
     CheckpointList,
     CheckpointNetwork,
@@ -37,6 +38,7 @@ from neurodrive.server.schemas import (
     HelloMessage,
     LaunchRequest,
     LaunchResponse,
+    MutationView,
     RunDetail,
     RunListResponse,
     RunMetrics,
@@ -199,6 +201,27 @@ def create_app(
     def generation_starts(run_id: str, unit: int) -> GenerationStarts:
         try:
             return runs.generation_starts(run_id, unit)
+        except KeyError:
+            raise missing(f"run {run_id!r}") from None
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from None
+
+    # A GA run's lineage (api v1.25, task 7.8, ADR-060).
+    @app.get("/api/runs/{run_id}/generations/{unit}/ancestry")
+    def generation_ancestry(
+        run_id: str, unit: int, row: int | None = Query(None, ge=0)
+    ) -> Ancestry:
+        try:
+            return runs.ancestry(run_id, unit, row)
+        except KeyError:
+            raise missing(f"run {run_id!r}") from None
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from None
+
+    @app.get("/api/runs/{run_id}/generations/{unit}/rows/{row}/mutation")
+    def generation_mutation(run_id: str, unit: int, row: int) -> MutationView:
+        try:
+            return runs.mutation(run_id, unit, row)
         except KeyError:
             raise missing(f"run {run_id!r}") from None
         except ValueError as error:

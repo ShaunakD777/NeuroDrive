@@ -362,6 +362,8 @@ stop conditions (max env steps, max wall-clock, max units).
 *Task 7.6 (ADR-057), additions without a version change:* per-unit arrays `extra/<name>/unit_<u>.npz` (from `UnitResult.arrays`; written under a temporary name and renamed; `RunStore.save_unit_arrays`, `load_unit_arrays`, `unit_array_units`, `unit_array_names`), deleted after the resumed unit by `cut_back`. GA runs write `extra/generations/unit_<g>.npz` = `{genomes}`, the (N, P) float64 matrix generation g was scored with: row i is the network whose fitness is entry i of `extra/population.jsonl` line g (scoring the file again gives that line exactly; tested). About 0.17 MB per generation for N = 50, P = 434 (17 MB per 100 generations). GA runs trained before task 7.6 have no such files: their checkpoints still replay, but their generations cannot race.
 *Task 7.7 follow-up (ADR-059), additions without a version change:* each GA generation file also holds four (N, S) arrays, S the evaluation starts in the order of `RandomSearchSettings.starts` (offsets outer, fractions inner): `start_fitness` f_ik (float64; the mean of row i is entry i of the population line's `fitness`, bit for bit), `status` (int8 `Status` codes: 1 crashed, 2 finished, 3 stalled, 4 timeout), `progress` (float64, share of the target distance) and `finish_time` (float64 seconds, NaN where the car did not finish). About 13 KB per generation for N = 50, S = 10. Generations saved before have only `genomes`; the evolution charts then show F only.
 
+*Task 7.8 (ADR-060), additions without a version change:* GA runs also write `extra/lineage.jsonl`, line g = how each row of generation g came about from generation g − 1 (`learn/evolution/ga.py: lineage_record`): `rows`, one record per row in row order, `{"origin": "random"}` in generation 1, `{"origin": "elite", "parents": [r]}` for an exact copy of row r, `{"origin": "child", "parents": [a, b], "crossed": bool, "from_b": [genes from b], "mutated": [mutated genes]}` for a child (gene indices in the 7.1 gene map; every gene not in `from_b` is a's; a child not crossed is a copy of a, so `from_b` is empty), or `"rows": null` when the origins are unknown (a run resumed from a state saved before 7.8). The *main parent* is the parent that gave more genes (a when P − |B| ≥ |B|). Every unmutated gene of a child equals its source parent's gene in `extra/generations/unit_<g−1>.npz` exactly (tested). About 28 KB per generation at the shipped settings. The GA learner's state `info` holds the pending record (`lineage`), so a resumed run writes the same lines.
+
 ```
 runs/<YYYYMMDD-HHMMSS>-<method>-<tag>/
   config.yaml        fully resolved config, including seed
@@ -474,7 +476,7 @@ data/demos/<dataset_id>/
   and provenance.
 - Shown by the dataset inspector (task 6.2, ADR-045; dense coverage and the comparator, ADR-046): `GET datasets` and `GET datasets/{id}` (§7).
 
-## 7. Server API (api v1.24, ADR-059, ADR-058, ADR-057, ADR-056, ADR-051, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033, ADR-035, ADR-041, ADR-042, ADR-045, ADR-046, ADR-047, ADR-048, ADR-049)
+## 7. Server API (api v1.25, ADR-060, ADR-059, ADR-058, ADR-057, ADR-056, ADR-051, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033, ADR-035, ADR-041, ADR-042, ADR-045, ADR-046, ADR-047, ADR-048, ADR-049)
 
 REST (`/api/...`):
 - `GET health` → `{status: "ok", version}` (`version` is the NeuroDrive package version)
@@ -553,6 +555,22 @@ REST (`/api/...`):
   list network i, `status` names (crashed, finished, stalled, timeout), `finish_time` null where
   it did not finish, 6 significant digits; unknown run → 404; not a GA run, no such generation or
   no per-start results → 400.
+- `GET runs/{id}/generations/{g}/ancestry?row=r` and `GET runs/{id}/generations/{g}/rows/{r}/mutation`:
+  a GA run's lineage
+  *As built (task 7.8, ADR-060, api v1.25):* `ancestry` → `{run_id, unit, row, n_genes, steps}`
+  (`experiment/lineage_view.py: ancestry`): the line of descent of row r (default the champion)
+  from generation g back to generation 1 through each network's main parent (an elite's copied
+  row), each step `{unit, row, fitness, rank, origin, parents, crossed, main_parent, from_main,
+  from_other, mutated, distance}` (distance = Euclidean distance of the genome from the main
+  parent's). `mutation` → `{run_id, unit, row, origin, parents, parents_fitness, parents_rank,
+  crossed, main_parent, other_parent, fitness, rank, n_genes, n_mutated, n_from_other,
+  layer_sizes, weight_delta, bias_delta, max_abs_delta, weight_change, bias_change,
+  weight_mutated, bias_mutated, weight_from_other, bias_from_other}` (`mutation_change`): the
+  nudge of each mutated gene against the parent that gene came from (not the main parent), D the
+  largest |nudge|, change = nudge / D, in the checkpoint diff's shapes. 6 significant digits
+  (changes 4 decimals). Unknown run → 404; not a GA run, no lineage (trained before 7.8), no such
+  generation or row, generation 1 (random, no parent), unknown origins, or an unmutated gene that
+  does not equal its source (damaged) → 400; a negative `row` → 422.
 - `GET datasets`, `GET datasets/{id}`: demonstration datasets (dataset v1, §6.16)
   *As built (task 6.2, ADR-045, api v1.15):* the server reads the dataset folders in `nd serve
   --datasets-dir` (default `<repo>/data/demos`). `GET datasets` → `{datasets: [{dataset_id, teacher,
@@ -581,7 +599,7 @@ REST (`/api/...`):
 
 WebSocket `/ws/live` (one independent session per connection):
 - `hello` is sent first, on connect: `{type: "hello", version, api}` (`api` is the message-contract
-  version, currently `"v1.24"`).
+  version, currently `"v1.25"`).
 - client → server (each has a `type` field):
   - `load_scenario {track, policy, n_cars, seed}`: `policy` is `"keyboard"`, `"constant"`,
     `"neuron"`, `"random_networks"` (every car is driven by its own random [7,16,16,2] network;
@@ -846,6 +864,18 @@ runs/{id}/generations/{g}/starts` (rows = starts, columns = networks by rank of 
 drive in words on hover, a table, and each start's finishers at the right; a click races that
 generation from that start and selects that car, the raced start is outlined). Runs without
 per-start results say they need training again.
+
+*Since task 7.8 (ADR-060), the Ancestry section:* under the charts, the line of descent of the
+chosen generation's champion (or any row, from a picker) from `GET .../generations/{g}/ancestry`,
+drawn over each generation's best fitness (dashed) as a path with one marker per generation,
+shaped by origin (square random, ring elite copy, dot child, diamond crossed child, cross
+unknown), a summary (elite copies, children, crossed, mutated genes along the line), hover in
+words and a table; a click races that generation with that ancestor selected. In population mode
+the Network view shows a banner with the selected car's origin and, for a child, the toggle
+"Colour lines by mutation since the parent" (`GET .../rows/{r}/mutation`): mutated weights blue
+(raised) or orange (lowered), thickness by |nudge| / D as in the checkpoint diff, genes from the
+second parent thin dashed grey, weights inherited unchanged from the main parent not drawn;
+mutated biases are counted in the legend. Generation 1, the ghost and elites have no toggle.
 
 ### 8.3 Output-neuron inspector (built up over phases)
 1. Readout: the value plus its physical meaning ("−0.93 = hard left").

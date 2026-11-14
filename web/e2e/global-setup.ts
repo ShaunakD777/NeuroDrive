@@ -74,7 +74,9 @@ function hasCompletedGA(): boolean {
       // since the 7.7 follow-up (ADR-059) each generation also holds every drive from every start
       // (an .npz is an uncompressed zip, so its array names are plain text in the file)
       const perStart = existsSync(saved) && readFileSync(saved).includes("start_fitness.npy");
-      return existsSync(meta) && perStart && JSON.parse(readFileSync(meta, "utf8")).status === "completed";
+      // since task 7.8 (ADR-060) every generation's lineage too
+      const lineage = existsSync(join(runsDir, name, "extra", "lineage.jsonl"));
+      return existsSync(meta) && perStart && lineage && JSON.parse(readFileSync(meta, "utf8")).status === "completed";
     });
 }
 

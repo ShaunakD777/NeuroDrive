@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
-API_VERSION = "v1.24"
+API_VERSION = "v1.25"
 
 
 class WireModel(BaseModel):
@@ -1081,6 +1081,81 @@ class GenerationStarts(WireModel):
     start_mean: list[float]
 
 
+class AncestryStepView(WireModel):
+    """One network on a line of descent (api v1.25, task 7.8, ADR-060): generation ``unit``,
+    ``row``, its fitness F and ``rank`` (0 = best), ``origin`` ("random", "elite", "child" or
+    "unknown"), ``parents`` (rows of the previous generation), ``crossed`` (children only),
+    ``main_parent`` (the next step's row; null at the end), the genes taken from the main and the
+    other parent, the number of mutated genes, and ``distance`` from the main parent's genome."""
+
+    unit: int
+    row: int
+    fitness: float
+    rank: int
+    origin: Literal["random", "elite", "child", "unknown"]
+    parents: list[int]
+    crossed: bool | None
+    main_parent: int | None
+    from_main: int | None
+    from_other: int | None
+    mutated: int | None
+    distance: float | None
+
+
+class Ancestry(WireModel):
+    """Answer to ``GET /api/runs/{id}/generations/{g}/ancestry?row=r`` (api v1.25, task 7.8,
+    ADR-060): the line of descent of row ``row`` of generation ``unit`` (default its champion),
+    through each network's main parent (the parent that gave more genes, a on a tie) back to
+    generation 1. ``steps`` run from generation ``unit`` backwards. Numbers keep 6 significant
+    digits."""
+
+    run_id: str
+    unit: int
+    row: int
+    n_genes: int
+    steps: list[AncestryStepView]
+
+
+class MutationView(WireModel):
+    """Answer to ``GET /api/runs/{id}/generations/{g}/rows/{r}/mutation`` (api v1.25, task 7.8,
+    ADR-060): what made network ``row`` of generation ``unit`` differ from its parents.
+
+    ``weight_delta[l][j][i]`` = the mutation nudge of W_l[j, i] (child minus the value it
+    inherited from the parent that gene came from; 0 when not mutated), ``bias_delta`` likewise;
+    ``max_abs_delta`` = D, the largest |nudge|; ``weight_change`` = nudge / D (between -1 and 1;
+    the same shape as a checkpoint diff, so the diagram draws it the same way).
+    ``weight_mutated`` / ``bias_mutated`` mark the mutated genes, ``weight_from_other`` /
+    ``bias_from_other`` the genes taken from the other parent. ``parents_fitness`` and
+    ``parents_rank`` follow ``parents``; ``fitness`` and ``rank`` are the network's own.
+    """
+
+    run_id: str
+    unit: int
+    row: int
+    origin: Literal["elite", "child"]
+    parents: list[int]
+    parents_fitness: list[float]
+    parents_rank: list[int]
+    crossed: bool | None
+    main_parent: int
+    other_parent: int | None
+    fitness: float
+    rank: int
+    n_genes: int
+    n_mutated: int
+    n_from_other: int
+    layer_sizes: list[int]
+    weight_delta: list[list[list[float]]]
+    bias_delta: list[list[float]]
+    max_abs_delta: float
+    weight_change: list[list[list[float]]]
+    bias_change: list[list[float]]
+    weight_mutated: list[list[list[bool]]]
+    bias_mutated: list[list[bool]]
+    weight_from_other: list[list[list[bool]]]
+    bias_from_other: list[list[bool]]
+
+
 WIRE_MODELS: tuple[type[WireModel], ...] = (
     HealthResponse,
     HelloMessage,
@@ -1149,4 +1224,7 @@ WIRE_MODELS: tuple[type[WireModel], ...] = (
     DatasetDetail,
     EvolutionView,
     GenerationStarts,
+    AncestryStepView,
+    Ancestry,
+    MutationView,
 )

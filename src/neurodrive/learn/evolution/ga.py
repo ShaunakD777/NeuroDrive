@@ -62,6 +62,17 @@ from every evaluation start (task 7.7 follow-up, ADR-059), each an array (N, S):
 f_ik (so F_i is the mean of row i), ``status`` the ``Status`` code of the drive, ``progress`` the
 share of the target distance covered and ``finish_time`` the seconds to the finish (NaN where it
 did not finish). The evolution charts read them to show one start at a time.
+
+**Lineage** (task 7.8, ADR-060). Every unit also writes line g of ``extra/lineage.jsonl``: how
+each row of generation g came about from generation g - 1. A row's record is ``{"origin":
+"random"}`` in generation 1; ``{"origin": "elite", "parents": [r]}`` for an exact copy of row r;
+``{"origin": "child", "parents": [a, b], "crossed": ..., "from_b": B, "mutated": M}`` for a child,
+where B lists the genes taken from parent b (empty when not crossed; every other gene is a's) and
+M the genes mutation nudged. The record of generation g + 1 is made when it is bred (end of unit
+g) and kept in the learner's state until unit g + 1 writes it, so a resumed run writes the same
+lines. The *main parent* of a child is the parent that gave more genes: a when P - |B| >= |B|.
+In the worked example above, generation g + 1's records are: row 0 elite of row 3; row 1 child of
+(3, 1), crossed, B = M = [0]; row 2 child of (1, 0), B = M = []; row 3 child of (3, 3), M = [0, 1].
 """
 
 from dataclasses import dataclass, field
@@ -354,6 +365,50 @@ def next_generation(
     return Breeding(children, elite, a, b, crossed, mutated)
 
 
+def first_lineage(n: int) -> list[dict[str, Any]]:
+    """The lineage records of generation 1: every one of the n rows is a random genome."""
+    return [{"origin": "random"} for _ in range(n)]
+
+
+def lineage_record(bred: Breeding) -> list[dict[str, Any]]:
+    """How every row of a bred generation came about, as plain JSON values (task 7.8).
+
+    Rows 0 .. E - 1 are elites copying ``bred.elite[j]``; row E + n is a child of
+    ``parents_a[n]`` and ``parents_b[n]``: ``crossed`` from the crossover record, ``from_b`` the
+    genes where ``from_a`` is False, ``mutated`` the genes where the mutation mask is True (both
+    as sorted gene indices).
+    """
+    rows: list[dict[str, Any]] = [{"origin": "elite", "parents": [int(r)]} for r in bred.elite]
+    for n, (a, b) in enumerate(zip(bred.parents_a, bred.parents_b, strict=True)):
+        rows.append(
+            {
+                "origin": "child",
+                "parents": [int(a), int(b)],
+                "crossed": bool(bred.crossover.crossed[n]),
+                "from_b": np.flatnonzero(~bred.crossover.from_a[n]).tolist(),
+                "mutated": np.flatnonzero(bred.mutation.mutated[n]).tolist(),
+            }
+        )
+    return rows
+
+
+def main_parent(record: dict[str, Any], n_genes: int) -> int | None:
+    """The row of the previous generation a lineage record descends from most.
+
+    None for a random genome; the copied row for an elite; for a child the parent that gave more
+    genes: a gave P - |B| and b gave |B|, so a when P - |B| >= |B| (ties to a; always a when not
+    crossed). Example: P = 2, B = [0] is a tie, so a.
+    """
+    origin = record["origin"]
+    if origin == "random":
+        return None
+    parents = record["parents"]
+    if origin == "elite":
+        return int(parents[0])
+    n_b = len(record["from_b"])
+    return int(parents[0]) if n_genes - n_b >= n_b else int(parents[1])
+
+
 def diversity(genomes: ArrayLike) -> float:
     """D, the mean Euclidean distance between the genomes of every pair of rows i < j.
 
@@ -406,6 +461,8 @@ class GALearner:
         self.best_unit = 0
         self.units = 0
         self.elite_fitness: Array | None = None  # rows 0 .. E - 1's fitness when they were kept
+        # how the current generation was made (task 7.8); None = unknown (a state from before 7.8)
+        self.lineage: list[dict[str, Any]] | None = first_lineage(settings.population)
 
     def train_unit(self) -> UnitResult:
         """Score this generation, record its best and statistics, breed the next one."""
@@ -450,12 +507,14 @@ class GALearner:
         }
         scored_genomes = self.genomes  # generation g, the matrix just scored (task 7.6)
         bred = next_generation(scored_genomes, f, self.settings.breeding, self.generators)
+        lineage = {"rows": self.lineage}  # how generation g was made (task 7.8)
         self.genomes, self.elite_fitness = bred.genomes, f[bred.elite].copy()
+        self.lineage = lineage_record(bred)  # how generation g + 1 was made, written next unit
         return UnitResult(
             metrics=metrics,
             env_steps=scored.env_steps,
             new_best=improved,
-            extra={"population": line},
+            extra={"population": line, "lineage": lineage},
             arrays={
                 "generations": {
                     "genomes": scored_genomes.copy(),
@@ -472,7 +531,8 @@ class GALearner:
         return [Network.unflatten(self.settings.spec, self.champion)]
 
     def state(self) -> LearnerState:
-        """The next generation, the champion, the elites' fitness, counters and generators."""
+        """The next generation, the champion, the elites' fitness, counters, generators and how the
+        next generation was made (its lineage records, task 7.8)."""
         known = self.elite_fitness is not None
         return LearnerState(
             arrays={
@@ -487,6 +547,7 @@ class GALearner:
                 "best_unit": self.best_unit,
                 "elite_fitness_known": known,
                 "generators": self.generators.state(),
+                "lineage": self.lineage,
             },
         )
 
@@ -500,3 +561,5 @@ class GALearner:
         self.units, self.champion_fitness = info["units"], info["champion_fitness"]
         self.best_fitness, self.best_unit = info["best_fitness"], info["best_unit"]
         self.generators.set_state(info["generators"])
+        # a state saved before task 7.8 has no record: the next lineage line says "unknown"
+        self.lineage = info.get("lineage")

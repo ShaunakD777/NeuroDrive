@@ -97,7 +97,7 @@ def test_refusals(client, runs):
 
 
 def test_api_version():
-    assert API_VERSION == "v1.24"
+    assert API_VERSION == "v1.25"
 
 
 # ── one start at a time (task 7.7 follow-up, ADR-059, api v1.24) ─────────────────────────────

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties, type MouseEvent, type
 
 import type { EvolutionView, GenerationStarts } from "../../api/generated";
 import { fetchEvolution, fetchGenerationStarts } from "../../api/rest";
+import { Ancestry } from "./Ancestry";
 import { ChartHover } from "./ChartHover";
 import { formatNumber, linePath, linearScale, nearestIndex, niceTicks, type Scale } from "./charts";
 import {
@@ -26,15 +27,16 @@ import {
 /** The generation and start racing in the Environment view, if they are this run's. */
 export type Racing = { unit: number; start: number } | null;
 
-const W = 640;
-const H = 240;
-const M = { left: 58, right: 70, top: 14, bottom: 40 };
+// shared with the Ancestry section (task 7.8)
+export const W = 640;
+export const H = 240;
+export const M = { left: 58, right: 70, top: 14, bottom: 40 };
 const LABEL_GAP = 14;
 
 const seriesStyle = (slot: number) => ({ "--series": `var(--series-${slot + 1})` }) as CSSProperties;
 
 /** 0 up to the first round tick above `hi`, so a line never runs along the top edge. */
-function valueAxis(hi: number): { ticks: number[]; y: Scale } {
+export function valueAxis(hi: number): { ticks: number[]; y: Scale } {
   const top = hi > 0 ? hi : 1;
   const rough = niceTicks(0, top, 4);
   const step = rough.length > 1 ? rough[1] - rough[0] : top;
@@ -43,7 +45,7 @@ function valueAxis(hi: number): { ticks: number[]; y: Scale } {
 }
 
 /** Where the pointer is along the generation axis (viewBox units), from a mouse event. */
-function pointerX(event: MouseEvent<SVGRectElement>): number {
+export function pointerX(event: MouseEvent<SVGRectElement>): number {
   const box = event.currentTarget.ownerSVGElement!.getBoundingClientRect();
   return ((event.clientX - box.left) / box.width) * W;
 }
@@ -54,7 +56,7 @@ function pointerY(event: MouseEvent<SVGRectElement>): number {
 }
 
 /** Axes, grid and the generation cursor shared by the three charts over generations. */
-function GenerationFrame({
+export function GenerationFrame({
   x,
   units,
   yTicks,
@@ -270,6 +272,7 @@ export function Evolution({
           )}
         </div>
       )}
+      <Ancestry runId={runId} view={view} unit={shown} raceStart={raceStart} onRace={onRace} />
       <EvolutionTable view={view} />
       {shownGrid !== null && <OutcomeTable grid={shownGrid} />}
     </section>
@@ -278,7 +281,7 @@ export function Evolution({
 
 type ChartProps = { view: EvolutionView; cursor: number; onPick: (generation: number) => void };
 
-function generationScale(units: number[]): Scale {
+export function generationScale(units: number[]): Scale {
   return linearScale(units[0] - 0.5, units[units.length - 1] + 0.5, M.left, W - M.right);
 }
 

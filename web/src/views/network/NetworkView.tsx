@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 
-import type { CheckpointDiff, CheckpointRef, Explanation } from "../../api/generated";
-import { fetchCheckpointDiff, fetchCheckpoints } from "../../api/rest";
+import type { CheckpointDiff, CheckpointRef, Explanation, MutationView, PopulationInfo } from "../../api/generated";
+import { fetchCheckpointDiff, fetchCheckpoints, fetchMutation } from "../../api/rest";
 
 import { useLive } from "../../state/live";
 import { useMoment, usePlayback } from "../../state/playback";
@@ -12,7 +12,7 @@ import { NetworkDiagram } from "./NetworkDiagram";
 import { OutputInspector } from "./OutputInspector";
 import { WhatIfPanel } from "./WhatIfPanel";
 import { NeuronView } from "./NeuronView";
-import { previousCheckpoint } from "./diff";
+import { originText, previousCheckpoint } from "./diff";
 
 /**
  * The Network page: which picture to show depends on the driver. The random-networks driver, a
@@ -119,6 +119,40 @@ function useCheckpointChange(checkpoint: CheckpointRef | null): {
 /** The full view's "show change" choice, kept while scrubbing from checkpoint to checkpoint. */
 let showChangeChoice = true;
 
+/** The "show mutation" choice in population mode (task 7.8), kept from car to car. */
+let showMutationChoice = false;
+
+type MutationState = { mutation: MutationView | null; note: string | null; error: string | null };
+
+/**
+ * In population mode (task 7.6): what made the selected car's network differ from its parents
+ * (`GET .../generations/{g}/rows/{r}/mutation`, task 7.8). Generation 1 and the ghost have none;
+ * a run trained before task 7.8 gets the server's refusal as `error`.
+ */
+function useMutation(population: PopulationInfo | null, car: number | null): MutationState {
+  const [found, setFound] = useState<{ key: string; state: MutationState } | null>(null);
+  const run = population?.run ?? null;
+  const unit = population?.unit ?? null;
+  const isGhost = population !== null && car !== null && car >= population.size;
+  const key = `${run}/${unit}/${car}`;
+  useEffect(() => {
+    if (run === null || unit === null || car === null || isGhost || unit < 2) return;
+    let live = true;
+    fetchMutation(run, unit, car)
+      .then((m) => live && setFound({ key, state: { mutation: m, note: null, error: null } }))
+      .catch((e: Error) => live && setFound({ key, state: { mutation: null, note: null, error: e.message } }));
+    return () => {
+      live = false;
+    };
+  }, [run, unit, car, isGhost, key]);
+  if (population === null || car === null) return { mutation: null, note: null, error: null };
+  if (isGhost)
+    return { mutation: null, note: `the ghost: generation ${population.ghost_unit}'s champion, not part of this generation`, error: null };
+  if (population.unit < 2) return { mutation: null, note: "a random genome of generation 1: it has no parent", error: null };
+  if (found === null || found.key !== key) return { mutation: null, note: "looking up its parents…", error: null };
+  return found.state;
+}
+
 function MultilayerView({ compact, headerExtra }: { compact: boolean; headerExtra?: ReactNode }) {
   const frame = useLive((s) => s.frame);
   const checkpoint = useLive((s) => s.scenario?.checkpoint ?? null);
@@ -127,6 +161,8 @@ function MultilayerView({ compact, headerExtra }: { compact: boolean; headerExtr
   const [showChange, setShowChange] = useState(showChangeChoice);
   const network = useLive((s) => s.network);
   const connected = useLive((s) => s.status === "connected");
+  const population = useLive((s) => s.scenario?.population ?? null);
+  const [showMutation, setShowMutation] = useState(showMutationChoice);
 
   // Looking at an earlier step (task 2.11): the network as it was then.
   const moment = useMoment();
@@ -136,6 +172,8 @@ function MultilayerView({ compact, headerExtra }: { compact: boolean; headerExtr
   const count = frame?.cars.x.length ?? 0;
   // The weights arrive once, right after a car is selected; wait until they are the right car's.
   const ready = selected !== null && trace !== null && network !== null && network.car === selected.index;
+  const origin = useMutation(compact ? null : population, selected?.index ?? null);
+  const mutation = showMutation ? origin.mutation : null;
 
   let body: ReactNode;
   if (frame === null) {
@@ -153,6 +191,7 @@ function MultilayerView({ compact, headerExtra }: { compact: boolean; headerExtr
           car={selected.index}
           atStep={moment?.step ?? null}
           change={showChange ? change.diff : null}
+          mutation={mutation}
         />
         <Inspection explain={moment === null ? (selected.explain ?? null) : moment.explain} />
       </>
@@ -190,6 +229,35 @@ function MultilayerView({ compact, headerExtra }: { compact: boolean; headerExtr
               ? " Colour lines by change: this is the first checkpoint, nothing to compare"
               : ` Colour lines by change since unit ${change.from}`}
           </label>
+        </div>
+      )}
+      {population !== null && !compact && selected !== null && (
+        <div
+          className="replay-banner"
+          data-testid="lineage-banner"
+          data-unit={population.unit}
+          data-row={selected.index}
+          data-origin={origin.mutation?.origin ?? "none"}
+        >
+          <span>
+            Car {selected.index + 1}
+            {selected.index < population.size ? ` = row ${selected.index} of generation ${population.unit}` : ""}:{" "}
+            {origin.mutation !== null ? originText(origin.mutation) : (origin.note ?? `no lineage: ${origin.error}`)}.
+          </span>
+          {origin.mutation !== null && origin.mutation.origin === "child" && (
+            <label className="replay-toggle">
+              <input
+                type="checkbox"
+                data-testid="show-mutation"
+                checked={showMutation}
+                onChange={(e) => {
+                  showMutationChoice = e.target.checked;
+                  setShowMutation(e.target.checked);
+                }}
+              />{" "}
+              Colour lines by mutation since the parent
+            </label>
+          )}
         </div>
       )}
       {moment !== null && frame !== null && (
