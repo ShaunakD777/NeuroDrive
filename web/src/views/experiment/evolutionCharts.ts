@@ -95,3 +95,57 @@ export function topEdge(view: EvolutionView): number {
   const top = view.edges[Math.min(k, view.edges.length - 1)] ?? 2;
   return Math.max(top, 0.5);
 }
+
+// ── one start at a time (task 7.7 follow-up, ADR-059) ───────────────────────────────────────
+
+/** Upper limits of the starts map's shades 1 to 4, as the share of a generation that finishes a start. */
+export const FINISH_LIMITS = [0.2, 0.4, 0.6, 0.8] as const;
+
+/** The shade of a start finished by `share` of the generation: 0 (nobody), else 1 (fewest) to 5 (more than 80 %). */
+export function finishShade(share: number): number {
+  if (!(share > 0)) return 0;
+  const i = FINISH_LIMITS.findIndex((limit) => share <= limit + 1e-12);
+  return i < 0 ? 5 : i + 1;
+}
+
+/** The starts map legend's words for shades 0 to 5. */
+export function finishLegend(): { shade: number; label: string }[] {
+  const limits = [0, ...FINISH_LIMITS];
+  return [
+    { shade: 0, label: "none" },
+    ...limits.map((lo, i) => ({
+      shade: i + 1,
+      label: i === limits.length - 1 ? `more than ${lo * 100} %` : `up to ${FINISH_LIMITS[i] * 100} %`,
+    })),
+  ];
+}
+
+export type Outcome = "finished" | "crashed" | "stalled" | "timeout";
+
+/**
+ * How a drive can end, in words and colour. The colours are the reserved status colours, so a
+ * cell is never read by colour alone: the legend names them and the hover and table say the word.
+ */
+export const OUTCOMES: { key: Outcome; label: string; colour: string }[] = [
+  { key: "finished", label: "finished", colour: "var(--ok)" },
+  { key: "crashed", label: "crashed", colour: "var(--bad)" },
+  { key: "stalled", label: "stalled", colour: "var(--warn)" },
+  { key: "timeout", label: "out of time", colour: "var(--chart-mid)" },
+];
+
+/** The words and colour of an outcome name from the server (an unknown name is shown as is, in grey). */
+export function outcomeOf(name: string): { key: string; label: string; colour: string } {
+  return OUTCOMES.find((o) => o.key === name) ?? { key: name, label: name, colour: "var(--chart-mid)" };
+}
+
+/** Where start k is, in words: "start 3: 40 % of the lap, 1.5 m left" (k is 0-based, shown from 1). */
+export function startLabel(k: number, fraction: number | undefined, lateral: number | undefined): string {
+  if (fraction === undefined || lateral === undefined) return `start ${k + 1}`;
+  const side = lateral === 0 ? "on the centre line" : `${Math.abs(lateral)} m ${lateral > 0 ? "left" : "right"}`;
+  return `start ${k + 1}: ${Math.round(fraction * 100)} % of the lap, ${side}`;
+}
+
+/** The fitness symbol the charts use: F (the mean over every start) or f on start k (shown from 1). */
+export function fitnessName(start: number | null): string {
+  return start === null ? "fitness F" : `fitness f on start ${start + 1}`;
+}

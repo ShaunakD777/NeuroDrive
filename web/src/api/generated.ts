@@ -412,6 +412,13 @@ export interface ErrorMessage {
  * ``champion`` the row of the generation's best network. ``edges`` are the B + 1 band edges
  * (width ``band_width``, shared by every generation); ``counts[g][k]`` the networks of
  * generation ``unit[g]`` with edges[k] <= F < edges[k + 1], adding up to N per generation.
+ *
+ * Since api v1.24 (task 7.7 follow-up, ADR-059): ``start`` is the start (0 to S - 1) the
+ * statistics, ``best_so_far``, ``zero`` and ``counts`` describe, f on that start instead of F
+ * (null: every start); ``n_starts`` is S when every generation saved its per-start results
+ * (null for runs trained before); ``start_finish_share[g][k]`` the share of generation
+ * ``unit[g]`` that finished start k and ``start_mean[g][k]`` its mean f there (null without
+ * per-start results). ``diversity``, ``finished_share`` and ``finishers`` stay for every start.
  */
 export interface EvolutionView {
   band_width: number;
@@ -426,10 +433,14 @@ export interface EvolutionView {
   finishers: (number | null)[];
   mean: number[];
   median: number[];
+  n_starts: number | null;
   population: number;
   q1: number[];
   q3: number[];
   run_id: string;
+  start: number | null;
+  start_finish_share: number[][] | null;
+  start_mean: number[][] | null;
   unit: number[];
   worst: number[];
   zero: number[];
@@ -695,6 +706,37 @@ export interface TrailPoints {
   steps: number[];
   x: number[];
   y: number[];
+}
+
+/**
+ * Answer to ``GET /api/runs/{id}/generations/{g}/starts`` (api v1.24, task 7.7 follow-up,
+ * ADR-059): how every network of one GA generation drove from every evaluation start.
+ *
+ * ``order`` lists the rows (networks) best first by F, the GA's own ranking (ties to the lower
+ * row); row i of every (N, S) list is network i: ``start_fitness`` f_ik, ``status`` how the drive
+ * ended (crashed, finished, stalled or timeout), ``progress`` the share of the target distance
+ * covered, ``finish_time`` seconds to the finish (null where it did not finish). ``fitness`` is
+ * F (N,); ``finish_share`` and ``start_mean`` (S,) each start's finished share and mean f;
+ * ``start_fraction`` and ``start_lateral_m`` (S,) where start k is, as a share of the lap from
+ * the start line and metres to the left of the centre line. Numbers keep 6 significant digits.
+ */
+export interface GenerationStarts {
+  champion: number;
+  elite: number[];
+  finish_share: number[];
+  finish_time: (number | null)[][];
+  fitness: number[];
+  n_starts: number;
+  order: number[];
+  population: number;
+  progress: number[][];
+  run_id: string;
+  start_fitness: number[][];
+  start_fraction: number[];
+  start_lateral_m: number[];
+  start_mean: number[];
+  status: string[][];
+  unit: number;
 }
 
 /**

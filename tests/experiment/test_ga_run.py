@@ -11,6 +11,7 @@ from typer.testing import CliRunner
 
 from neurodrive.cli import app
 from neurodrive.env.track import Track
+from neurodrive.env.world import Status
 from neurodrive.experiment.config import (
     ConfigError,
     GARunConfig,
@@ -149,6 +150,38 @@ def test_every_scored_generation_is_saved(tmp_path):
     assert np.array_equal(store.load_unit_arrays("generations", 1)["genomes"], first)
 
 
+def test_every_generation_keeps_how_each_network_drove_each_start(tmp_path):
+    """Task 7.7 follow-up (ADR-059): next to the genomes, the (N, S) arrays f, status, progress
+    and finish time; row means are the line's F exactly and the outcome counts its counts."""
+    config = parse_config(
+        config_data(
+            seed=2,  # 4 starts on which the outcomes differ, so a start mixed up shows
+            fitness={
+                "start_fractions": [0.0, 0.5],
+                "lateral_offsets": [0.0, 1.5],
+                "target_laps": 1,
+            },
+        )
+    )
+    store = train_ga_run(config, tmp_path).store
+    settings = to_ga_settings(config)
+    for line in store.read_extra_lines("population"):
+        arrays = store.load_unit_arrays("generations", line["unit"])
+        assert sorted(arrays) == ["finish_time", "genomes", "progress", "start_fitness", "status"]
+        f, status = arrays["start_fitness"], arrays["status"]
+        assert f.shape == status.shape == arrays["progress"].shape == (5, 4)
+        assert arrays["finish_time"].shape == (5, 4) and status.dtype == np.int8
+        assert (status != np.roll(status, 1, axis=1)).any()  # the starts end differently
+        assert f.mean(axis=1).tolist() == line["fitness"]  # bit for bit
+        assert (status == Status.FINISHED).sum(axis=1).tolist() == line["finished"]
+        assert (status == Status.CRASHED).sum(axis=1).tolist() == line["crashed"]
+        assert np.isnan(arrays["finish_time"][status != Status.FINISHED]).all()
+        ev = evaluate_genomes(arrays["genomes"], TRAIN, settings).evaluation
+        assert np.array_equal(ev.per_start, f) and np.array_equal(ev.status, status)
+        assert np.array_equal(ev.progress_frac, arrays["progress"])
+        assert np.array_equal(ev.finish_time, arrays["finish_time"], equal_nan=True)
+
+
 def test_a_failed_run_resumes_exactly_extra_lines_included(tmp_path, monkeypatch):
     config = parse_config(config_data(budget={"units": 4}))
     reference = train_ga_run(config, tmp_path / "a").store
@@ -177,8 +210,10 @@ def test_a_failed_run_resumes_exactly_extra_lines_included(tmp_path, monkeypatch
     assert store.read_extra_lines("population") == reference.read_extra_lines("population")
     assert store.unit_array_units("generations") == [1, 2, 3, 4]
     for unit in range(1, 5):
-        mine = store.load_unit_arrays("generations", unit)["genomes"]
-        assert np.array_equal(mine, reference.load_unit_arrays("generations", unit)["genomes"])
+        mine = store.load_unit_arrays("generations", unit)
+        theirs = reference.load_unit_arrays("generations", unit)
+        assert sorted(mine) == sorted(theirs)  # the per-start arrays too (ADR-059)
+        assert all(np.array_equal(mine[k], theirs[k], equal_nan=True) for k in theirs)
     assert store.checkpoint_units() == reference.checkpoint_units()
     for unit in store.checkpoint_units():
         assert store.load_checkpoint(unit).equals(reference.load_checkpoint(unit))

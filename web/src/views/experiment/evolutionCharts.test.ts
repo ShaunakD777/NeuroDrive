@@ -1,7 +1,22 @@
 import { describe, expect, it } from "vitest";
 
 import type { EvolutionView } from "../../api/generated";
-import { bandLabel, filledBands, panelGeneration, shadeColour, shadeLegend, shadeOf, spreadLabels, topEdge } from "./evolutionCharts";
+import {
+  bandLabel,
+  filledBands,
+  finishLegend,
+  finishShade,
+  fitnessName,
+  OUTCOMES,
+  outcomeOf,
+  panelGeneration,
+  shadeColour,
+  shadeLegend,
+  shadeOf,
+  spreadLabels,
+  startLabel,
+  topEdge,
+} from "./evolutionCharts";
 
 const EDGES = Array.from({ length: 41 }, (_, k) => Number((k * 0.05).toFixed(12)));
 
@@ -32,6 +47,10 @@ function example(): EvolutionView {
     finished_share: [null, null],
     finishers: [null, null],
     champion: [4, 0],
+    start: null,
+    n_starts: null,
+    start_finish_share: null,
+    start_mean: null,
     band_width: 0.05,
     edges: EDGES,
     counts,
@@ -103,5 +122,33 @@ describe("end-of-line labels", () => {
     expect(out.map((l) => l.y)).toEqual([100, 114, 128]);
     const low = spreadLabels([{ y: 239 }, { y: 240 }], 14, 10, 240);
     expect(low.map((l) => l.y)).toEqual([226, 240]);
+  });
+});
+
+describe("one start at a time (ADR-059)", () => {
+  it("shades a start by the share that finishes it", () => {
+    expect([0, 0.02, 0.2, 0.21, 0.4, 0.6, 0.8, 0.81, 1].map(finishShade)).toEqual([0, 1, 1, 2, 2, 3, 4, 5, 5]);
+    expect(finishLegend().map((l) => l.label)).toEqual([
+      "none",
+      "up to 20 %",
+      "up to 40 %",
+      "up to 60 %",
+      "up to 80 %",
+      "more than 80 %",
+    ]);
+  });
+
+  it("names every outcome and keeps an unknown one readable", () => {
+    expect(OUTCOMES.map((o) => o.label)).toEqual(["finished", "crashed", "stalled", "out of time"]);
+    expect(outcomeOf("crashed").colour).toBe("var(--bad)");
+    expect(outcomeOf("running").label).toBe("running");
+  });
+
+  it("says where a start is and which fitness is drawn", () => {
+    expect(startLabel(2, 0.4, 1.5)).toBe("start 3: 40 % of the lap, 1.5 m left");
+    expect(startLabel(0, 0, 0)).toBe("start 1: 0 % of the lap, on the centre line");
+    expect(startLabel(4, undefined, undefined)).toBe("start 5");
+    expect(fitnessName(null)).toBe("fitness F");
+    expect(fitnessName(2)).toBe("fitness f on start 3");
   });
 });

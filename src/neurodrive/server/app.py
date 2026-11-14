@@ -32,6 +32,7 @@ from neurodrive.server.schemas import (
     DatasetListResponse,
     EvolutionView,
     ExamCardResponse,
+    GenerationStarts,
     HealthResponse,
     HelloMessage,
     LaunchRequest,
@@ -183,11 +184,21 @@ def create_app(
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from None
 
-    # The evolution charts of a GA run (api v1.23, task 7.7, ADR-058).
+    # The evolution charts of a GA run (api v1.23, task 7.7, ADR-058); since api v1.24 for one
+    # start at a time and with every network's drive from every start (ADR-059).
     @app.get("/api/runs/{run_id}/evolution")
-    def run_evolution(run_id: str) -> EvolutionView:
+    def run_evolution(run_id: str, start: int | None = Query(None, ge=0)) -> EvolutionView:
         try:
-            return runs.evolution(run_id)
+            return runs.evolution(run_id, start)
+        except KeyError:
+            raise missing(f"run {run_id!r}") from None
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from None
+
+    @app.get("/api/runs/{run_id}/generations/{unit}/starts")
+    def generation_starts(run_id: str, unit: int) -> GenerationStarts:
+        try:
+            return runs.generation_starts(run_id, unit)
         except KeyError:
             raise missing(f"run {run_id!r}") from None
         except ValueError as error:

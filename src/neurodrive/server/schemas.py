@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
-API_VERSION = "v1.23"
+API_VERSION = "v1.24"
 
 
 class WireModel(BaseModel):
@@ -1016,6 +1016,13 @@ class EvolutionView(WireModel):
     ``champion`` the row of the generation's best network. ``edges`` are the B + 1 band edges
     (width ``band_width``, shared by every generation); ``counts[g][k]`` the networks of
     generation ``unit[g]`` with edges[k] <= F < edges[k + 1], adding up to N per generation.
+
+    Since api v1.24 (task 7.7 follow-up, ADR-059): ``start`` is the start (0 to S - 1) the
+    statistics, ``best_so_far``, ``zero`` and ``counts`` describe, f on that start instead of F
+    (null: every start); ``n_starts`` is S when every generation saved its per-start results
+    (null for runs trained before); ``start_finish_share[g][k]`` the share of generation
+    ``unit[g]`` that finished start k and ``start_mean[g][k]`` its mean f there (null without
+    per-start results). ``diversity``, ``finished_share`` and ``finishers`` stay for every start.
     """
 
     run_id: str
@@ -1037,6 +1044,41 @@ class EvolutionView(WireModel):
     band_width: float
     edges: list[float]
     counts: list[list[int]]
+    start: int | None = None
+    n_starts: int | None = None
+    start_finish_share: list[list[float]] | None = None
+    start_mean: list[list[float]] | None = None
+
+
+class GenerationStarts(WireModel):
+    """Answer to ``GET /api/runs/{id}/generations/{g}/starts`` (api v1.24, task 7.7 follow-up,
+    ADR-059): how every network of one GA generation drove from every evaluation start.
+
+    ``order`` lists the rows (networks) best first by F, the GA's own ranking (ties to the lower
+    row); row i of every (N, S) list is network i: ``start_fitness`` f_ik, ``status`` how the drive
+    ended (crashed, finished, stalled or timeout), ``progress`` the share of the target distance
+    covered, ``finish_time`` seconds to the finish (null where it did not finish). ``fitness`` is
+    F (N,); ``finish_share`` and ``start_mean`` (S,) each start's finished share and mean f;
+    ``start_fraction`` and ``start_lateral_m`` (S,) where start k is, as a share of the lap from
+    the start line and metres to the left of the centre line. Numbers keep 6 significant digits.
+    """
+
+    run_id: str
+    unit: int
+    population: int
+    n_starts: int
+    elite: list[int]
+    champion: int
+    start_fraction: list[float]
+    start_lateral_m: list[float]
+    fitness: list[float]
+    order: list[int]
+    start_fitness: list[list[float]]
+    status: list[list[str]]
+    progress: list[list[float]]
+    finish_time: list[list[float | None]]
+    finish_share: list[float]
+    start_mean: list[float]
 
 
 WIRE_MODELS: tuple[type[WireModel], ...] = (
@@ -1106,4 +1148,5 @@ WIRE_MODELS: tuple[type[WireModel], ...] = (
     DatasetMap,
     DatasetDetail,
     EvolutionView,
+    GenerationStarts,
 )

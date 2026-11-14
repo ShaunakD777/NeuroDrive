@@ -57,7 +57,11 @@ z = (-2, 1) give (0.0, 0.5). Generation g + 1 = ((0.2, 0.4), (0.6, 0.4), (0.5, -
 Every unit also hands back the genome matrix it scored (``UnitResult.arrays["generations"]``,
 task 7.6, ADR-057): the runner saves it as ``extra/generations/unit_<g>.npz``, row i being the
 network whose fitness is entry i of that unit's ``extra/population.jsonl`` line, so any
-generation can race again in the live view.
+generation can race again in the live view. Next to the genomes it keeps how every network drove
+from every evaluation start (task 7.7 follow-up, ADR-059), each an array (N, S): ``start_fitness``
+f_ik (so F_i is the mean of row i), ``status`` the ``Status`` code of the drive, ``progress`` the
+share of the target distance covered and ``finish_time`` the seconds to the finish (NaN where it
+did not finish). The evolution charts read them to show one start at a time.
 """
 
 from dataclasses import dataclass, field
@@ -452,7 +456,15 @@ class GALearner:
             env_steps=scored.env_steps,
             new_best=improved,
             extra={"population": line},
-            arrays={"generations": {"genomes": scored_genomes.copy()}},
+            arrays={
+                "generations": {
+                    "genomes": scored_genomes.copy(),
+                    "start_fitness": ev.per_start.copy(),  # (N, S), task 7.7 follow-up, ADR-059
+                    "status": ev.status.astype(np.int8),
+                    "progress": ev.progress_frac.copy(),
+                    "finish_time": ev.finish_time.copy(),
+                }
+            },
         )
 
     def current_networks(self) -> list[Network]:

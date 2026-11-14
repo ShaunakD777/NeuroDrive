@@ -360,6 +360,7 @@ stop conditions (max env steps, max wall-clock, max units).
 *Task 7.5 (ADR-056), additions without a version change:* `extra/<name>.jsonl` files hold one JSON line per unit (`{"unit": u, ...}`, written from `UnitResult.extra`), and `cut_back` removes their lines after the resumed unit like metrics lines (`RunStore.append_extra_line`, `read_extra_lines`, `extra_line_names`). GA runs (method `ga`) write `extra/population.jsonl`: per generation `fitness` (every row's F, in row order), `finished` and `crashed` (each row's number of such starts), `elite` (the rows that were elites: [] in generation 1, else 0 … E−1) and `champion` (the best row). Their metrics lines hold `best_fitness` (the best of every generation so far), `generation_best_fitness`, `mean_fitness`, `median_fitness`, `worst_fitness`, `fitness_std`, `zero_fitness` (networks at exactly 0), `finished_share` and `crashed_share` (of the N × S drives), `finishers` (networks that finished every start), `diversity` (mean pairwise Euclidean distance of the generation's genomes), `elite_drift` (null in generation 1 or with E = 0), `improved` and `best_unit`.
 
 *Task 7.6 (ADR-057), additions without a version change:* per-unit arrays `extra/<name>/unit_<u>.npz` (from `UnitResult.arrays`; written under a temporary name and renamed; `RunStore.save_unit_arrays`, `load_unit_arrays`, `unit_array_units`, `unit_array_names`), deleted after the resumed unit by `cut_back`. GA runs write `extra/generations/unit_<g>.npz` = `{genomes}`, the (N, P) float64 matrix generation g was scored with: row i is the network whose fitness is entry i of `extra/population.jsonl` line g (scoring the file again gives that line exactly; tested). About 0.17 MB per generation for N = 50, P = 434 (17 MB per 100 generations). GA runs trained before task 7.6 have no such files: their checkpoints still replay, but their generations cannot race.
+*Task 7.7 follow-up (ADR-059), additions without a version change:* each GA generation file also holds four (N, S) arrays, S the evaluation starts in the order of `RandomSearchSettings.starts` (offsets outer, fractions inner): `start_fitness` f_ik (float64; the mean of row i is entry i of the population line's `fitness`, bit for bit), `status` (int8 `Status` codes: 1 crashed, 2 finished, 3 stalled, 4 timeout), `progress` (float64, share of the target distance) and `finish_time` (float64 seconds, NaN where the car did not finish). About 13 KB per generation for N = 50, S = 10. Generations saved before have only `genomes`; the evolution charts then show F only.
 
 ```
 runs/<YYYYMMDD-HHMMSS>-<method>-<tag>/
@@ -473,7 +474,7 @@ data/demos/<dataset_id>/
   and provenance.
 - Shown by the dataset inspector (task 6.2, ADR-045; dense coverage and the comparator, ADR-046): `GET datasets` and `GET datasets/{id}` (§7).
 
-## 7. Server API (api v1.23, ADR-058, ADR-057, ADR-056, ADR-051, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033, ADR-035, ADR-041, ADR-042, ADR-045, ADR-046, ADR-047, ADR-048, ADR-049)
+## 7. Server API (api v1.24, ADR-059, ADR-058, ADR-057, ADR-056, ADR-051, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033, ADR-035, ADR-041, ADR-042, ADR-045, ADR-046, ADR-047, ADR-048, ADR-049)
 
 REST (`/api/...`):
 - `GET health` → `{status: "ok", version}` (`version` is the NeuroDrive package version)
@@ -539,6 +540,19 @@ REST (`/api/...`):
   outside; one set per run) and `counts[g][k]` the networks with edges[k] ≤ F < edges[k + 1]
   (adding up to N). 6 significant digits. Unknown or malformed id → 404; not a GA run, or a
   generation without its population line → 400.
+- `GET runs/{id}/evolution?start=k` and `GET runs/{id}/generations/{g}/starts`: one start at a time
+  *As built (task 7.7 follow-up, ADR-059, api v1.24):* `?start=k` (0-based) computes `best` …
+  `worst`, `best_so_far` (the highest best on start k up to g), `zero` and `counts` from f on
+  start k instead of F; `start` names it (null: every start). Every answer also has `n_starts`
+  (S, or null when a generation has no per-start results), `start_finish_share[g][k]` and
+  `start_mean[g][k]` (null without them). A start that does not exist, or a run without per-start
+  results, → 400; a negative start → 422. `generations/{g}/starts` → `{run_id, unit, population,
+  n_starts, elite, champion, start_fraction, start_lateral_m, fitness, order, start_fitness,
+  status, progress, finish_time, finish_share, start_mean}` (`experiment/evolution_view.py:
+  generation_starts`): `order` the rows best first by F (the GA's ranking), row i of every (N, S)
+  list network i, `status` names (crashed, finished, stalled, timeout), `finish_time` null where
+  it did not finish, 6 significant digits; unknown run → 404; not a GA run, no such generation or
+  no per-start results → 400.
 - `GET datasets`, `GET datasets/{id}`: demonstration datasets (dataset v1, §6.16)
   *As built (task 6.2, ADR-045, api v1.15):* the server reads the dataset folders in `nd serve
   --datasets-dir` (default `<repo>/data/demos`). `GET datasets` → `{datasets: [{dataset_id, teacher,
@@ -567,7 +581,7 @@ REST (`/api/...`):
 
 WebSocket `/ws/live` (one independent session per connection):
 - `hello` is sent first, on connect: `{type: "hello", version, api}` (`api` is the message-contract
-  version, currently `"v1.23"`).
+  version, currently `"v1.24"`).
 - client → server (each has a `type` field):
   - `load_scenario {track, policy, n_cars, seed}`: `policy` is `"keyboard"`, `"constant"`,
     `"neuron"`, `"random_networks"` (every car is driven by its own random [7,16,16,2] network;
@@ -820,6 +834,18 @@ fitness charts share their axis), the chosen generation's histogram (bars per ba
 each, the networks at exactly 0 named), the diversity line and a table of every generation. The
 panel's generation follows the slider (at least 1); clicking any chart chooses another, and "Race
 generation g" races it (the population driver of 7.6).
+
+*Since the 7.7 follow-up (ADR-059), one start at a time:* the panel's start picker ("all starts
+(mean F)" or "start k") fetches `?start=k` and the fitness lines, heat map and histogram name f on
+that start; the race button races from it. Below, for runs with per-start results: the starts map
+(rows = starts, columns = generations, shaded by the share that finished: none, up to 20, 40, 60,
+80 % and more, with the rank ramp; hover: where the start is, finishers and mean f; a click
+chooses that generation and start) and the chosen generation's outcome grid from `GET
+runs/{id}/generations/{g}/starts` (rows = starts, columns = networks by rank of F, cells coloured
+`--ok` finished, `--bad` crashed, `--warn` stalled, `--chart-mid` out of time, with a legend, the
+drive in words on hover, a table, and each start's finishers at the right; a click races that
+generation from that start and selects that car, the raced start is outlined). Runs without
+per-start results say they need training again.
 
 ### 8.3 Output-neuron inspector (built up over phases)
 1. Readout: the value plus its physical meaning ("−0.93 = hard left").

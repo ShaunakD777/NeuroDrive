@@ -2192,3 +2192,34 @@ body {
   color: var(--text-muted);
   font-size: 0.85rem;
 }
+
+/* One start at a time (task 7.7 follow-up, ADR-059). The starts map shades the share that finished
+   a start with the same rank ramp; the outcome grid uses the reserved status colours, never alone:
+   a legend names them, the hover and the table say the outcome in words. */
+.evolution-map-bg {
+  fill: var(--bg);
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.evolution-swatch-empty {
+  background: var(--bg);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.evolution-outcome {
+  cursor: pointer;
+  stroke: none;
+}
+
+.evolution-outcome:hover {
+  stroke: var(--text);
+  stroke-width: 1.5;
+}
+
+.evolution-raced {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: 4 3;
+}

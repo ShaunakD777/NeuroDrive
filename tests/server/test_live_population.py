@@ -137,6 +137,25 @@ def test_a_raced_generation_drives_exactly_the_drives_the_ga_scored(runs, unit, 
     assert len(end.fitness) == len(expected) == world.n
 
 
+@pytest.mark.parametrize("start", [0, 1])
+def test_the_saved_outcome_grid_is_what_the_race_shows(runs, start):
+    """Task 7.7 follow-up (ADR-059): cell (car i, start k) of the saved per-start arrays is how
+    car i ends when the generation races from start k, so clicking a cell shows that drive."""
+    run = run_id(runs, "race")
+    arrays = RunStore.open(runs / run).load_unit_arrays("generations", 3)
+    session = session_for(runs)
+    race(session, run, 3, start)
+    end = play_to_the_end(session)
+    world = session._world
+    for car in range(N):
+        assert int(world.status[car]) == int(arrays["status"][car, start])
+        progress = np.clip(world.progress[car] / TRAIN.length, 0.0, 1.0)
+        assert progress == arrays["progress"][car, start]
+        if world.status[car] == Status.FINISHED:
+            assert session._end_step[car] * world.dt == arrays["finish_time"][car, start]
+        assert end.fitness[car] == round(float(arrays["start_fitness"][car, start]), 6)
+
+
 def test_the_scenario_describes_the_generation(runs):
     run = run_id(runs, "race")
     session = session_for(runs)

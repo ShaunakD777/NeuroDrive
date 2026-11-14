@@ -158,12 +158,15 @@ export function Timeline({ headerExtra }: { headerExtra?: ReactNode }) {
   // names a generation to race (unit 0 is the first generation before it was scored).
   const generation = unit === null ? null : Math.max(1, unit);
   const isRaced = raced !== null && raced.run === runId && raced.unit === generation;
-  function raceGeneration(g: number | null = generation) {
+  /** Race generation `g` from evaluation start `start` (0-based); with `car`, select that car too. */
+  function raceGeneration(g: number | null = generation, start = 0, car?: number) {
     if (runId === null || g === null) return;
     loadScenario({
       policy: "population",
-      population: { run: runId, unit: g, start: 0, ghost_unit: defaultGhost(g) },
+      population: { run: runId, unit: g, start, ghost_unit: defaultGhost(g) },
     });
+    // after the load (the server answers in order and starts every race at car 0)
+    if (car !== undefined) send({ type: "select_car", index: car });
   }
 
   return (
@@ -283,7 +286,7 @@ export function Timeline({ headerExtra }: { headerExtra?: ReactNode }) {
       {run?.method === "ga" && unit !== null && (
         <p className="hint" data-testid="timeline-race-hint">
           {isRaced
-            ? `All ${raced?.size} networks of generation ${generation} race from start 1 in the Environment view, coloured by their fitness rank, with ${raced?.ghost_unit === null ? "no ghost" : `generation ${raced?.ghost_unit}'s champion as a ghost`}; press Play there and click any car to see its network. Change the generation, start and ghost there.`
+            ? `All ${raced?.size} networks of generation ${generation} race from start ${(raced?.start ?? 0) + 1} in the Environment view, coloured by their fitness rank, with ${raced?.ghost_unit === null ? "no ghost" : `generation ${raced?.ghost_unit}'s champion as a ghost`}; press Play there and click any car to see its network. Change the generation, start and ghost there.`
             : `"Race generation ${generation}" puts the whole generation (not only its champion) on the track in the Environment view.`}
         </p>
       )}
@@ -315,8 +318,8 @@ export function Timeline({ headerExtra }: { headerExtra?: ReactNode }) {
           runId={runId}
           sliderUnit={unit}
           generations={watch.records.length}
-          onRace={(g) => raceGeneration(g)}
-          racing={raced !== null && raced.run === runId ? raced.unit : null}
+          onRace={(g, start, car) => raceGeneration(g, start, car)}
+          racing={raced !== null && raced.run === runId ? { unit: raced.unit, start: raced.start } : null}
         />
       )}
 

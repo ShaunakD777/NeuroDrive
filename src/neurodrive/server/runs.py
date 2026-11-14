@@ -18,7 +18,7 @@ import numpy as np
 
 from neurodrive.core.nn.network import Network
 from neurodrive.experiment.config import ConfigError, GARunConfig, parse_config, to_ga_settings
-from neurodrive.experiment.evolution_view import evolution_view
+from neurodrive.experiment.evolution_view import evolution_view, generation_starts
 from neurodrive.experiment.stats import curve_bands, summarise
 from neurodrive.experiment.store import RunStore
 from neurodrive.experiment.toy_view import toy_checkpoint_view
@@ -32,6 +32,7 @@ from neurodrive.server.schemas import (
     CompareRun,
     EvolutionView,
     ExamCardResponse,
+    GenerationStarts,
     RunDetail,
     RunListResponse,
     RunMetrics,
@@ -182,9 +183,11 @@ class RunLibrary:
             diverged=[bool(r.get("diverged", False)) for r in records],
         )
 
-    def evolution(self, run_id: str) -> EvolutionView:
-        """The evolution charts of GA run ``run_id`` (task 7.7); ``KeyError`` for an unknown run,
-        ``ValueError`` in plain words for a run that is not a GA run or whose files disagree."""
+    def evolution(self, run_id: str, start: int | None = None) -> EvolutionView:
+        """The evolution charts of GA run ``run_id`` (task 7.7), for every start or, with
+        ``start`` = k, for start k alone (ADR-059); ``KeyError`` for an unknown run, ``ValueError``
+        in plain words for a run that is not a GA run, whose files disagree, or that has no
+        per-start results (or no such start) when ``start`` is given."""
         store = self.store(run_id)
         data = store.read_config()
         if data.get("method") != "ga":
@@ -192,8 +195,16 @@ class RunLibrary:
                 f"run {run_id!r} is a {data.get('method')} run; the evolution charts need a GA run"
             )
         elite = int((data.get("population") or {}).get("elite", 0))
+        starts = {
+            u: store.load_unit_arrays("generations", u)
+            for u in store.unit_array_units("generations")
+        }
         view = evolution_view(
-            store.read_metrics(), store.read_extra_lines("population"), elite=elite
+            store.read_metrics(),
+            store.read_extra_lines("population"),
+            elite=elite,
+            starts=starts,
+            start=start,
         )
         s = view.stats
         return EvolutionView(
@@ -216,6 +227,40 @@ class RunLibrary:
             band_width=view.band_width,
             edges=view.edges.tolist(),
             counts=view.counts.tolist(),
+            start=view.start,
+            n_starts=view.n_starts,
+            start_finish_share=(
+                None if view.start_finish_share is None else _sig_array(view.start_finish_share)
+            ),
+            start_mean=None if view.start_mean is None else _sig_array(view.start_mean),
+        )
+
+    def generation_starts(self, run_id: str, unit: int) -> GenerationStarts:
+        """How every network of generation ``unit`` of GA run ``run_id`` drove from every start
+        (ADR-059); ``KeyError`` for an unknown run, ``ValueError`` in plain words otherwise (not
+        a GA run, no such generation, no per-start results)."""
+        self.store(run_id)  # KeyError for an unknown run (404), before any other refusal
+        gen = self.ga_generation(run_id, unit)
+        store = self.store(run_id)
+        grid = generation_starts(gen.line, store.load_unit_arrays("generations", unit))
+        fractions, lateral = gen.settings.evaluation().starts(1.0)  # a lap of length 1: shares
+        return GenerationStarts(
+            run_id=run_id,
+            unit=unit,
+            population=len(grid.order),
+            n_starts=grid.start_fitness.shape[1],
+            elite=[int(v) for v in gen.line["elite"]],
+            champion=int(gen.line["champion"]),
+            start_fraction=[_sig(float(v)) for v in fractions],  # type: ignore[misc]
+            start_lateral_m=[_sig(float(v)) for v in lateral],  # type: ignore[misc]
+            fitness=_sig_array(grid.fitness),
+            order=grid.order,
+            start_fitness=_sig_array(grid.start_fitness),
+            status=grid.status,
+            progress=_sig_array(grid.progress),
+            finish_time=[[_sig(t) for t in row] for row in grid.finish_time],
+            finish_share=_sig_array(grid.finish_share),
+            start_mean=_sig_array(grid.start_mean),
         )
 
     def checkpoints(self, run_id: str) -> CheckpointList:

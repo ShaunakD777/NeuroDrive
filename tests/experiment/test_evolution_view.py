@@ -1,6 +1,7 @@
 """Tests for the evolution charts' numbers (task 7.7, ADR-058): the statistics of a generation,
 the fitness bands (a value on an edge goes into the band above), and agreement with what the GA
-itself stored for a real (small) run."""
+itself stored for a real (small) run; since the follow-up (ADR-059) also one start at a time
+and the outcome grid of one generation."""
 
 from pathlib import Path
 
@@ -8,12 +9,14 @@ import numpy as np
 import pytest
 
 from neurodrive.core.rng import make_rng
+from neurodrive.env.world import Status
 from neurodrive.experiment.config import parse_config
 from neurodrive.experiment.evolution_view import (
     BAND_WIDTH,
     band_counts,
     band_edges,
     evolution_view,
+    generation_starts,
     generation_stats,
 )
 from neurodrive.experiment.runner import train_ga_run
@@ -165,3 +168,121 @@ def test_the_view_does_not_change_the_run(ga_run: RunStore):
     evolution_view(ga_run.read_metrics(), ga_run.read_extra_lines("population"))
     after = {p: p.read_bytes() for p in Path(ga_run.path).rglob("*") if p.is_file()}
     assert before == after
+
+
+# ── one start at a time (task 7.7 follow-up, ADR-059) ───────────────────────────────────────
+
+FIN, CRASH, TIME = int(Status.FINISHED), int(Status.CRASHED), int(Status.TIMEOUT)
+# the follow-up Brief's worked example: networks A, B, C on 2 starts
+PER_START = np.array([[1.3, 0.2], [1.2, 1.25], [0.0, 0.4]])
+OUTCOMES = np.array([[FIN, CRASH], [FIN, FIN], [CRASH, TIME]], dtype=np.int8)
+
+
+def _arrays(f: np.ndarray, status: np.ndarray) -> dict:
+    finish = np.where(status == FIN, 30.0, np.nan)
+    return {
+        "start_fitness": f,
+        "status": status,
+        "progress": np.minimum(f, 1.0),
+        "finish_time": finish,
+    }
+
+
+def test_worked_example_one_start_at_a_time():
+    line = _line(1, PER_START.mean(axis=1).tolist())
+    assert line["fitness"] == pytest.approx([0.75, 1.225, 0.2])
+    starts = {1: _arrays(PER_START, OUTCOMES)}
+    every = evolution_view([_record(1, 1.225)], [line], starts=starts)
+    assert every.start is None and every.n_starts == 2
+    assert every.stats[0].best == pytest.approx(1.225)
+    assert every.start_finish_share.tolist() == [[2 / 3, 1 / 3]]  # start 2 is the hard one
+    assert every.start_mean[0] == pytest.approx([2.5 / 3, 1.85 / 3])
+    one = evolution_view([_record(1, 1.225)], [line], starts=starts, start=0)
+    s = one.stats[0]
+    assert (s.best, s.median, s.worst) == (1.3, 1.2, 0.0)  # A is the best on start 1
+    assert one.zero == [1] and one.best_so_far == [1.3] and one.start == 0
+    two = evolution_view([_record(1, 1.225)], [line], starts=starts, start=1)
+    s = two.stats[0]
+    assert (s.best, s.median, s.worst) == (1.25, 0.4, 0.2)
+    # what does not depend on the start stays the GA's own
+    assert two.diversity == every.diversity and two.champion == every.champion == [1]
+
+
+def test_one_start_is_the_seven_point_seven_view_of_that_column():
+    rng = make_rng(5)
+    f = {u: rng.uniform(0.0, 1.4, (8, 3)) for u in (1, 2, 3)}
+    status = {u: np.where(f[u] > 1.0, FIN, CRASH).astype(np.int8) for u in f}
+    lines = [_line(u, f[u].mean(axis=1).tolist()) for u in f]
+    starts = {u: _arrays(f[u], status[u]) for u in f}
+    metrics = [_record(u, 0.0) for u in f]
+    for k in range(3):
+        view = evolution_view(metrics, lines, starts=starts, start=k)
+        column = evolution_view(metrics, [_line(u, f[u][:, k].tolist()) for u in f])
+        assert view.stats == column.stats
+        assert np.array_equal(view.counts, column.counts)
+        assert np.array_equal(view.edges, column.edges) and view.zero == column.zero
+        best = [max(f[u][:, k].max() for u in range(1, g + 1)) for g in (1, 2, 3)]
+        assert view.best_so_far == best
+        assert view.start_finish_share[:, k].tolist() == [(f[u][:, k] > 1.0).mean() for u in f]
+
+
+def test_one_start_needs_the_per_start_results():
+    lines, metrics = [_line(1, EXAMPLE), _line(2, EXAMPLE)], [_record(1, 1.27), _record(2, 1.27)]
+    old = evolution_view(metrics, lines, starts={})
+    assert old.n_starts is None and old.start_finish_share is None and old.start_mean is None
+    partial = {1: _arrays(np.tile(np.array(EXAMPLE)[:, None], 2), np.full((5, 2), CRASH))}
+    assert evolution_view(metrics, lines, starts=partial).n_starts is None  # all or nothing
+    with pytest.raises(ValueError, match="no per-start results"):
+        evolution_view(metrics, lines, starts=partial, start=0)
+    full = {**partial, 2: partial[1]}
+    assert evolution_view(metrics, lines, starts=full).n_starts == 2
+    with pytest.raises(ValueError, match="start 2 does not exist"):
+        evolution_view(metrics, lines, starts=full, start=2)
+    with pytest.raises(ValueError, match="per-start results have shapes"):
+        evolution_view(
+            metrics, lines, starts={**full, 2: _arrays(np.zeros((4, 2)), np.zeros((4, 2)))}
+        )
+
+
+def test_outcome_grid_of_the_worked_example():
+    line = _line(1, PER_START.mean(axis=1).tolist())
+    grid = generation_starts(line, _arrays(PER_START, OUTCOMES))
+    assert grid.order == [1, 0, 2]  # B, A, C
+    assert grid.status == [
+        ["finished", "crashed"],
+        ["finished", "finished"],
+        ["crashed", "timeout"],
+    ]
+    assert grid.finish_time == [[30.0, None], [30.0, 30.0], [None, None]]
+    assert grid.finish_share.tolist() == [2 / 3, 1 / 3]
+    assert grid.start_fitness.tolist() == PER_START.tolist()
+
+
+def test_outcome_grid_refuses_what_does_not_belong_together():
+    line = _line(1, PER_START.mean(axis=1).tolist())
+    with pytest.raises(ValueError, match="no per-start results"):
+        generation_starts(line, {"genomes": np.zeros((3, 4))})
+    swapped = _arrays(PER_START[:, ::-1], OUTCOMES)
+    assert generation_starts(line, swapped).order == [1, 0, 2]  # same means: allowed
+    with pytest.raises(ValueError, match="does not average"):
+        generation_starts(line, _arrays(PER_START[[1, 0, 2]], OUTCOMES))
+    with pytest.raises(ValueError, match="not \\(3, S\\)"):
+        generation_starts(line, _arrays(PER_START[:2], OUTCOMES[:2]))
+
+
+def test_a_real_run_one_start_at_a_time(ga_run: RunStore):
+    """The GA's own files: the start columns average to F, and the grid agrees with the line."""
+    metrics, lines = ga_run.read_metrics(), ga_run.read_extra_lines("population")
+    starts = {u: ga_run.load_unit_arrays("generations", u) for u in (1, 2, 3)}
+    every = evolution_view(metrics, lines, elite=1, starts=starts)
+    assert every.n_starts == 2 and every.start_finish_share.shape == (3, 2)
+    views = [evolution_view(metrics, lines, elite=1, starts=starts, start=k) for k in (0, 1)]
+    for g, line in enumerate(lines):
+        mean_of_starts = (views[0].stats[g].mean + views[1].stats[g].mean) / 2
+        assert mean_of_starts == pytest.approx(every.stats[g].mean, abs=1e-12)
+        grid = generation_starts(line, starts[line["unit"]])
+        assert grid.order[0] == line["champion"]
+        finished = [row.count("finished") for row in grid.status]
+        assert finished == line["finished"]
+        assert [row.count("crashed") for row in grid.status] == line["crashed"]
+        assert grid.finish_share.tolist() == every.start_finish_share[g].tolist()

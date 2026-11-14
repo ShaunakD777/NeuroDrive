@@ -71,7 +71,10 @@ function hasCompletedGA(): boolean {
     .some((name) => {
       const meta = join(runsDir, name, "meta.json");
       const saved = join(runsDir, name, "extra", "generations", "unit_2.npz");
-      return existsSync(meta) && existsSync(saved) && JSON.parse(readFileSync(meta, "utf8")).status === "completed";
+      // since the 7.7 follow-up (ADR-059) each generation also holds every drive from every start
+      // (an .npz is an uncompressed zip, so its array names are plain text in the file)
+      const perStart = existsSync(saved) && readFileSync(saved).includes("start_fitness.npy");
+      return existsSync(meta) && perStart && JSON.parse(readFileSync(meta, "utf8")).status === "completed";
     });
 }
 

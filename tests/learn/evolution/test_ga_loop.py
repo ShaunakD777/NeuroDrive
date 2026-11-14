@@ -267,9 +267,14 @@ def test_each_unit_hands_back_the_matrix_it_scored(five_generations):
     # task 7.6 (ADR-057): the runner saves it as extra/generations/unit_<g>.npz
     learner, before, results = five_generations
     for genomes, r in zip(before, results, strict=True):
-        (saved,) = r.arrays["generations"].values()
-        assert list(r.arrays["generations"]) == ["genomes"]
+        arrays = r.arrays["generations"]
+        # since the 7.7 follow-up (ADR-059) also every drive from every start, each (N, S)
+        assert list(arrays) == ["genomes", "start_fitness", "status", "progress", "finish_time"]
+        saved = arrays["genomes"]
         assert np.array_equal(saved, genomes)  # generation g, not the bred generation g + 1
+        n, s = SMALL.population, SMALL.starts_per_network
+        assert all(arrays[k].shape == (n, s) for k in ["start_fitness", "status", "progress"])
+        assert arrays["start_fitness"].mean(axis=1).tolist() == r.extra["population"]["fitness"]
     assert not np.array_equal(results[-1].arrays["generations"]["genomes"], learner.genomes)
     # a copy: later breeding or restoring never changes what was handed back
     assert results[-1].arrays["generations"]["genomes"] is not learner.genomes

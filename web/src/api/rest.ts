@@ -8,6 +8,7 @@ import type {
   DatasetListResponse,
   EvolutionView,
   ExamCardResponse,
+  GenerationStarts,
   LaunchRequest,
   LaunchResponse,
   RunDetail,
@@ -59,9 +60,17 @@ export async function fetchRunMetrics(runId: string): Promise<RunMetrics> {
   return getJson<RunMetrics>(`${runPath(runId)}/metrics`);
 }
 
-/** A GA run's evolution charts (`GET /api/runs/{id}/evolution`, task 7.7). */
-export async function fetchEvolution(runId: string): Promise<EvolutionView> {
-  return getJson<EvolutionView>(`${runPath(runId)}/evolution`);
+/**
+ * A GA run's evolution charts (`GET /api/runs/{id}/evolution`, task 7.7); with `start` (0-based)
+ * the statistics of f on that one start (api v1.24, ADR-059).
+ */
+export async function fetchEvolution(runId: string, start: number | null = null): Promise<EvolutionView> {
+  return getJson<EvolutionView>(`${runPath(runId)}/evolution${start === null ? "" : `?start=${start}`}`);
+}
+
+/** How every network of generation `unit` drove from every start (`GET .../generations/{g}/starts`, ADR-059). */
+export async function fetchGenerationStarts(runId: string, unit: number): Promise<GenerationStarts> {
+  return getJson<GenerationStarts>(`${runPath(runId)}/generations/${unit}/starts`);
 }
 
 /** The units that have a checkpoint (`GET /api/runs/{id}/checkpoints`). */
