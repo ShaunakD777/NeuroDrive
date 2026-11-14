@@ -8,6 +8,7 @@ import { applyRunsMessage, defaultMetric, initialRunsWatch, plottableKeys, serie
 import { useSelection } from "../../state/selection";
 import { defaultGhost } from "../environment/population";
 import { formatNumber, shortName } from "./charts";
+import { Evolution } from "./Evolution";
 import { LiveChart } from "./LiveChart";
 
 /** One car's result on one exam track, as the card stores it (only the fields shown here). */
@@ -49,6 +50,7 @@ function sameShift(a: StartShift | null, b: StartShift | null): boolean {
  * puts the cursor on the run's chart, and lists what the exam card says each car did on that
  * track. The page only sends commands and draws: the drive, the card and the change come from
  * the server. The run's history arrives over /ws/runs, so a run still training grows here too.
+ * For a GA run the Evolution panel (task 7.7) follows the slider's generation.
  */
 export function Timeline({ headerExtra }: { headerExtra?: ReactNode }) {
   const [runs, setRuns] = useState<RunSummary[] | null>(null);
@@ -156,11 +158,11 @@ export function Timeline({ headerExtra }: { headerExtra?: ReactNode }) {
   // names a generation to race (unit 0 is the first generation before it was scored).
   const generation = unit === null ? null : Math.max(1, unit);
   const isRaced = raced !== null && raced.run === runId && raced.unit === generation;
-  function raceGeneration() {
-    if (runId === null || generation === null) return;
+  function raceGeneration(g: number | null = generation) {
+    if (runId === null || g === null) return;
     loadScenario({
       policy: "population",
-      population: { run: runId, unit: generation, start: 0, ghost_unit: defaultGhost(generation) },
+      population: { run: runId, unit: g, start: 0, ghost_unit: defaultGhost(g) },
     });
   }
 
@@ -272,7 +274,7 @@ export function Timeline({ headerExtra }: { headerExtra?: ReactNode }) {
             {isReplayed ? "Replaying in the Environment view" : "Replay this checkpoint"}
           </button>
           {run?.method === "ga" && (
-            <button type="button" onClick={raceGeneration} data-testid="timeline-race" disabled={isRaced}>
+            <button type="button" onClick={() => raceGeneration()} data-testid="timeline-race" disabled={isRaced}>
               {isRaced ? `Generation ${generation} races in the Environment view` : `Race generation ${generation}`}
             </button>
           )}
@@ -305,6 +307,16 @@ export function Timeline({ headerExtra }: { headerExtra?: ReactNode }) {
             const i = units.indexOf(u);
             if (i >= 0) moveTo(i);
           }}
+        />
+      )}
+
+      {run?.method === "ga" && runId !== null && (
+        <Evolution
+          runId={runId}
+          sliderUnit={unit}
+          generations={watch.records.length}
+          onRace={(g) => raceGeneration(g)}
+          racing={raced !== null && raced.run === runId ? raced.unit : null}
         />
       )}
 

@@ -2114,3 +2114,81 @@ body {
 .ds-legend-note {
   color: var(--text-muted);
 }
+
+/* The evolution charts of a GA run (task 7.7, ADR-058), in the Timeline tab. The heat map's shades
+   reuse the rank ramp (--rank-1 strongest), the fitness lines the categorical --series-1..4. */
+.evolution {
+  margin-top: 16px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.evolution-title {
+  font-size: 1rem;
+  margin: 0 0 6px;
+}
+
+.evolution-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.evolution-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+  gap: 16px 24px;
+  margin-top: 8px;
+}
+
+.evolution-dot {
+  fill: var(--series, var(--chart-pos));
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.evolution-hit {
+  cursor: pointer;
+}
+
+.evolution-cell {
+  stroke: none;
+}
+
+.evolution-column {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+
+.evolution-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+.evolution-bar {
+  fill: var(--chart-pos);
+}
+
+.evolution-bar-label {
+  fill: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.evolution-table {
+  margin-top: 8px;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.evolution-table summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}

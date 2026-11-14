@@ -473,7 +473,7 @@ data/demos/<dataset_id>/
   and provenance.
 - Shown by the dataset inspector (task 6.2, ADR-045; dense coverage and the comparator, ADR-046): `GET datasets` and `GET datasets/{id}` (§7).
 
-## 7. Server API (api v1.22, ADR-057, ADR-056, ADR-051, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033, ADR-035, ADR-041, ADR-042, ADR-045, ADR-046, ADR-047, ADR-048, ADR-049)
+## 7. Server API (api v1.23, ADR-058, ADR-057, ADR-056, ADR-051, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033, ADR-035, ADR-041, ADR-042, ADR-045, ADR-046, ADR-047, ADR-048, ADR-049)
 
 REST (`/api/...`):
 - `GET health` → `{status: "ok", version}` (`version` is the NeuroDrive package version)
@@ -528,6 +528,17 @@ REST (`/api/...`):
   `method` may also be `dagger` (`length_field` `units`: its rounds, `length` = `dagger.rounds`;
   the launch's `units` override sets the rounds). *Since api v1.21 (task 7.5, ADR-056):* `method`
   may also be `ga` (`length_field` `units`: its generations, `length` = `budget.units`).
+- `GET runs/{id}/evolution`: a GA run's evolution charts
+  *As built (task 7.7, ADR-058, api v1.23):* → `{run_id, population, elite, unit, best_so_far,
+  best, q3, median, mean, q1, worst, zero, diversity, finished_share, finishers, champion,
+  band_width, edges, counts}`, computed by `experiment/evolution_view.py` from `metrics.jsonl` and
+  `extra/population.jsonl`: entry g of every list is generation `unit[g]`; the six statistics
+  summarise its N fitness values (quartiles by linear interpolation); `best_so_far`, `diversity`,
+  `finished_share` and `finishers` are the GA's own metrics; `zero` the networks at exactly 0;
+  `edges` the B + 1 band edges (w = 0.05 from 0 to 2, extended in whole bands if a fitness lies
+  outside; one set per run) and `counts[g][k]` the networks with edges[k] ≤ F < edges[k + 1]
+  (adding up to N). 6 significant digits. Unknown or malformed id → 404; not a GA run, or a
+  generation without its population line → 400.
 - `GET datasets`, `GET datasets/{id}`: demonstration datasets (dataset v1, §6.16)
   *As built (task 6.2, ADR-045, api v1.15):* the server reads the dataset folders in `nd serve
   --datasets-dir` (default `<repo>/data/demos`). `GET datasets` → `{datasets: [{dataset_id, teacher,
@@ -556,7 +567,7 @@ REST (`/api/...`):
 
 WebSocket `/ws/live` (one independent session per connection):
 - `hello` is sent first, on connect: `{type: "hello", version, api}` (`api` is the message-contract
-  version, currently `"v1.22"`).
+  version, currently `"v1.23"`).
 - client → server (each has a `type` field):
   - `load_scenario {track, policy, n_cars, seed}`: `policy` is `"keyboard"`, `"constant"`,
     `"neuron"`, `"random_networks"` (every car is driven by its own random [7,16,16,2] network;
@@ -797,6 +808,18 @@ ghost's generation (0 = none); cars, random start and track are fixed. The HUD s
 car's role (row, rank, elite or child, champion, or the ghost), F with its finished and crashed
 starts, and, after the race, f on this start. Clicking any car selects it and the Network view
 shows its network, as for the random-networks driver.
+
+*Since task 7.7 (ADR-058), evolution charts:* for a GA run the Timeline also shows an Evolution
+panel (`views/experiment/Evolution.tsx`, pure helpers in `evolutionCharts.ts`) from `GET
+runs/{id}/evolution`, fetched again whenever the run's metrics gain a line: the generation's best,
+median, mean and worst fitness (`--series-1` … `--series-4`, labelled at the line ends, with a
+legend; hover: every statistic, best so far and finishers), the fitness distribution as a heat map
+(a column per generation, a cell per filled band of 0.05, shaded by the share of the generation in
+5 steps: up to 5, 10, 20, 40 % and more, drawn with the rank ramp `--rank-5` … `--rank-1`; the two
+fitness charts share their axis), the chosen generation's histogram (bars per band, the count on
+each, the networks at exactly 0 named), the diversity line and a table of every generation. The
+panel's generation follows the slider (at least 1); clicking any chart chooses another, and "Race
+generation g" races it (the population driver of 7.6).
 
 ### 8.3 Output-neuron inspector (built up over phases)
 1. Readout: the value plus its physical meaning ("−0.93 = hard left").

@@ -18,6 +18,7 @@ import numpy as np
 
 from neurodrive.core.nn.network import Network
 from neurodrive.experiment.config import ConfigError, GARunConfig, parse_config, to_ga_settings
+from neurodrive.experiment.evolution_view import evolution_view
 from neurodrive.experiment.stats import curve_bands, summarise
 from neurodrive.experiment.store import RunStore
 from neurodrive.experiment.toy_view import toy_checkpoint_view
@@ -29,6 +30,7 @@ from neurodrive.server.schemas import (
     CompareGroup,
     CompareResponse,
     CompareRun,
+    EvolutionView,
     ExamCardResponse,
     RunDetail,
     RunListResponse,
@@ -178,6 +180,42 @@ class RunLibrary:
             loss_before=[_sig(r.get("loss_before")) for r in records],
             grad_norm=grad_norm,
             diverged=[bool(r.get("diverged", False)) for r in records],
+        )
+
+    def evolution(self, run_id: str) -> EvolutionView:
+        """The evolution charts of GA run ``run_id`` (task 7.7); ``KeyError`` for an unknown run,
+        ``ValueError`` in plain words for a run that is not a GA run or whose files disagree."""
+        store = self.store(run_id)
+        data = store.read_config()
+        if data.get("method") != "ga":
+            raise ValueError(
+                f"run {run_id!r} is a {data.get('method')} run; the evolution charts need a GA run"
+            )
+        elite = int((data.get("population") or {}).get("elite", 0))
+        view = evolution_view(
+            store.read_metrics(), store.read_extra_lines("population"), elite=elite
+        )
+        s = view.stats
+        return EvolutionView(
+            run_id=run_id,
+            population=view.population,
+            elite=view.elite,
+            unit=view.unit,
+            best_so_far=[_sig(v) for v in view.best_so_far],  # type: ignore[misc]
+            best=[_sig(g.best) for g in s],  # type: ignore[misc]
+            q3=[_sig(g.q3) for g in s],  # type: ignore[misc]
+            median=[_sig(g.median) for g in s],  # type: ignore[misc]
+            mean=[_sig(g.mean) for g in s],  # type: ignore[misc]
+            q1=[_sig(g.q1) for g in s],  # type: ignore[misc]
+            worst=[_sig(g.worst) for g in s],  # type: ignore[misc]
+            zero=view.zero,
+            diversity=[_sig(v) for v in view.diversity],
+            finished_share=[_sig(v) for v in view.finished_share],
+            finishers=view.finishers,
+            champion=view.champion,
+            band_width=view.band_width,
+            edges=view.edges.tolist(),
+            counts=view.counts.tolist(),
         )
 
     def checkpoints(self, run_id: str) -> CheckpointList:

@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
-API_VERSION = "v1.22"
+API_VERSION = "v1.23"
 
 
 class WireModel(BaseModel):
@@ -1002,6 +1002,43 @@ class DatasetDetail(WireModel):
     map: DatasetMap
 
 
+class EvolutionView(WireModel):
+    """Answer to ``GET /api/runs/{id}/evolution`` (api v1.23, task 7.7, ADR-058): a GA run's
+    evolution charts, computed by ``experiment/evolution_view.py``. Entry g of every list is
+    generation ``unit[g]``; numbers keep 6 significant digits.
+
+    ``population`` is N and ``elite`` E (from the run's config). ``best``, ``q3``, ``median``,
+    ``mean``, ``q1`` and ``worst`` summarise the generation's N fitness values (quartiles by
+    linear interpolation); ``best_so_far`` is the GA's own best fitness up to that generation;
+    ``zero`` the networks at exactly 0; ``diversity`` D, the mean pairwise genome distance, as
+    the GA stored it; ``finished_share`` the share of the N x S drives that finished and
+    ``finishers`` the networks that finished all S starts (null where a line lacks them);
+    ``champion`` the row of the generation's best network. ``edges`` are the B + 1 band edges
+    (width ``band_width``, shared by every generation); ``counts[g][k]`` the networks of
+    generation ``unit[g]`` with edges[k] <= F < edges[k + 1], adding up to N per generation.
+    """
+
+    run_id: str
+    population: int
+    elite: int
+    unit: list[int]
+    best_so_far: list[float]
+    best: list[float]
+    q3: list[float]
+    median: list[float]
+    mean: list[float]
+    q1: list[float]
+    worst: list[float]
+    zero: list[int]
+    diversity: list[float | None]
+    finished_share: list[float | None]
+    finishers: list[int | None]
+    champion: list[int]
+    band_width: float
+    edges: list[float]
+    counts: list[list[int]]
+
+
 WIRE_MODELS: tuple[type[WireModel], ...] = (
     HealthResponse,
     HelloMessage,
@@ -1068,4 +1105,5 @@ WIRE_MODELS: tuple[type[WireModel], ...] = (
     DatasetHistogram,
     DatasetMap,
     DatasetDetail,
+    EvolutionView,
 )

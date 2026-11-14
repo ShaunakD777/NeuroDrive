@@ -6,6 +6,7 @@ import type {
   ConfigListResponse,
   DatasetDetail,
   DatasetListResponse,
+  EvolutionView,
   ExamCardResponse,
   LaunchRequest,
   LaunchResponse,
@@ -56,6 +57,11 @@ export async function fetchRunDetail(runId: string): Promise<RunDetail> {
 /** A run's metrics as columns (`GET /api/runs/{id}/metrics`). */
 export async function fetchRunMetrics(runId: string): Promise<RunMetrics> {
   return getJson<RunMetrics>(`${runPath(runId)}/metrics`);
+}
+
+/** A GA run's evolution charts (`GET /api/runs/{id}/evolution`, task 7.7). */
+export async function fetchEvolution(runId: string): Promise<EvolutionView> {
+  return getJson<EvolutionView>(`${runPath(runId)}/evolution`);
 }
 
 /** The units that have a checkpoint (`GET /api/runs/{id}/checkpoints`). */
