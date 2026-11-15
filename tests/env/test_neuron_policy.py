@@ -174,6 +174,7 @@ def drive(loop: Track, policy: NeuronPolicy):
     return run_episode(world, policy), world
 
 
+@pytest.mark.slow
 def test_weights_are_behaviour_all_zeros_crash_but_opposite_signs_drive_on(loop):
     zeros, zero_world = drive(loop, NeuronPolicy())
     assert zeros.status[0] == Status.CRASHED and zeros.progress[-1, 0] < 60.0  # straight off

@@ -143,6 +143,7 @@ def test_the_runner_checkpoints_every_kth_unit(tmp_path, every, expected):
 # ── the dataset is pinned (decision D1) ─────────────────────────────────────────────────────
 
 
+@pytest.mark.slow
 def test_pinning_names_the_exact_dataset_and_its_checksum(datasets):
     pinned, dataset = pin_dataset(parse_config(config_data()), datasets)
     assert pinned.data.dataset == "20261104-120000-expert-t"
@@ -157,6 +158,7 @@ def test_pinning_names_the_exact_dataset_and_its_checksum(datasets):
 # ── the task's verification: an exam card after every epoch ────────────────────────────────
 
 
+@pytest.mark.slow
 def test_a_short_run_has_an_exam_card_after_every_epoch(datasets, tmp_path):
     config = parse_config(config_data(training={"epochs": 4}, checkpoint_every=1, exams=True))
     result = train_imitation_run(config, tmp_path, datasets_dir=datasets)

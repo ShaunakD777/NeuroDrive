@@ -68,6 +68,7 @@ def test_a_new_database_has_the_v2_tables_in_wal_mode(tmp_path):
         assert conn.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
 
 
+@pytest.mark.slow
 def test_the_incremental_mirror_holds_what_the_folders_hold(runs, tmp_path):
     names = [p.name for p in db.run_folders(runs)]
     (walk,), (toy,) = [n for n in names if "-walk-" in n], [n for n in names if "-toy" in n]
@@ -112,6 +113,7 @@ def test_the_incremental_mirror_holds_what_the_folders_hold(runs, tmp_path):
     assert json.loads(run_row[-1]) == meta
 
 
+@pytest.mark.slow
 def test_rebuilt_equals_incremental_and_deleting_loses_nothing(runs, tmp_path):
     incremental = dump_file(runs)
     assert incremental == dump_folders(runs)
@@ -129,6 +131,7 @@ def test_rebuilt_equals_incremental_and_deleting_loses_nothing(runs, tmp_path):
         assert db.dump(conn) == incremental
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("kill", list(KILLS))
 def test_a_killed_and_resumed_run_mirrors_exactly(kill, tmp_path):
     store = run_killed(tmp_path, kill)
@@ -159,6 +162,7 @@ def test_check_without_a_database_says_so(tmp_path):
     assert db.check(tmp_path) == ["no database at neurodrive.db; build it with: nd db rebuild"]
 
 
+@pytest.mark.slow
 def test_median_across_seeds_is_the_same_from_sql_and_from_the_folders(tmp_path):
     seeds = [0, 1, 2, 3, 4]
     stores = [walk_run(tmp_path, seed=s, units=1, sweep="sw-walk") for s in seeds]
@@ -255,6 +259,7 @@ def studies(tmp_path) -> Path:
     return tmp_path
 
 
+@pytest.mark.slow
 def test_the_studies_table_is_derived_from_the_runs_study_field(studies):
     metas = [RunStore.open(p).read_meta() for p in db.run_folders(studies)]
     s9 = [m for m in metas if m.get("study") == "S9"]
@@ -280,6 +285,7 @@ def test_the_studies_table_is_derived_from_the_runs_study_field(studies):
     assert dump_file(studies) == dump_folders(studies)  # incremental = rebuilt, studies included
 
 
+@pytest.mark.slow
 def test_a_running_run_leaves_its_study_open_until_it_ends(studies):
     store = RunStore.create(studies, "walk", "late", {"seed": 5}, extra_meta={"study": "S9"})
     mirror = db.Mirror(studies / db.DB_NAME)
@@ -293,6 +299,7 @@ def test_a_running_run_leaves_its_study_open_until_it_ends(studies):
     assert dump_file(studies) == dump_folders(studies)
 
 
+@pytest.mark.slow
 def test_check_reports_study_rows_that_differ_and_rebuild_repairs_them(studies):
     assert db.check(studies) == []
     with closing(database(studies)) as conn:
@@ -312,6 +319,7 @@ def test_check_reports_study_rows_that_differ_and_rebuild_repairs_them(studies):
     assert study_row(studies, "S8") is None and study_row(studies, "S9")["n_runs"] == 3
 
 
+@pytest.mark.slow
 def test_resyncing_a_run_keeps_its_study_row(studies):
     (one,) = [p for p in db.run_folders(studies) if p.name.endswith("walk-s1")]
     before = study_row(studies, "S9")

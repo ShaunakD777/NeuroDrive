@@ -106,6 +106,7 @@ def test_epochs_are_not_for_the_ga():
 # ── a short run ─────────────────────────────────────────────────────────────────────────────
 
 
+@pytest.mark.slow
 def test_a_short_run_writes_one_population_line_per_generation(tmp_path):
     result = train_ga_run(parse_config(config_data(exams=True, budget={"units": 2})), tmp_path)
     store = result.store
@@ -231,6 +232,7 @@ def test_a_failed_run_resumes_exactly_extra_lines_included(tmp_path, monkeypatch
     assert all(np.array_equal(state_a.arrays[k], state_b.arrays[k]) for k in state_b.arrays)
 
 
+@pytest.mark.slow
 def test_the_same_config_twice_gives_the_same_run(tmp_path):
     config = parse_config(config_data())
     a = train_ga_run(config, tmp_path / "a").store

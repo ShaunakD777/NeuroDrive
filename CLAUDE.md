@@ -123,8 +123,11 @@ These are created in Phase 0. If a task changes a command, update this section i
 | Purpose | Command |
 |---|---|
 | Install Python deps | `uv sync` |
-| All Python tests | `uv run pytest` |
-| One area, quiet | `uv run pytest tests/core -q` |
+| All Python tests (parallel, one worker per core, about 3 min; run once per task, `docs/WORKFLOW.md` §1a) | `uv run pytest` |
+| Fast tests only (skips the ~100 `slow` ones, about 40 s; for the work loop) | `uv run pytest -m "not slow"` |
+| One area, quiet (add `-m "not slow"` while iterating) | `uv run pytest tests/core -q` |
+| Re-run only the tests that failed last time | `uv run pytest --lf` |
+| One process, no workers (debugging, breakpoints) | `uv run pytest -n0 tests/core/test_rng.py` |
 | Lint and format | `uv run ruff check . && uv run ruff format .` |
 | Start backend (port 8000) | `uv run python -m neurodrive serve` (or `uv run nd serve`; add `--runs-dir <folder>` to show other runs, `--datasets-dir <folder>` for other demonstration datasets) |
 | Start web app (port 5173) | `cd web && npm install && npm run dev` |

@@ -120,6 +120,7 @@ def test_a_broken_neuron_file_is_refused(tmp_path):
 # ── the baseline runs ───────────────────────────────────────────────────────────────────────
 
 
+@pytest.mark.slow
 def test_every_baseline_is_a_complete_run_folder_with_an_exam_card(runs):
     runs_dir, made = runs
     assert sorted(r.store.read_meta()["method"] for r in made.values()) == [
@@ -159,18 +160,21 @@ def test_every_baseline_is_a_complete_run_folder_with_an_exam_card(runs):
     assert db.check(runs_dir) == []
 
 
+@pytest.mark.slow
 def test_each_card_is_the_exam_of_the_policy_its_config_describes(runs):
     for run in runs[1].values():
         rebuilt = baseline_policy(run.store.read_config())
         assert training_track_part(rebuilt) == run.card.tracks[0].to_dict()
 
 
+@pytest.mark.slow
 def test_the_random_network_is_the_one_a_learner_with_that_seed_starts_from(runs):
     for run in by_method(runs, "random_network"):
         seed = run.store.read_config()["seed"]
         assert run.store.load_checkpoint(0).equals(init_network(NetworkSpec(), make_rng(seed)))
 
 
+@pytest.mark.slow
 def test_the_neuron_card_is_the_committed_yaml_neuron(runs):
     """The checkpoint is examined; the YAML neuron gives the same drives: every outcome equal,
     every number equal to 1e-9 (the network's sums differ from the neuron's in the last bit)."""
@@ -185,6 +189,7 @@ def test_the_neuron_card_is_the_committed_yaml_neuron(runs):
             assert ours[key] == pytest.approx(theirs[key], rel=1e-9, abs=1e-9)
 
 
+@pytest.mark.slow
 def test_floor_hand_tuned_and_ceiling(runs):
     (neuron,) = by_method(runs, "hand_neuron")
     (expert,) = by_method(runs, "scripted_expert")
@@ -209,6 +214,7 @@ def test_floor_hand_tuned_and_ceiling(runs):
         assert run.card.heldout["progress_frac_median"] < neuron_progress
 
 
+@pytest.mark.slow
 def test_the_random_sweep_median_from_sql_equals_the_cards(runs):
     runs_dir, _ = runs
     randoms = by_method(runs, "random_network")

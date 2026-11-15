@@ -14,8 +14,12 @@ Carry out NeuroDrive task **$ARGUMENTS** using the loop in `docs/WORKFLOW.md` §
    is ⚑ or a new architectural decision is needed, stop after the Brief and ask.
 3. **Implement** only the files named in the Brief. Mark the task ◐ in the checklist. Follow every
    rule in `CLAUDE.md` §3–4 (scope, determinism, seeded randomness, no ML frameworks, layering).
-4. **Verify** by running the task's tests or experiment. Show the commands and summarise the real
-   output. If it still fails after two fix attempts, stop and report the diagnosis.
+4. **Verify** by running the task's tests or experiment, in the tiers of `docs/WORKFLOW.md` §1a:
+   while fixing, only the touched areas and `--lf`; the full Python suite **once** before the
+   Report; for web changes `npm run test` and only the affected Playwright specs (the full
+   Playwright suite only when shared web code changed). Never run a suite beside a real training
+   run. Show the commands and summarise the real output. If it still fails after two fix
+   attempts, stop and report the diagnosis.
 5. **Report** (template `docs/WORKFLOW.md` §3) in plain language, with no code blocks: walk through
    how the code maps to the maths and re-run the worked example. Save it to
    `task-notes/phase-<N>/task-$ARGUMENTS-report.md` and update `task-notes/README.md`

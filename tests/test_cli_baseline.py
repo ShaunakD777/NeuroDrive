@@ -1,6 +1,7 @@
 """Tests for `nd baseline` (cli.py), task 5.6. Only random networks are examined here (their
 episodes end fast); the neuron and the expert are covered in tests/experiment/test_baselines.py."""
 
+import pytest
 from typer.testing import CliRunner
 
 from neurodrive.cli import app
@@ -10,6 +11,7 @@ from neurodrive.experiment.store import RunStore
 runner = CliRunner()
 
 
+@pytest.mark.slow
 def test_random_network_baselines_for_two_seeds(tmp_path):
     result = runner.invoke(
         app, ["baseline", "--name", "random_network", "--seeds", "0-1", "--runs-dir", str(tmp_path)]

@@ -51,6 +51,7 @@ def test_checkpoint_zero_is_the_untrained_network(tmp_path):
     assert fresh.loss() == store.read_metrics()[0]["loss_before"]  # unit 0's loss
 
 
+@pytest.mark.slow
 def test_full_xor_run_reaches_loss_below_0_01(tmp_path):
     store, status, _ = toy_run(tmp_path)
     assert status == "completed" and store.read_metrics()[-1]["loss"] < 0.01

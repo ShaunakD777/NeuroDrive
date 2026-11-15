@@ -117,6 +117,7 @@ def short(study, monkeypatch):
     return study
 
 
+@pytest.mark.slow
 def test_the_analysis_and_the_hypothesis_rules_on_the_hand_made_runs(short, tmp_path):
     make_study(tmp_path, short)
     made = short.analyse(tmp_path)
@@ -141,6 +142,7 @@ def test_the_analysis_and_the_hypothesis_rules_on_the_hand_made_runs(short, tmp_
     assert made["baselines"]["hand_neuron"]["heldout_progress"] == 0.234
 
 
+@pytest.mark.slow
 def test_the_hypothesis_rules_can_fail(short, tmp_path):
     make_study(tmp_path, short)
     made = short.analyse(tmp_path)
@@ -169,6 +171,7 @@ def datasets(tmp_path_factory) -> Path:
     return folder
 
 
+@pytest.mark.slow
 def test_a_study_run_is_a_plain_imitation_run(study, datasets, tmp_path, monkeypatch):
     monkeypatch.setattr(study, "EPOCHS", 3)
     monkeypatch.setattr(study, "DATASET", "20261104-120000-expert-t")

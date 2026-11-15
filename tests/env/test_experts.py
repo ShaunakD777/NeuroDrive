@@ -113,6 +113,7 @@ def exam_drive(track: Track) -> tuple[World, np.ndarray, float]:
     return world, finish, widest
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("name", ALL_TRACKS)
 def test_the_expert_laps_every_track_from_every_exam_start(name):
     track = load(name)
@@ -125,6 +126,7 @@ def test_the_expert_laps_every_track_from_every_exam_start(name):
 # ── as a policy ─────────────────────────────────────────────────────────────────────────────
 
 
+@pytest.mark.slow
 def test_as_a_policy_it_is_deterministic_and_ignores_the_observations():
     track = load("train_loop_01")
     recordings = []

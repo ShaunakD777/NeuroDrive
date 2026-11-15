@@ -1055,6 +1055,7 @@ def test_moments_work_for_drivers_without_a_network():
 # ── the scripted expert (api v1.12, ADR-035) ────────────────────────────────────────────────
 
 
+@pytest.mark.slow
 def test_expert_scenario_drives_every_car_like_the_expert_itself():
     session = LiveSession(TrackLibrary(TRACKS))
     scenario, frame = send(

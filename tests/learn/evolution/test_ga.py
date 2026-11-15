@@ -55,6 +55,7 @@ def test_ranking_is_a_stable_descending_sort_and_ranks_invert_it():
 # ── the roadmap's check: the ranking matches the episode summaries ─────────────────────────
 
 
+@pytest.mark.slow
 def test_fitness_and_ranking_match_the_exams_episode_summaries(neuron_family):
     genomes, settings, gen = neuron_family
     summary_fitness = []

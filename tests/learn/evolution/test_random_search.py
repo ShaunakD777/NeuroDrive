@@ -75,6 +75,7 @@ def test_rays_of_running_cars_only_equal_the_full_rays():
     assert checked > 0  # some cars had stopped while others ran
 
 
+@pytest.mark.slow
 def test_evaluation_agrees_with_the_exams_scoring_of_the_hand_neuron():
     """The neuron's network on the exam's 10 training-track starts: the learner's fitness equals
     the formula applied to the exam's own episode metrics (written independently in 5.2)."""

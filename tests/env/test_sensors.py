@@ -236,6 +236,7 @@ def test_same_poses_give_identical_readings():
 MONZA = Track.from_json(TRACK_FILE.parent / "monza_cw.json")
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("track", [TRACK, MONZA], ids=["train_loop_01", "monza_cw"])
 def test_wall_grid_readings_are_bit_identical_to_the_full_search(track):
     segments = edge_segments(track)
@@ -296,6 +297,7 @@ def assert_grid_equals_full_search(grid, segments, x, y, psi, angles=RAY_ANGLES,
         assert got.tobytes() == want.tobytes()
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("path", ALL_TRACKS, ids=[p.stem for p in ALL_TRACKS])
 def test_every_track_grid_is_bit_identical_to_the_full_search(path):
     track = Track.from_json(path)
@@ -310,6 +312,7 @@ def test_every_track_grid_is_bit_identical_to_the_full_search(path):
     assert_grid_equals_full_search(grid, segments, x, y, psi)
 
 
+@pytest.mark.slow
 def test_rays_exactly_on_bin_edges_and_just_beside_them():
     segments, grid = edge_segments(TRACK), edge_grid(TRACK)
     width = 2 * math.pi / grid.bins
@@ -399,6 +402,7 @@ def test_edge_grid_is_built_once_per_track_and_cannot_be_changed():
             array[0] = 0
 
 
+@pytest.mark.slow
 def test_walls_just_inside_the_range_seen_from_cell_corners():
     # The hardest place for the lists: a wall almost R away, hit by a ray from the corner of its
     # cell that points the ray's way, at any angle inside a bin. Two anchor walls fix the grid's

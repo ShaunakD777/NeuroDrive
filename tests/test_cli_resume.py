@@ -64,6 +64,7 @@ def same_run(a: RunStore, b: RunStore) -> None:
     assert state_a.info == state_b.info  # best fitness, counters and the generator
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("kill", KILLS)
 def test_a_killed_random_search_run_finished_by_nd_resume_equals_the_uninterrupted_one(
     kill, small_config, reference, tmp_path
@@ -109,6 +110,7 @@ def test_resume_refuses_toy_finished_and_missing_runs(reference, tmp_path):
         assert result.exit_code == 2 and message in result.output, result.output
 
 
+@pytest.mark.slow
 def test_nd_train_and_nd_sweep_run_random_search(small_config, tmp_path):
     trained = runner.invoke(
         app,
