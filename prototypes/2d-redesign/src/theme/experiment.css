@@ -1,0 +1,750 @@
+/* Experiment view: the dashboard grid, the chart kit's marks and the tool-specific pieces. */
+
+.exp-body {
+  background: var(--bg);
+}
+
+.dash {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  align-items: start;
+}
+
+.span-12 {
+  grid-column: span 12;
+}
+
+.span-9 {
+  grid-column: span 9;
+}
+
+.span-8 {
+  grid-column: span 8;
+}
+
+.span-7 {
+  grid-column: span 7;
+}
+
+.span-5 {
+  grid-column: span 5;
+}
+
+.span-4 {
+  grid-column: span 4;
+}
+
+.span-3 {
+  grid-column: span 3;
+}
+
+.dash > .panel {
+  height: 100%;
+}
+
+.dash-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-2);
+}
+
+.dash-run {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px var(--sp-3);
+  font-size: 12px;
+}
+
+.dash-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--sp-4);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--border);
+}
+
+/* The generation bar stays in reach while the dashboard scrolls. */
+.dash-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-4);
+  padding: 8px var(--sp-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-2);
+  box-shadow: var(--shadow-2);
+}
+
+.dash-gen {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex: 1;
+  min-width: 320px;
+  font-size: 12px;
+}
+
+.dash-gen b {
+  font-weight: 500;
+  color: var(--text);
+}
+
+.dash-gen input {
+  flex: 1;
+  max-width: 320px;
+}
+
+.dash-gen-value {
+  min-width: 34px;
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--accent);
+}
+
+.dash-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+/* ── Figures ─────────────────────────────────────────────────────────────────────── */
+
+.figure {
+  margin: 0;
+}
+
+.figure + .figure {
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--border);
+}
+
+.figure-head {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 4px var(--sp-2);
+  margin-bottom: 6px;
+}
+
+.figure-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.figure-title {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.figure-note {
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+
+.figure-foot {
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+
+.objective {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-1);
+  font-family: var(--font-label);
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-2);
+  white-space: nowrap;
+  cursor: help;
+  flex-shrink: 0;
+}
+
+.objective b {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.objective i {
+  font-style: normal;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* The exam is the yardstick: its badge is the one filled badge. */
+.objective[data-kind="exam"] {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--surface);
+}
+
+.objective[data-kind="exam"] b,
+.objective[data-kind="exam"] i {
+  color: var(--surface);
+}
+
+.plot {
+  position: relative;
+  width: 100%;
+}
+
+.plot svg {
+  display: block;
+}
+
+.plot .grid {
+  stroke: var(--grid);
+  stroke-width: 1;
+}
+
+.plot .baseline {
+  stroke: var(--axis);
+  stroke-width: 1;
+}
+
+.plot .tick {
+  font-family: var(--font-num);
+  font-size: 10.5px;
+  fill: var(--text-3);
+}
+
+.plot .tick-strong {
+  fill: var(--text);
+  font-weight: 500;
+}
+
+.plot .axis-label {
+  font-family: var(--font-label);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  fill: var(--text-3);
+}
+
+.plot .line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.plot .line-ref {
+  stroke: var(--text-3);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
+}
+
+.plot .line-run {
+  stroke-width: 1;
+  opacity: 0.35;
+}
+
+.plot .band {
+  opacity: 0.14;
+}
+
+.plot .end-label,
+.plot .row-label {
+  font-size: 11.5px;
+  fill: var(--text);
+}
+
+.plot .row-label {
+  font-size: 12.5px;
+}
+
+.plot .bar {
+  fill: var(--series-1);
+}
+
+.plot .bar-label {
+  font-family: var(--font-num);
+  font-size: 10.5px;
+  fill: var(--text);
+}
+
+.plot .marker {
+  fill: var(--text);
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.plot .marker[data-live="true"] {
+  animation: live 1.2s ease-in-out infinite;
+}
+
+.plot .checkpoint {
+  fill: var(--surface);
+  stroke: var(--series-1);
+  stroke-width: 2;
+}
+
+.plot .cursor-column {
+  fill: var(--accent);
+  opacity: 0.13;
+  pointer-events: none;
+}
+
+.plot .cursor-outline {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  pointer-events: none;
+}
+
+.plot .cursor-outline-soft {
+  stroke: var(--text);
+  stroke-width: 1;
+  stroke-dasharray: 3 2;
+}
+
+.plot .crosshair {
+  stroke: var(--text-3);
+  stroke-width: 1;
+  pointer-events: none;
+}
+
+.plot .hit {
+  fill: transparent;
+  cursor: crosshair;
+}
+
+.plot .cell {
+  cursor: pointer;
+}
+
+.plot .cell:hover {
+  stroke: var(--text);
+  stroke-width: 1.5;
+}
+
+.plot .pending {
+  fill: var(--surface-2);
+}
+
+.plot .row-hit {
+  fill: transparent;
+}
+
+.plot g:hover > .row-hit {
+  fill: var(--surface-2);
+}
+
+.plot .iqr {
+  stroke: var(--text-3);
+  stroke-width: 7;
+  stroke-linecap: round;
+  opacity: 0.4;
+}
+
+.plot .seed-dot {
+  fill: var(--series-1);
+  stroke: var(--surface);
+  stroke-width: 1.5;
+}
+
+.plot .median-tick {
+  stroke: var(--text);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+
+.plot .anc-mark {
+  fill: var(--accent);
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.plot .anc-hollow {
+  fill: var(--surface);
+  stroke: var(--accent);
+}
+
+.plot .anc-step {
+  cursor: pointer;
+}
+
+.legend .anc-mark {
+  fill: var(--accent);
+}
+
+.legend .anc-hollow {
+  fill: var(--surface);
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.legend-refline {
+  width: 18px;
+  border-top: 2px dashed var(--text-3);
+}
+
+.tip-key {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+
+/* ── Exam card ───────────────────────────────────────────────────────────────────── */
+
+.exam {
+  container-type: inline-size;
+}
+
+@container (max-width: 470px) {
+  .exam-wide {
+    display: none;
+  }
+}
+
+.exam-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2.4fr);
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+
+.exam-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: var(--r-2);
+  background: var(--surface-2);
+}
+
+.exam-block[data-heldout="true"] {
+  background: var(--accent-soft);
+}
+
+.exam-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-2);
+}
+
+.exam .stat-value {
+  font-size: 18px;
+}
+
+.exam .table td,
+.exam .table th {
+  padding: 5px 4px;
+}
+
+.exam .table td:first-child,
+.exam .table th:first-child {
+  padding-left: 0;
+}
+
+.exam-track {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.exam-track .chip {
+  height: 17px;
+  padding: 0 6px;
+  font-size: 9.5px;
+}
+
+.exam-meter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.exam-meter-track {
+  width: 34px;
+  height: 6px;
+  border-radius: 2px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.exam-meter-track span {
+  display: block;
+  height: 100%;
+  background: var(--ok-fill);
+}
+
+/* ── Compare ─────────────────────────────────────────────────────────────────────── */
+
+.grouplist {
+  list-style: none;
+  margin: var(--sp-3) 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-2);
+}
+
+.grouplist li + li {
+  border-top: 1px solid var(--border);
+}
+
+.grouplist-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.grouplist-row:hover {
+  background: var(--surface-2);
+}
+
+.grouplist-row input,
+.check input {
+  accent-color: var(--accent);
+  margin: 0;
+}
+
+.grouplist-key {
+  width: 14px;
+  height: 4px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.grouplist-name {
+  margin-right: auto;
+}
+
+.grouplist-meta {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.grouplist-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.compare-table {
+  margin-top: var(--sp-3);
+}
+
+/* ── Training ────────────────────────────────────────────────────────────────────── */
+
+.launch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-2) var(--sp-3);
+  margin: var(--sp-2) 0 var(--sp-4);
+}
+
+.launch .field {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+}
+
+.launch .select,
+.launch .select select,
+.launch .input {
+  width: 100%;
+  max-width: none;
+}
+
+.launch .btn {
+  grid-column: span 2;
+  height: 34px;
+}
+
+.launch-listhead {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.runlist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.runlist-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-2);
+}
+
+.runlist-row[data-selected="true"] {
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.runlist-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  min-height: 22px;
+}
+
+.runlist-main .btn {
+  height: 24px;
+}
+
+.runlist-name {
+  font-weight: 500;
+  font-size: 12.5px;
+}
+
+.runlist-meta {
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+
+.progress {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.progress span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width 400ms var(--ease);
+}
+
+.progress span[data-live="true"] {
+  background-image: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.35) 50%, transparent 100%);
+  background-size: 60px 100%;
+  background-repeat: no-repeat;
+  animation: sweep 1.4s linear infinite;
+}
+
+@keyframes sweep {
+  from {
+    background-position: -60px 0;
+  }
+
+  to {
+    background-position: 400px 0;
+  }
+}
+
+.live-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--sp-3);
+  margin: 4px 0 var(--sp-3);
+}
+
+/* ── Specified, not prototyped ──────────────────────────────────────────────────── */
+
+.spec-only {
+  align-items: flex-start;
+  text-align: left;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--sp-6) var(--sp-5);
+}
+
+.spec-only .empty-title {
+  font-size: 18px;
+}
+
+.spec-only ul {
+  margin: 4px 0;
+  padding-left: 18px;
+  color: var(--text-2);
+}
+
+.spec-only li {
+  margin: 4px 0;
+}
+
+.spec-body {
+  color: var(--text);
+}
+
+/* ── Narrow: every panel takes the full width ───────────────────────────────────── */
+
+@media (max-width: 1180px) {
+  .span-9,
+  .span-8,
+  .span-7,
+  .span-5,
+  .span-4,
+  .span-3 {
+    grid-column: span 12;
+  }
+}
+
+@media (max-width: 860px) {
+  .dash-stats,
+  .live-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .exam-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dash-bar {
+    position: static;
+  }
+
+  .dash-gen {
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .dash-gen .muted {
+    flex-basis: 100%;
+  }
+
+  /* Five tools do not fit a phone's width: the switch scrolls sideways. */
+  .exp-view .view-head .segmented {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+}

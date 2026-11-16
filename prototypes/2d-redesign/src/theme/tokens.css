@@ -1,0 +1,205 @@
+/* NeuroDrive design tokens. Every colour, size and timing the prototype uses is defined here and
+   nowhere else; components refer to roles ("--pos"), never to raw hex. DESIGN_SPEC.md lists the
+   same values with their reasons. Light is the default; dark is set by <html data-theme="dark">
+   (the theme switch) or by the operating system when the switch is on "Auto". */
+
+:root {
+  /* ── Type ─────────────────────────────────────────────────────────────────────── */
+  --font-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-label: "IBM Plex Sans Condensed", "IBM Plex Sans", system-ui, sans-serif;
+  --font-num: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --fs-micro: 10.5px; /* condensed capital labels */
+  --fs-small: 12px; /* dense UI, table cells, legends */
+  --fs-body: 13px; /* default */
+  --fs-title: 15px; /* panel titles */
+  --fs-figure: 20px; /* stat figures */
+  --fs-hero: 30px; /* the one big number of a panel */
+
+  /* ── Space (4 px grid), radius, motion ───────────────────────────────────────── */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --r-1: 4px; /* chips, inputs, cells */
+  --r-2: 8px; /* panels, buttons */
+  --r-3: 12px; /* the stage */
+  --dur-1: 120ms; /* hover, press */
+  --dur-2: 200ms; /* selection, dimming */
+  --dur-3: 450ms; /* camera moves, panels opening */
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  /* ── App chrome: the same dark "instrument bezel" in both themes ─────────────── */
+  --chrome-bg: #12151b;
+  --chrome-raised: #1c2029;
+  --chrome-border: #2a303b;
+  --chrome-text: #e9ecf1;
+  --chrome-muted: #8e97a6;
+
+  /* ── Heads-up layers over the track: the same in both themes (the track is dark in both) ─ */
+  --hud-bg: rgba(15, 18, 24, 0.9);
+  --hud-border: rgba(255, 255, 255, 0.12);
+  --hud-text: #f1f3f6;
+  --hud-muted: #a3acba;
+  --hud-track: rgba(255, 255, 255, 0.14);
+
+  /* ── Rank bands as painted on cars (dark asphalt in both themes): best fifth lightest ─ */
+  --car-rank-1: #cde2fb;
+  --car-rank-2: #9ec5f4;
+  --car-rank-3: #6da7ec;
+  --car-rank-4: #3987e5;
+  --car-rank-5: #256abf;
+  --car-elite: #f2c230; /* the elite ring: gold, used for nothing else */
+
+  /* ── Proximity colours for sensor rays (on asphalt, both themes) ──────────────── */
+  --ray-clear: #4ad17f;
+  --ray-near: #f5b83d;
+  --ray-danger: #ff6b5e;
+  --ray-none: rgba(255, 255, 255, 0.34);
+  /* The sign pair as drawn on asphalt (rays by sensitivity, decision trail). */
+  --track-pos: #6aa2ff;
+  --track-neg: #ff9a4a;
+  --track-select: #b9a6ff; /* selection ring on the track */
+}
+
+:root,
+:root[data-theme="light"] {
+  color-scheme: light;
+  /* Surfaces and ink */
+  --bg: #eceef2;
+  --surface: #ffffff;
+  --surface-2: #f4f5f8;
+  --surface-3: #e8ebf0;
+  --border: #d9dde4;
+  --border-strong: #bcc3ce;
+  --text: #14171c;
+  --text-2: #4a5261;
+  --text-3: #6f7888;
+  /* Selection and focus: "sector purple" */
+  --accent: #6b46e5;
+  --accent-hover: #5a37cf;
+  --accent-soft: rgba(107, 70, 229, 0.11);
+  --on-accent: #ffffff;
+  /* Sign: positive / negative / nothing */
+  --pos: #2f6fe4;
+  --neg: #c8590f;
+  --mid: #d9dde4;
+  --pos-soft: rgba(47, 111, 228, 0.14);
+  --neg-soft: rgba(200, 89, 15, 0.14);
+  /* Outcome status: text-grade, and a brighter fill for cells and dots */
+  --ok: #178a3e;
+  --warn: #a86a00;
+  --bad: #c0392b;
+  --idle: #6f7888;
+  /* Cell fills are separated by lightness as well as hue (finished light, crashed dark), so they
+     stay apart for red-green colour-blind readers: validated all-pairs on #ffffff. */
+  --ok-fill: #3ccf91;
+  --warn-fill: #e9a400;
+  --bad-fill: #a82a22;
+  --idle-fill: #8a93a3;
+  /* Categorical series, fixed order (validated on #ffffff) */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #008300;
+  --series-7: #6250d6;
+  --series-8: #e34948;
+  /* One-hue magnitude ramp for charts: 1 = most (darkest on a light surface) */
+  --rank-1: #0d366b;
+  --rank-2: #184f95;
+  --rank-3: #256abf;
+  --rank-4: #3987e5;
+  --rank-5: #6da7ec;
+  --rank-0: #e3ecf9; /* "none" cell */
+  /* Chart furniture */
+  --grid: #e6e9ee;
+  --axis: #bcc3ce;
+  /* Elevation */
+  --shadow-1: 0 1px 2px rgba(16, 20, 28, 0.05);
+  --shadow-2: 0 8px 24px rgba(16, 20, 28, 0.16), 0 1px 3px rgba(16, 20, 28, 0.1);
+
+  /* The world (the track scene), daylight */
+  --w-grass: #5c8650;
+  --w-grass-2: #557c4a;
+  --w-verge: #729c62;
+  --w-sand: #c9ba8c;
+  --w-asphalt: #383c43;
+  --w-asphalt-2: #30343a;
+  --w-line: #f3f4f1;
+  --w-kerb-a: #d8443b;
+  --w-kerb-b: #f3f4f1;
+  --w-shadow: rgba(8, 12, 10, 0.34);
+  --w-marking: rgba(255, 255, 255, 0.3);
+  --w-board: #f3f4f1;
+  --w-board-ink: #1b1f27;
+  --w-vignette: rgba(10, 24, 12, 0.22);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0b0d11;
+  --surface: #14171d;
+  --surface-2: #1a1e26;
+  --surface-3: #232834;
+  --border: #2a303b;
+  --border-strong: #3d4554;
+  --text: #e9ecf1;
+  --text-2: #a9b1bf;
+  --text-3: #7d8797;
+  --accent: #a790ff;
+  --accent-hover: #b9a6ff;
+  --accent-soft: rgba(167, 144, 255, 0.16);
+  --on-accent: #14101f;
+  --pos: #4f86ee;
+  --neg: #d9742a;
+  --mid: #3a4150;
+  --pos-soft: rgba(79, 134, 238, 0.2);
+  --neg-soft: rgba(217, 116, 42, 0.2);
+  --ok: #3ecf74;
+  --warn: #f5b83d;
+  --bad: #ff6b5e;
+  --idle: #8a93a3;
+  --ok-fill: #2cac7d;
+  --warn-fill: #c08a12;
+  --bad-fill: #bb3b31;
+  --idle-fill: #69738a;
+  /* The same eight hues stepped for the dark surface (validated on #14171d) */
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --series-6: #008300;
+  --series-7: #9085e9;
+  --series-8: #e66767;
+  /* On a dark surface the most is the lightest */
+  --rank-1: #cde2fb;
+  --rank-2: #9ec5f4;
+  --rank-3: #6da7ec;
+  --rank-4: #3987e5;
+  --rank-5: #256abf;
+  --rank-0: #1c2433;
+  --grid: #232834;
+  --axis: #3d4554;
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 10px 28px rgba(0, 0, 0, 0.55), 0 1px 3px rgba(0, 0, 0, 0.5);
+
+  /* The world at night: the same place, dimmer */
+  --w-grass: #1b2a1f;
+  --w-grass-2: #18261c;
+  --w-verge: #243828;
+  --w-sand: #4a4535;
+  --w-asphalt: #25282e;
+  --w-asphalt-2: #1e2126;
+  --w-line: #c9ccc8;
+  --w-kerb-a: #a8352f;
+  --w-kerb-b: #c9ccc8;
+  --w-shadow: rgba(0, 0, 0, 0.5);
+  --w-marking: rgba(255, 255, 255, 0.2);
+  --w-board: #c9ccc8;
+  --w-board-ink: #14171c;
+  --w-vignette: rgba(0, 0, 0, 0.4);
+}
