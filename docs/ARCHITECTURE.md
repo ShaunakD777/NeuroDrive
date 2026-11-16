@@ -275,7 +275,13 @@ ADR and a new version.
   of the target laps in [0, 1], c = 1 for a finish and t its time, T the per-track time limit;
   a network's fitness F is the mean of f over the evaluation starts (the exam's 10 starts on a
   training track), 0 ≤ F < 2. `learn/evolution/ga.py: evaluate_genomes` scores and ranks a
-  genome matrix with random search's `evaluate` (best first, ties in index order).
+  genome matrix with random search's `evaluate` (best first, ties in index order). Since task 7.9
+  (ADR-062) the formula is configurable, `fitness.formula` (§6.15): `time_bonus` (fitness v2, the
+  default), `finish_bonus` f = p + c (no time bonus), or `progress` f = p (no reward for finishing);
+  the GA, random search and the live race all score with the run's own formula. Fitness compares
+  only within one formula. The racing line through a track's bends is measured by
+  `experiment/racing_line.py` (bends where the centreline radius is under 50 m; at every pass the
+  inside offset at the apex e_in = sign(κ)·e and the outside offsets 20 m before and after it).
 
 ### 6.8 Network spec and file (network v1)
 - `NetworkSpec`: `layer_sizes` (default [7, 16, 16, 2]), `hidden_activation` (default tanh),
@@ -405,7 +411,7 @@ that is not a network (the policy is then rebuilt from the run's config). Each t
 batch in start order: a network's output differs by about 1e-16 between batch sizes, so a
 recording matches a card only when made the same way.
 
-### 6.15 Config file (toy, random_search, imitation, dagger and ga: config v1, ADR-032, ADR-040, ADR-047, ADR-049, ADR-056)
+### 6.15 Config file (toy, random_search, imitation, dagger and ga: config v1, ADR-032, ADR-040, ADR-047, ADR-049, ADR-056, ADR-062)
 A YAML file; `method` picks the model in `experiment/config.py` (`toy`, and since task 5.7
 `random_search`; later methods add their own model). Unknown fields, wrong types, unknown names and out-of-range numbers are
 refused, every problem listed as `field.path: message`. A toy config:
@@ -438,7 +444,7 @@ Only the named optimizer's own settings are allowed; their defaults are those of
 `nd train --config FILE [--seed S] [--tag T] [--epochs E] [--runs-dir D]` overrides `seed`, `tag`
 and `training.epochs`; an invalid config exits with status 2 and creates no run folder.
 
-*Random search (task 5.7, ADR-040, `configs/random_search.yaml`):* `method: random_search`, `seed`, `tag`; `network` (a driving network: 7 inputs first, 2 outputs last; default [7, 16, 16, 2], tanh / tanh, xavier); `search.candidates_per_unit` (≥ 1, default 20); `fitness` (`track`, which must have split `train`, default `train_loop_01`; `start_fractions` in [0, 1) and `lateral_offsets`, default the Driving Exam's 5 × 2 starts; `target_laps`, default 2); `budget` (`units`, `env_steps`, `wall_clock_s`: at least one); `exams` (default true). `nd train` and `nd sweep` pick the method from the file; `--units` overrides `budget.units` (`--epochs` is for toy configs only, and the other way round). `nd resume --run <folder>` rebuilds the learner from the run's resolved `config.yaml` (`runner.learner_from_config`) and continues it with `runner.resume`; it refuses runs whose learner saves no state (toy) and finished runs (status 2).
+*Random search (task 5.7, ADR-040, `configs/random_search.yaml`):* `method: random_search`, `seed`, `tag`; `network` (a driving network: 7 inputs first, 2 outputs last; default [7, 16, 16, 2], tanh / tanh, xavier); `search.candidates_per_unit` (≥ 1, default 20); `fitness` (`track`, which must have split `train`, default `train_loop_01`; `start_fractions` in [0, 1) and `lateral_offsets`, default the Driving Exam's 5 × 2 starts; `target_laps`, default 2; since task 7.9, ADR-062, `formula`: `time_bonus` (default, fitness v2), `finish_bonus` or `progress`, an added field, so older configs read as `time_bonus`); `budget` (`units`, `env_steps`, `wall_clock_s`: at least one); `exams` (default true). `nd train` and `nd sweep` pick the method from the file; `--units` overrides `budget.units` (`--epochs` is for toy configs only, and the other way round). `nd resume --run <folder>` rebuilds the learner from the run's resolved `config.yaml` (`runner.learner_from_config`) and continues it with `runner.resume`; it refuses runs whose learner saves no state (toy) and finished runs (status 2).
 
 *Imitation (task 6.3, ADR-047, `configs/imitation.yaml`):* `method: imitation`, `seed`, `tag`; `network` (a driving network, as for random search); `data` (`dataset`: a dataset id, or a selector `<teacher>-<tag>` meaning the newest dataset of that teacher and tag, `learn/supervised/demos.find_dataset`; `sha256`: 64 lowercase hexadecimal digits or null, default null; `val_fraction` in [0, 1), default 0.2: the share of whole episodes held back, round(v · E), at least 1); `training` (`epochs` required ≥ 1, `loss` mse | huber, default mse, `batch_size` ≥ 1, default 256); `optimizer` (as for toys); `checkpoint_every` (≥ 1 or null, default null); `exams` (default true). Validation does not look for the dataset. The runner (`runner.pin_dataset`) finds it in `--datasets-dir` (default `<repo>/data/demos`), refuses it when `sha256` is given and differs, and writes the run folder's config with the exact id and the checksum, so `nd train --config runs/<id>/config.yaml` and `nd resume` learn from the very same frames or refuse. `--epochs` overrides `training.epochs`; `--units` is refused. `nd train`, `nd sweep` and `nd resume` take `--datasets-dir`; `nd sweep` pins the dataset once for all seeds and summarises the final validation loss.
 
@@ -737,8 +743,9 @@ WebSocket `/ws/live` (one independent session per connection):
   - `episode_end {step, time, status, progress, laps}`: sent once when every car has stopped; the
     session then pauses. `status` holds a name per car (`crashed`, `finished`, `stalled`,
     `timeout`). Since api v1.22 also `fitness`: for the population driver every car's fitness on
-    the raced start, f = p + c (1 − t/T), computed by the GA's own `start_fitness` from the step at
-    which the car stopped (6 decimals), exactly the GA's per-start fitness; null for other drivers.
+    the raced start, f = p + c (1 − t/T) (since task 7.9 with the run's own `fitness.formula`),
+    computed by the GA's own `start_fitness` from the step at which the car stopped (6 decimals),
+    exactly the GA's per-start fitness; null for other drivers.
   - `error {message}`: a bad message or a command that cannot be run; the connection stays open.
 - The world advances in fixed physics steps of 1/30 s. `set_speed` changes how many steps run per
   second of real time (speed 2 = 60 steps per second), never the step size. While playing, one

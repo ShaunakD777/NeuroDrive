@@ -41,6 +41,15 @@ def test_the_briefs_worked_example_speed_can_outweigh_a_near_miss():
     assert order.tolist() == [1, 0]  # Y (fast but fragile) above X (reliable but slow)
 
 
+def test_the_fitness_formula_reaches_the_evaluation():
+    # task 7.9 (ADR-062): the GA scores with random search's formulas, time_bonus by default
+    assert GASettings().fitness_formula == "time_bonus"
+    assert GASettings().evaluation().fitness_formula == "time_bonus"
+    assert GASettings(fitness_formula="progress").evaluation().fitness_formula == "progress"
+    with pytest.raises(ValueError, match="unknown fitness formula"):
+        GASettings(fitness_formula="laps")
+
+
 def test_ranking_is_a_stable_descending_sort_and_ranks_invert_it():
     order, places = ranking([0.3, 1.2, 0.3, 1.9])
     assert order.tolist() == [3, 1, 0, 2]  # the tie (0.3, 0.3) keeps index order

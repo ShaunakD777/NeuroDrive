@@ -282,6 +282,41 @@ def test_other_refusals(runs):
     assert "no run folders" in error.message
 
 
+@pytest.mark.parametrize("formula", ["finish_bonus", "progress", "time_bonus"])
+def test_the_race_scores_each_car_with_the_runs_own_formula(tmp_path, formula):
+    # task 7.9 (ADR-062): a generation of hand-wired neurons (they finish the loop) in a run
+    # trained with another formula shows the f that formula gives, as the GA computed it
+    from neurodrive.experiment.baselines import hand_neuron_network, load_hand_neuron
+
+    neuron = hand_neuron_network(load_hand_neuron())
+    config = parse_config(
+        {
+            "method": "ga",
+            "tag": "formula",
+            "network": {"layer_sizes": [7, 2]},
+            "population": {"size": 2, "elite": 1},
+            "fitness": {"start_fractions": [0.0], "lateral_offsets": [0.0], "formula": formula},
+            "budget": {"units": 1},
+            "exams": False,
+        }
+    )
+    store = train_ga_run(config, tmp_path).store
+    genomes = np.stack([neuron.flatten(), neuron.flatten()])
+    arrays = store.load_unit_arrays("generations", 1)
+    store.save_unit_arrays("generations", 1, {**arrays, "genomes": genomes})
+    session = session_for(tmp_path)
+    race(session, store.path.name, 1)
+    end = play_to_the_end(session)
+    scored = evaluate_genomes(genomes, TRAIN, to_ga_settings(config)).evaluation
+    assert (scored.status == Status.FINISHED).all()
+    assert end.fitness == [round(float(v), 6) for v in scored.per_start[:, 0]]
+    expected = {"finish_bonus": 2.0, "progress": 1.0}.get(formula)
+    if expected is not None:
+        assert end.fitness == [expected, expected]
+    else:
+        assert 1.0 < end.fitness[0] < 2.0
+
+
 def test_other_drivers_send_no_race_fitness(runs):
     session = session_for(runs)
     send(session, type="load_scenario", track="train_loop_01", policy="constant", n_cars=2)

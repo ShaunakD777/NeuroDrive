@@ -134,6 +134,7 @@ class Race:
     lateral: float
     target_laps: int
     info: PopulationInfo
+    formula: str = "time_bonus"  # the run's fitness formula (task 7.9, ADR-062)
 
 
 class DriveMemory:
@@ -575,6 +576,7 @@ class LiveSession:
             lateral=float(lateral[ref.start]),
             target_laps=settings.target_laps,
             info=info,
+            formula=settings.fitness_formula,
         )
         return race, Population.from_genomes(settings.spec, genomes), gen.track
 
@@ -904,15 +906,16 @@ class LiveSession:
         return messages
 
     def _race_fitness(self) -> list[float] | None:
-        """Every car's fitness on the raced start, f = p + c (1 - t / T), computed exactly as the
-        GA computed it (``start_fitness``); None unless a GA generation is racing."""
+        """Every car's fitness on the raced start, computed exactly as the GA computed it
+        (``start_fitness`` with the run's formula, f = p + c (1 - t / T) by default); None unless a
+        GA generation is racing."""
         world, race = self._world, self._race
         if race is None or world is None:
             return None
         progress = np.clip(world.progress / (race.target_laps * world.track.length), 0.0, 1.0)
         finished = world.status == Status.FINISHED
         finish_time = np.where(finished, self._end_step * world.dt, np.nan)
-        f = start_fitness(progress, finished, finish_time, world.config.time_limit)
+        f = start_fitness(progress, finished, finish_time, world.config.time_limit, race.formula)
         return [round(float(v), 6) for v in f]
 
 

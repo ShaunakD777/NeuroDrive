@@ -83,7 +83,7 @@ from neurodrive.env.sensors import OBSERVATION_SIZE
 from neurodrive.env.track import Track
 from neurodrive.experiment.exam import DEFAULT_TRACKS_DIR, EXAM_V1, TRAINING_TRACK
 from neurodrive.learn.evolution.ga import SELECTIONS, BreedingSettings, GASettings
-from neurodrive.learn.evolution.random_search import RandomSearchSettings
+from neurodrive.learn.evolution.random_search import FITNESS_FORMULAS, RandomSearchSettings
 from neurodrive.learn.supervised.dagger import DaggerSettings
 from neurodrive.learn.supervised.demos import RANDOM_START_HEADING, RANDOM_START_LATERAL
 from neurodrive.learn.supervised.imitation import ImitationSettings
@@ -259,7 +259,8 @@ def _track_split(name: str) -> str:
 
 
 class FitnessSection(_Section):
-    """Where fitness is measured: a training track and the starts (the exam's layout by default)."""
+    """Where fitness is measured: a training track and the starts (the exam's layout by default),
+    and its formula (task 7.9: time_bonus, the default, finish_bonus or progress)."""
 
     track: str = TRAINING_TRACK
     start_fractions: list[Annotated[float, Field(ge=0.0, lt=1.0)]] = Field(
@@ -269,6 +270,12 @@ class FitnessSection(_Section):
         default_factory=lambda: list(EXAM_V1.lateral_offsets), min_length=1
     )
     target_laps: Annotated[StrictInt, Field(ge=1)] = 2
+    formula: str = "time_bonus"  # time_bonus | finish_bonus | progress (task 7.9, ADR-062)
+
+    @field_validator("formula")
+    @classmethod
+    def _formula(cls, v: str) -> str:
+        return _one_of(v, FITNESS_FORMULAS, "fitness formula")
 
     @field_validator("track")
     @classmethod
@@ -629,6 +636,7 @@ def to_random_search_settings(config: RandomSearchRunConfig) -> RandomSearchSett
         start_fractions=tuple(config.fitness.start_fractions),
         lateral_offsets=tuple(config.fitness.lateral_offsets),
         target_laps=config.fitness.target_laps,
+        fitness_formula=config.fitness.formula,
     )
 
 
@@ -646,6 +654,7 @@ def to_ga_settings(config: GARunConfig) -> GASettings:
         start_fractions=tuple(config.fitness.start_fractions),
         lateral_offsets=tuple(config.fitness.lateral_offsets),
         target_laps=config.fitness.target_laps,
+        fitness_formula=config.fitness.formula,
         breeding=BreedingSettings(
             elite=config.population.elite,
             selection=sel.method,

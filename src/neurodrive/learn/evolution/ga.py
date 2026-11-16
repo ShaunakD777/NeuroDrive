@@ -158,7 +158,8 @@ class GASettings:
     ``population`` is N, the number of networks per generation; ``start_fractions`` and
     ``lateral_offsets`` give the evaluation starts exactly as for random search (every offset with
     every fraction of the track length, offsets in the outer loop: the exam's layout);
-    ``breeding`` makes the next generation (task 7.5).
+    ``breeding`` makes the next generation (task 7.5); ``fitness_formula`` picks f (time_bonus,
+    finish_bonus or progress, task 7.9).
     """
 
     spec: NetworkSpec = field(default_factory=NetworkSpec)
@@ -168,6 +169,7 @@ class GASettings:
     lateral_offsets: tuple[float, ...] = (0.0, 1.5)
     target_laps: int = 2
     breeding: BreedingSettings = field(default_factory=BreedingSettings)
+    fitness_formula: str = "time_bonus"  # random search's FITNESS_FORMULAS (task 7.9, ADR-062)
 
     def __post_init__(self) -> None:
         if isinstance(self.population, bool) or not isinstance(self.population, int):
@@ -198,6 +200,7 @@ class GASettings:
             start_fractions=self.start_fractions,
             lateral_offsets=self.lateral_offsets,
             target_laps=self.target_laps,
+            fitness_formula=self.fitness_formula,
         )
 
 

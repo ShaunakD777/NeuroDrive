@@ -205,6 +205,26 @@ def test_broken_random_search_configs_name_the_field(change, problem):
     assert any(p.startswith(problem) or problem in p for p in err.value.problems), err.value
 
 
+def test_the_fitness_formula_is_an_added_field_with_the_old_default():
+    # task 7.9 (ADR-062): configs written before it have no formula and read as time_bonus
+    from neurodrive.experiment.config import to_ga_settings, to_random_search_settings
+
+    for name, convert in (("random_search", to_random_search_settings), ("ga", to_ga_settings)):
+        data = resolved(load_config(CONFIGS / f"{name}.yaml"))
+        assert data["fitness"]["formula"] == "time_bonus"  # the run folder writes it out
+        del data["fitness"]["formula"]
+        assert convert(parse_config(data)).fitness_formula == "time_bonus"
+        for formula in ("finish_bonus", "progress"):
+            data["fitness"]["formula"] = formula
+            config = parse_config(data)
+            assert convert(config).fitness_formula == formula
+            assert parse_config(resolved(config)) == config
+        data["fitness"]["formula"] = "speed"
+        with pytest.raises(ConfigError) as err:
+            parse_config(data)
+        assert any(p.startswith("fitness.formula") for p in err.value.problems), err.value
+
+
 def test_epochs_and_units_belong_to_their_own_method():
     with pytest.raises(ConfigError, match="--epochs is for toy and imitation configs"):
         load_config(CONFIGS / "random_search.yaml", epochs=5)

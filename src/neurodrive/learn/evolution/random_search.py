@@ -16,6 +16,12 @@ so progress counts up to 1 and a finisher gets a bonus for the time left over. T
 the mean of f over the starts; 0 ≤ F < 2. Two starts, one finishing at t = 69 s of T = 92 s
 (f = 1.25) and one crashing at 30 % (f = 0.30), give F = 0.775.
 
+**Fitness formulas** (task 7.9, ADR-062; Study S6's ablations). ``time_bonus`` is the formula
+above (fitness v2, the default). Two simpler ones take a part away: ``finish_bonus`` f = p + c
+(finishing counts, its time does not) and ``progress`` f = p (only the distance counts). A start
+finished at 69 s of 92 s scores 1.25, 2.0 and 1.0 under the three; a crash at 30 % scores 0.30
+under all of them.
+
 **One unit**: draw N networks; drive every network from every start in one batched world
 (N · S cars, car j belongs to network j // S); score them; if the best of the batch beats the
 best fitness so far (strictly), keep it. The evaluation is fixed and deterministic, so the best
@@ -44,6 +50,8 @@ from neurodrive.learn.base import LearnerState, UnitResult, generator_state, set
 
 Array = NDArray[np.float64]
 
+FITNESS_FORMULAS = ("time_bonus", "finish_bonus", "progress")  # task 7.9, ADR-062
+
 
 @dataclass(frozen=True)
 class RandomSearchSettings:
@@ -59,8 +67,14 @@ class RandomSearchSettings:
     start_fractions: tuple[float, ...] = (0.0, 0.2, 0.4, 0.6, 0.8)
     lateral_offsets: tuple[float, ...] = (0.0, 1.5)
     target_laps: int = 2
+    fitness_formula: str = "time_bonus"  # see FITNESS_FORMULAS (task 7.9, ADR-062)
 
     def __post_init__(self) -> None:
+        if self.fitness_formula not in FITNESS_FORMULAS:
+            raise ValueError(
+                f"unknown fitness formula {self.fitness_formula!r}; "
+                f"valid: {', '.join(FITNESS_FORMULAS)}"
+            )
         if self.candidates < 1:
             raise ValueError("candidates must be at least 1")
         if not self.start_fractions or not self.lateral_offsets:
@@ -77,11 +91,26 @@ class RandomSearchSettings:
 
 
 def start_fitness(
-    progress_frac: ArrayLike, completed: ArrayLike, finish_time: ArrayLike, time_limit: float
+    progress_frac: ArrayLike,
+    completed: ArrayLike,
+    finish_time: ArrayLike,
+    time_limit: float,
+    formula: str = "time_bonus",
 ) -> Array:
-    """f = p + c · (1 − t / T) per start (see the module docstring); t is ignored when c = 0."""
+    """f per start (see the module docstring); t is ignored when c = 0.
+
+    ``time_bonus``: f = p + c · (1 − t / T); ``finish_bonus``: f = p + c; ``progress``: f = p.
+    """
     p = np.clip(np.asarray(progress_frac, dtype=np.float64), 0.0, 1.0)
     c = np.asarray(completed, dtype=bool)
+    if formula == "progress":
+        return p
+    if formula == "finish_bonus":
+        return p + c * 1.0
+    if formula != "time_bonus":
+        raise ValueError(
+            f"unknown fitness formula {formula!r}; valid: {', '.join(FITNESS_FORMULAS)}"
+        )
     t = np.where(c, np.asarray(finish_time, dtype=np.float64), time_limit)
     return p + c * (1.0 - t / time_limit)
 
@@ -135,7 +164,9 @@ def evaluate(networks: list[Network], track: Track, settings: RandomSearchSettin
     progress_frac = np.clip(world.progress / (settings.target_laps * track.length), 0.0, 1.0)
     completed = world.status == Status.FINISHED
     finish_time = np.where(completed, finish_step * world.dt, np.nan)
-    per_start = start_fitness(progress_frac, completed, finish_time, world.config.time_limit)
+    per_start = start_fitness(
+        progress_frac, completed, finish_time, world.config.time_limit, settings.fitness_formula
+    )
     shape = (n, s)
     return Evaluation(
         fitness=per_start.reshape(shape).mean(axis=1),
