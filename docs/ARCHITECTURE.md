@@ -158,11 +158,12 @@ neurodrive/
 │  ├─ scripts/                   gen-types.mjs: Pydantic JSON Schema → TypeScript (`npm run gen:types`)
 │  ├─ src/api/                   REST client, WebSocket client, generated types (committed)
 │  ├─ src/nav/                   the views table and hash routing (#/environment, #/network, #/experiment)
-│  ├─ src/state/                 selection store, layout store (Page/Split/All, drawers), playback clock
+│  ├─ src/state/                 selection store, layout store (Page/Split/All, drawers), playback clock, runs watch + `/ws/runs` hook
 │  ├─ src/views/environment/     canvas renderer, trails, HUD, population mode
 │  ├─ src/views/network/         SVG diagram, output inspector, what-if panel, diff
 │  ├─ src/views/experiment/      toy lab (ToyLab, LossChart, ...), Compare runs (CompareRuns, RunList, CompareChart), Training (TrainingRuns, LiveChart; task 5.8), Timeline (task 5.9), Datasets (DatasetView; task 6.2)
-│  └─ src/components/            shared UI pieces
+│  ├─ src/components/            shared UI pieces (top bar, drawer, view panel); `ui/`: the redesign's shared controls (task S0)
+│  └─ src/styles/                stylesheets: tokens, base, one per view, imported in order by `index.css` (task S0)
 └─ docs/                         concept, architecture, roadmap, checklist, protocol, journal ...
 ```
 

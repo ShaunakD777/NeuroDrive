@@ -30,6 +30,16 @@ export function watchRun(state: RunsWatchState, runId: string | null): RunsWatch
   return { ...state, watched: runId, records: [], checkpoints: [], exams: [] };
 }
 
+/**
+ * The history to show for `watched`. Right after the caller switches runs, and until the reset by
+ * `watchRun` has been applied, the state still holds the previous run's records, checkpoints and
+ * exams: those are never handed out as this run's (its units would be fetched from the wrong run
+ * folder, `MIGRATION_AUDIT.md` §8.1). Every run's status is kept either way.
+ */
+export function historyFor(state: RunsWatchState, watched: string | null): RunsWatchState {
+  return state.watched === watched ? state : watchRun(state, watched);
+}
+
 type RunsMessage = RunStatusMessage | RunMetricsMessage | CheckpointMessage | ExamDoneMessage;
 
 function isRunsMessage(m: unknown): m is RunsMessage {

@@ -40,7 +40,7 @@ export interface MutationStroke {
   opacity: number;
 }
 
-/** A gene from the other parent that mutation left alone: thin, grey and dashed (see styles.css). */
+/** A gene from the other parent that mutation left alone: thin, grey and dashed (see styles/network.css). */
 export const OTHER_PARENT_STROKE: MutationStroke = { kind: "other", width: 0.8, opacity: 0.5 };
 
 /**

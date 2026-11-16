@@ -1,0 +1,74 @@
+/* Every custom property of the app (colours, chart and rank palettes), light and dark.
+   Task S0 moved them here unchanged from the single styles.css; S1 replaces them with the
+   redesign's tokens. */
+
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --text: #1b1f27;
+  --text-muted: #5b6472;
+  --border: #d5d9e0;
+  --accent: #2563eb;
+  --ok: #15803d;
+  --warn: #b45309;
+  --bad: #b91c1c;
+  /* Chart tokens (task 3.8, checked with the dataviz palette validator): a diverging pair and its
+     neutral midpoint. Light = the accent and warn colours; dark has its own steps in the band. */
+  --chart-pos: #2563eb;
+  --chart-neg: #b45309;
+  --chart-mid: #d5d9e0;
+  /* Categorical series (task 4.7b, ADR-033): the dataviz skill's validated palette in its fixed
+     order, checked with its validator on this surface (#ffffff): all checks pass; three hues are
+     below 3:1 contrast, so every group also has a text label, a legend entry and a table row. */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #008300;
+  --series-7: #6250d6;
+  --series-8: #e34948;
+  /* GA rank bands (task 7.6): the palette's blue ramp, steps 700, 600, 500, 400, 300 from the best
+     fifth of a generation to the worst; checked as an ordinal ramp on #ffffff: all checks pass. */
+  --rank-1: #0d366b;
+  --rank-2: #184f95;
+  --rank-3: #256abf;
+  --rank-4: #3987e5;
+  --rank-5: #6da7ec;
+  /* The shadow of a floating read-out (the compare chart's hover box); the same in both themes. */
+  --shadow-pop: 0 2px 8px rgb(0 0 0 / 0.18);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #12151a;
+    --surface: #1b1f27;
+    --text: #e8ebf0;
+    --text-muted: #9aa3b2;
+    --border: #2f3541;
+    --accent: #6aa0ff;
+    --ok: #4ade80;
+    --warn: #fbbf24;
+    --bad: #f87171;
+    --chart-pos: #5b8ff5;
+    --chart-neg: #c08419;
+    --chart-mid: #3b414d;
+    /* The same eight hues stepped for the dark surface (#1b1f27): all checks pass. */
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
+    --series-6: #008300;
+    --series-7: #9085e9;
+    --series-8: #e66767;
+    /* On the dark surface (#1b1f27) the best fifth is the lightest: steps 100 to 500, all pass. */
+    --rank-1: #cde2fb;
+    --rank-2: #9ec5f4;
+    --rank-3: #6da7ec;
+    --rank-4: #3987e5;
+    --rank-5: #256abf;
+    color-scheme: dark;
+  }
+}

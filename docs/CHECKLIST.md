@@ -136,3 +136,18 @@ released, add its tag (e.g. `phase-1`) to the phase's header row.
 | 12.4 | Guided tour mode | ☐ | | |
 | 12.5 | Final report | ☐ | | |
 | 12.6 | Final validation | ☐ | | |
+| **Visual redesign** | **The 2D redesign moved into `web/`** (`prototypes/2d-redesign/IMPLEMENTATION_ROADMAP.md`, ADR-063; not roadmap tasks; branches `visual-*`, each merged into `main` at its gate) | | | |
+| S0 | Groundwork: stylesheet split, shared controls, network hooks, one `/ws/runs` hook (no visual change) | ✅ | 2026-11-16 | ADR-063 (D1–D5 as recommended), branch `visual-shell` from `ui-2d-redesign`: `styles.css` → `styles/` (tokens, base, environment, network, experiment, each one contiguous range, imported in the old order by `index.css`; 1,905 non-blank lines identical and in order; fallback `#c0392b` dropped, shadow → `--shadow-pop`); `components/ui/` (Icon; Button, Segmented, Select, Field, Chip, Panel, Stat, ValueBar with test-id props; unused, unstyled); `views/network/hooks.ts` (`useCheckpointChange`, `useMutation`, moved unchanged); `state/runsWatch.ts` `historyFor` + `state/runsSocket.ts` `useRunsSocket`, used by Timeline and Training; verification: tsc, build, Vitest 206 (11 new; planted guard bug failed 2), Playwright 79 (`--workers=1`); golden images, 44 screens (11 × light/dark × 1440/390): default tolerance 44/44 identical, but it passed a planted 1-level accent change, so zero tolerance: unchanged code vs itself already differs on 15/44 (≤ 88 px, ≤ 2 levels, edges), after the change 20/44 (≤ 108 px, ≤ 2 levels) = the same noise, the plant ~3,500–4,000 px; shipped CSS identical up to the 3 intended edits; Timeline run switching: original code 8 wrong-run `exams/` 404s, new 0; prototype still builds; also changed: comment in `diff.ts`; Environment rules left in `network.css` until E3 |
+| S1 | Identity: palette, type, top bar, breadcrumb, theme setting, drawer | ☐ | | |
+| S2 | World selector `state/world.ts` (no visual change) | ☐ | | |
+| E1 | Environment: the track | ☐ | | |
+| E2 | Environment: cars, rays, trail, overlays | ☐ | | |
+| E3 | Environment: the stage (telemetry, bars, minimap, standings, look-back strip, camera) | ☐ | | |
+| N1 | Network: the diagram | ☐ | | |
+| N2 | Network: the inspector rail | ☐ | | |
+| N3 | Network: compact network and the neuron driver | ☐ | | |
+| X1 | Experiment: chart kit | ☐ | | |
+| X2 | Experiment: Timeline dashboard | ☐ | | |
+| X3 | Experiment: Compare and Training | ☐ | | |
+| X4 | Experiment: Toy lab and Datasets | ☐ | | |
+| R1 | Small windows and the All layout | ☐ | | |
