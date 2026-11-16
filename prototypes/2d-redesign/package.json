@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "screenshots": "node scripts/screenshots.mjs",
+    "live-check": "node scripts/live-check.mjs",
     "capture": "node scripts/capture-mock-data.mjs"
   },
   "dependencies": {

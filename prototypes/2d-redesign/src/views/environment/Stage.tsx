@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 
-import { castRay, detailAt, poseAt, rollout, whatIf } from "../../mock/mockServer";
-import { carName, carRole, useApp } from "../../state/store";
+import { getWorld } from "../../source/world";
+import { useApp } from "../../state/store";
 import { type Camera, easeCamera, easeOut, fitCamera, lookAhead, panBy, type Size, wheelFactor, worldToScreen, zoomAt } from "./camera";
-import { drawScene, readWorldTheme, type Scene } from "./scene";
+import { bodyColor, bodyOf, drawOrder, nameTag } from "./cars";
+import { drawScene, readWorldTheme } from "./scene";
 import { trackArt } from "./trackArt";
 
 const FOLLOW_ZOOM = 7.5; // pixels per metre
@@ -11,16 +12,14 @@ const COMPACT_ZOOM = 4.6;
 const DRAG_THRESHOLD = 4;
 const TRANSITION_MS = 450;
 
-/** Rank band of a car, 0 = best fifth (production: views/environment/population.ts). */
-export function rankBand(rank: number, size: number): number {
-  return Math.min(4, Math.floor((5 * rank) / Math.max(1, size - 1)));
-}
+/** No easing for people who asked their system for less motion (DESIGN_SPEC §11). */
+const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /**
  * The canvas: the track, the cars and everything drawn on them. It redraws every display frame
- * from the store, so React never re-renders it while the cars move. The mouse works as in
- * production (task 4.10): wheel zooms, drag pans, click selects a car or a trail point,
- * double-click follows the car again.
+ * from the world snapshot (src/source/world.ts), so React never re-renders it while the cars
+ * move. The mouse works as in production (task 4.10): wheel zooms, drag pans, click selects a car
+ * or a trail point, double-click follows the car again.
  */
 export function Stage({ compact }: { compact: boolean }) {
   const boxRef = useRef<HTMLDivElement>(null);
@@ -35,7 +34,7 @@ export function Stage({ compact }: { compact: boolean }) {
   const followKeyRef = useRef("");
   const fitScaleRef = useRef(1);
   const pressRef = useRef<{ x: number; y: number; start: Camera; dragging: boolean } | null>(null);
-  const trailScreenRef = useRef<{ keys: number[]; screen: [number, number][] }>({ keys: [], screen: [] });
+  const trailScreenRef = useRef<{ steps: number[]; screen: [number, number][] }>({ steps: [], screen: [] });
   // The compact stage in a drawer always follows; the full stage uses the shared camera mode.
   const localMode = useRef<"follow" | "fit" | "free">("follow");
 
@@ -70,35 +69,32 @@ export function Stage({ compact }: { compact: boolean }) {
       raf = requestAnimationFrame(frame);
       const canvas = canvasRef.current;
       const ctx = canvas?.getContext("2d");
+      const world = getWorld();
+      if (!canvas || !ctx || world === null) return;
       const state = useApp.getState();
-      const data = state.data;
-      if (!canvas || !ctx || data === null) return;
-      const { race, track } = data;
-      const info = race.scenario.population;
-      const n = race.scenario.n_cars;
-      const t = state.t;
-      const cars = Array.from({ length: n }, (_, i) => poseAt(race, t, i));
-      const selected = state.car;
-      const record = data.cars.get(selected) ?? null;
-      const looking = state.viewKey !== null;
-      const shownT = state.viewKey ?? t;
-      const shownPose = looking ? poseAt(race, shownT, selected) : cars[selected];
-      const detail = record === null ? null : detailAt(record, shownT);
+      const { track, scenario, cars, selected } = world;
+      const info = scenario.population;
+      const looking = world.lookStep !== null;
+      const carNow = cars[selected] ?? cars[0];
+      const shownPose = world.shown?.pose ?? carNow;
 
       // ── Camera ──
       const margins = compact
         ? { top: 14, right: 14, bottom: 14, left: 14 }
-        : { top: 70, right: 28, bottom: 138, left: 28 };
+        : { top: 70, right: 28, bottom: 164, left: 28 }; // clear of the telemetry strip and the legend above it
       const fit = fitCamera([...track.left, ...track.right], size, margins);
       fitScaleRef.current = fit.scale;
       const current = mode();
       const [fx, fy] = lookAhead(shownPose.x, shownPose.y, shownPose.psi, looking ? 0 : shownPose.v, zoomRef.current, size);
       const target: Camera =
         current === "free" ? freeRef.current : current === "fit" ? fit : { cx: fx, cy: fy, scale: zoomRef.current };
-      // A change of mode, car or moment starts a short eased move instead of a jump.
-      const key = `${current}:${current === "follow" ? `${selected}:${state.viewKey}` : ""}`;
+      // A change of mode, car, moment or track starts a short eased move instead of a jump.
+      const key = `${track.name}:${current}:${current === "follow" ? `${selected}:${world.lookStep}` : ""}`;
       if (key !== followKeyRef.current) {
-        if (followKeyRef.current !== "" && current !== "free") transitionRef.current = { from: cameraRef.current, start: now };
+        const sameTrack = followKeyRef.current.startsWith(`${track.name}:`);
+        if (followKeyRef.current !== "" && sameTrack && current !== "free" && !reducedMotion())
+          transitionRef.current = { from: cameraRef.current, start: now };
+        else transitionRef.current = null;
         followKeyRef.current = key;
       }
       let camera = target;
@@ -110,73 +106,68 @@ export function Stage({ compact }: { compact: boolean }) {
       }
       cameraRef.current = camera;
 
-      // ── Trail of the selected car: the last 60 s, as production remembers ──
-      const framesBack = Math.round(race.scenario.trail_seconds / (race.stepsPerFrame * race.scenario.dt));
-      const lastKey = Math.floor(t);
-      const firstKey = Math.max(0, lastKey - framesBack);
-      const column = state.output === "steer" ? race.frames.steer : state.output === "throttle" ? race.frames.throttle : null;
-      const keys: number[] = [];
+      // ── Trail of the selected car: what the source remembers (60 s), up to the car now ──
+      const m = state.output === null ? null : state.output === "steer" ? 0 : 1;
+      const trail = state.showTrail ? world.trail : null;
       const points: number[][] = [];
       const values: number[] = [];
-      if (state.showTrail) {
-        for (let k = firstKey; k <= lastKey; k++) {
-          keys.push(k);
-          points.push([race.frames.x[k][selected], race.frames.y[k][selected]]);
-          if (column) values.push(column[k][selected]);
-        }
-        points.push([cars[selected].x, cars[selected].y]);
+      const steps: number[] = [];
+      if (trail !== null) {
+        trail.steps.forEach((s, k) => {
+          steps.push(s);
+          points.push([trail.x[k], trail.y[k]]);
+          if (m !== null) values.push(trail.action[k]?.[m] ?? 0);
+        });
+        points.push([carNow.x, carNow.y]);
       }
 
-      // ── Rays: recorded sensor readings for featured cars, measured for the others ──
-      const angles = race.scenario.ray_angles;
-      const range = race.scenario.ray_range;
-      const distances = detail?.rays ?? angles.map((a) => castRay(track, shownPose.x, shownPose.y, shownPose.psi + a, range));
-      const m = state.output === null ? null : state.output === "steer" ? 0 : 1;
-      const sensitivity = detail !== null && m !== null ? detail.explain.sensitivity[m].slice(0, 5) : null;
+      // ── Rays of the selected car at the shown moment (from the source) ──
+      const shown = world.shown;
+      const sensitivity = shown?.explain && m !== null ? shown.explain.sensitivity[m].slice(0, 5) : null;
       const highlight: number[] = [];
       if (state.neuron !== null && state.neuron.layer === 0 && state.neuron.index < 5) highlight.push(state.neuron.index);
       if (state.connection !== null && state.connection.layer === 0 && state.connection.from < 5) highlight.push(state.connection.from);
+      if (shown?.neuron && state.neuron !== null) highlight.push(...shown.neuron.input_rays);
 
-      // ── What-if ghost: hold the real action and the what-if action for 2 s ──
-      let ghost: Scene["ghost"] = null;
-      if (!state.playing && !looking && record !== null && detail !== null && Object.keys(state.whatIf).length > 0) {
-        const answer = whatIf(record, detail, state.whatIf);
-        const real = rollout(cars[selected], answer.base, 2, race.scenario.dt);
-        const tried = rollout(cars[selected], answer.tried, 2, race.scenario.dt);
-        ghost = { real: real.path, whatIf: tried.path, end: tried.end };
-      }
-
-      const order = Array.from({ length: info.size }, (_, i) => i).sort((a, b) => info.ranks[b] - info.ranks[a]);
       const theme = readWorldTheme(canvas);
-      const role = carRole(data, selected);
       drawScene(ctx, theme, {
         size,
         camera,
         track,
         art: trackArt(track),
         cars,
-        colors: cars.map((_, i) => (i < info.size ? theme.rank[rankBand(info.ranks[i], info.size)] : "#c9ccd2")),
-        order,
-        elite: info.elite,
-        ghostCar: info.ghost_car,
+        colors: cars.map((_, i) => bodyColor(theme, bodyOf(scenario, i))),
+        order: drawOrder(scenario, cars.length),
+        elite: info?.elite ?? [],
+        ghostCar: info?.ghost_car ?? null,
         selected,
-        rays: state.showRays ? { x: shownPose.x, y: shownPose.y, psi: shownPose.psi, distances, angles, range, highlight, sensitivity } : null,
-        trail: state.showTrail ? { points, values: column ? values : null } : null,
-        moment: looking ? { x: shownPose.x, y: shownPose.y, psi: shownPose.psi, label: `STEP ${race.frames.step[state.viewKey ?? 0]}` } : null,
-        ghost,
-        selectedLabel:
-          role === "ghost"
-            ? carName(data, selected).toUpperCase()
-            : `CAR ${selected + 1} · P${info.ranks[selected] + 1}${role === "child" ? "" : ` · ${role.toUpperCase()}`}`,
-        ghostLabel: `GHOST · GEN ${info.ghost_unit}`,
+        rays:
+          state.showRays && shown !== null && shown.rays.length > 0
+            ? {
+                x: shownPose.x,
+                y: shownPose.y,
+                psi: shownPose.psi,
+                distances: shown.rays,
+                angles: scenario.ray_angles,
+                range: scenario.ray_range,
+                highlight,
+                sensitivity,
+              }
+            : null,
+        trail: trail !== null ? { points, values: m !== null ? values : null } : null,
+        moment: looking ? { x: shownPose.x, y: shownPose.y, psi: shownPose.psi, label: `STEP ${world.lookStep}` } : null,
+        ghost: world.whatIf?.ghost ?? null,
+        selectedLabel: nameTag(world),
+        ghostLabel: `GHOST · GEN ${info?.ghost_unit ?? ""}`,
         compact,
       });
       trailScreenRef.current = {
-        keys,
-        screen: keys.map((_, i) => worldToScreen(camera, size, points[i][0], points[i][1])),
+        steps,
+        screen: steps.map((_, i) => worldToScreen(camera, size, points[i][0], points[i][1])),
       };
       canvas.dataset.cameraMode = current;
       canvas.dataset.cars = cars.map((c) => worldToScreen(camera, size, c.x, c.y).map(Math.round).join(":")).join(",");
+      canvas.dataset.step = String(world.step);
     };
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
@@ -247,25 +238,24 @@ export function Stage({ compact }: { compact: boolean }) {
     setDragging(false);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     if (press === null || press.dragging) return;
+    const world = getWorld();
+    if (world === null) return;
     const state = useApp.getState();
-    const data = state.data;
-    if (data === null) return;
     const rect = event.currentTarget.getBoundingClientRect();
     const px = press.x - rect.left;
     const py = press.y - rect.top;
     // A click selects the nearest car within 24 px …
     let best: number | null = null;
     let bestDistance = 24;
-    for (let i = 0; i < data.race.scenario.n_cars; i++) {
-      const pose = poseAt(data.race, state.t, i);
+    world.cars.forEach((pose, i) => {
       const [sx, sy] = worldToScreen(cameraRef.current, size, pose.x, pose.y);
       const d = Math.hypot(sx - px, sy - py);
       if (d <= bestDistance) {
         bestDistance = d;
         best = i;
       }
-    }
-    if (best !== null && best !== state.car) {
+    });
+    if (best !== null && best !== world.selected) {
       state.selectCar(best);
       return;
     }
@@ -274,18 +264,18 @@ export function Stage({ compact }: { compact: boolean }) {
       return;
     }
     // … or, while paused, a point of the trail: look at that step.
-    if (state.playing) return;
-    const { keys, screen } = trailScreenRef.current;
-    let key: number | null = null;
+    if (world.playing) return;
+    const { steps, screen } = trailScreenRef.current;
+    let step: number | null = null;
     let nearest = 12;
     screen.forEach(([sx, sy], i) => {
       const d = Math.hypot(sx - px, sy - py);
       if (d <= nearest) {
         nearest = d;
-        key = keys[i];
+        step = steps[i];
       }
     });
-    if (key !== null) state.lookAt(key);
+    if (step !== null) state.lookAt(step);
   };
 
   return (

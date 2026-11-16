@@ -1,12 +1,14 @@
 import { create } from "zustand";
 
-import { detailAt, poseAt, type CarPose } from "../mock/mockServer";
-import type { CarFrame, CarRecord, Recorded } from "../mock/types";
+import type { Recorded } from "../mock/types";
+import type { SourceKind } from "../source/model";
 
-// One store for the prototype. In production the same information lives in four stores, and the
-// names below say which: `useLive` (frames, scenario), `useSelection` (car, neuron, connection,
-// output, what-if), `usePlayback` (the step being looked at) and `useLayout` (page / split,
-// drawers). PRODUCTION_MAPPING.md §4 maps every field.
+// The prototype's own store: layout, view options, and (with the recorded source) the playback
+// clock and the selection. With the live source the selection and the clock belong to the
+// production stores (`useSelection`, `usePlayback`, `useLive` in web/src/state/); the actions
+// below then forward to them through the bridge that src/source/live.ts attaches, and the
+// selection fields are kept as a mirror of `useSelection` so every view reads them the same way.
+// PRODUCTION_MAPPING.md §4 maps every field to its production home.
 
 export type ViewId = "environment" | "network" | "experiment";
 export type ThemeChoice = "light" | "dark" | "auto";
@@ -14,6 +16,7 @@ export type OutputName = "steer" | "throttle";
 export type CameraMode = "follow" | "fit" | "free";
 export type LineMode = "weights" | "flow" | "change" | "mutation";
 export type ExperimentTab = "timeline" | "compare" | "training" | "toylab" | "datasets";
+export type LiveStatus = "connecting" | "connected" | "disconnected";
 
 export interface NeuronRef {
   layer: number;
@@ -26,7 +29,12 @@ export interface ConnectionRef {
   to: number;
 }
 
-interface State {
+export interface State {
+  /** Where the data comes from; chosen in the top bar, remembered per browser. */
+  source: SourceKind;
+  /** The live socket's state (live source only). */
+  liveStatus: LiveStatus;
+  /** The recorded files (recorded source only; also the fallback data of the Experiment tools). */
   data: Recorded | null;
   loadError: string | null;
 
@@ -39,13 +47,14 @@ interface State {
   /** The design-notes layer (prototype only): numbered markers and their explanations. */
   notes: boolean;
 
-  // playback (production: the server's clock; `viewKey` is usePlayback.viewStep)
+  // the recorded clock: `t` is a fractional index into the recorded frames, `viewKey` the frame
+  // looked back at (production: the server's clock and usePlayback.viewStep)
   t: number;
   playing: boolean;
   speed: number;
   viewKey: number | null;
 
-  // selection (production: useSelection)
+  // selection (production: useSelection; mirrored from it with the live source)
   car: number;
   neuron: NeuronRef | null;
   connection: ConnectionRef | null;
@@ -60,11 +69,13 @@ interface State {
   showRays: boolean;
   showTrail: boolean;
   experimentTab: ExperimentTab;
+  /** The Timeline's run (null: the recorded run, or the newest GA run live). */
+  runId: string | null;
   generation: number;
   evoStart: number | null;
 }
 
-interface Actions {
+export interface Actions {
   setData: (data: Recorded) => void;
   set: (changes: Partial<State>) => void;
   selectCar: (index: number) => void;
@@ -76,18 +87,65 @@ interface Actions {
   pause: () => void;
   stepOnce: () => void;
   reset: () => void;
-  /** Look at an earlier recorded frame of the selected car (paused only), or null for now. */
-  lookAt: (key: number | null) => void;
+  setSpeed: (speed: number) => void;
+  /** Look at an earlier step of the selected car (paused only), or null for now. */
+  lookAt: (step: number | null) => void;
+}
+
+/** The commands the live adapter takes over (production stores and server commands). */
+export type Bridge = Pick<
+  Actions,
+  "selectCar" | "toggleNeuron" | "toggleConnection" | "setWhatIf" | "clearWhatIf" | "play" | "pause" | "stepOnce" | "reset" | "setSpeed" | "lookAt"
+>;
+
+let bridge: Bridge | null = null;
+
+/** The live adapter hands the store its commands (null: back to the recorded clock). */
+export function attachBridge(next: Bridge | null): void {
+  bridge = next;
 }
 
 const OUTPUTS: OutputName[] = ["steer", "throttle"];
+const SOURCE_KEY = "nd-prototype-source";
 
 function initialView(): ViewId {
   const name = window.location.hash.replace(/^#\/?/, "");
   return name === "network" || name === "experiment" ? name : "environment";
 }
 
+/** `?source=live` or `?source=recorded` wins; else the last choice; else recorded (works offline). */
+function initialSource(): SourceKind {
+  const asked = new URLSearchParams(window.location.search).get("source");
+  if (asked === "live" || asked === "recorded") return asked;
+  try {
+    const saved = window.localStorage.getItem(SOURCE_KEY);
+    if (saved === "live" || saved === "recorded") return saved;
+  } catch {
+    // storage blocked: use the default
+  }
+  return "recorded";
+}
+
+/** Switch the source. The page reloads, so no state of one source leaks into the other. */
+export function switchSource(next: SourceKind): void {
+  try {
+    window.localStorage.setItem(SOURCE_KEY, next);
+  } catch {
+    // storage blocked: the query string below still carries the choice for this load
+  }
+  const url = new URL(window.location.href);
+  url.searchParams.set("source", next);
+  window.location.replace(url.toString());
+}
+
+/** The recorded clock's last frame index (0 before the data is loaded). */
+function lastKey(data: Recorded | null): number {
+  return data === null ? 0 : data.race.frames.step.length - 1;
+}
+
 export const useApp = create<State & Actions>()((set, get) => ({
+  source: initialSource(),
+  liveStatus: "connecting",
   data: null,
   loadError: null,
   view: initialView(),
@@ -111,19 +169,26 @@ export const useApp = create<State & Actions>()((set, get) => ({
   showRays: true,
   showTrail: true,
   experimentTab: "timeline",
+  runId: null,
   generation: 18,
   evoStart: null,
 
   setData: (data) =>
-    set({ data, car: data.race.scenario.population.champion, generation: data.run.generation, t: 118 }),
+    set(
+      get().source === "recorded"
+        ? { data, car: data.race.scenario.population.champion, generation: data.run.generation, t: 118 }
+        : { data },
+    ),
   set: (changes) => set(changes),
 
   selectCar: (index) => {
+    if (bridge) return bridge.selectCar(index);
     if (get().car === index) return;
-    set({ car: index, whatIf: {}, viewKey: null, lineMode: get().lineMode === "mutation" ? "weights" : get().lineMode });
+    set({ car: index, whatIf: {}, viewKey: null });
   },
 
   toggleNeuron: (ref, layers) => {
+    if (bridge) return bridge.toggleNeuron(ref, layers);
     const current = get().neuron;
     if (current !== null && current.layer === ref.layer && current.index === ref.index) {
       set({ neuron: null, output: null });
@@ -134,6 +199,7 @@ export const useApp = create<State & Actions>()((set, get) => ({
   },
 
   toggleConnection: (ref) => {
+    if (bridge) return bridge.toggleConnection(ref);
     const c = get().connection;
     if (c !== null && c.layer === ref.layer && c.from === ref.from && c.to === ref.to) {
       set({ connection: null });
@@ -142,26 +208,28 @@ export const useApp = create<State & Actions>()((set, get) => ({
     set({ connection: ref, neuron: null, output: null });
   },
 
-  setWhatIf: (k, value) => set({ whatIf: { ...get().whatIf, [k]: value } }),
-  clearWhatIf: () => set({ whatIf: {} }),
+  setWhatIf: (k, value) => (bridge ? bridge.setWhatIf(k, value) : set({ whatIf: { ...get().whatIf, [k]: value } })),
+  clearWhatIf: () => (bridge ? bridge.clearWhatIf() : set({ whatIf: {} })),
 
   play: () => {
-    const data = get().data;
-    if (data === null) return;
-    const last = data.race.frames.step.length - 1;
+    if (bridge) return bridge.play();
+    const last = lastKey(get().data);
     set({ playing: true, viewKey: null, whatIf: {}, t: get().t >= last ? 0 : get().t });
   },
   // Pausing lands on a recorded frame, so every number on screen belongs to one real step.
-  pause: () => set({ playing: false, t: Math.round(get().t) }),
+  pause: () => (bridge ? bridge.pause() : set({ playing: false, t: Math.round(get().t) })),
   stepOnce: () => {
-    const data = get().data;
-    if (data === null) return;
-    const last = data.race.frames.step.length - 1;
-    set({ playing: false, viewKey: null, whatIf: {}, t: Math.min(last, Math.floor(get().t) + 1) });
+    if (bridge) return bridge.stepOnce();
+    set({ playing: false, viewKey: null, whatIf: {}, t: Math.min(lastKey(get().data), Math.floor(get().t) + 1) });
   },
-  reset: () => set({ playing: false, t: 0, viewKey: null, whatIf: {} }),
-  lookAt: (key) => {
-    if (get().playing) return;
+  reset: () => (bridge ? bridge.reset() : set({ playing: false, t: 0, viewKey: null, whatIf: {} })),
+  setSpeed: (speed) => (bridge ? bridge.setSpeed(speed) : set({ speed })),
+  lookAt: (step) => {
+    if (bridge) return bridge.lookAt(step);
+    const data = get().data;
+    if (get().playing || data === null) return;
+    // A step of the recording lives in frame k = step / stepsPerFrame (every 8th step was kept).
+    const key = step === null ? null : Math.round(step / data.race.stepsPerFrame);
     set({ viewKey: key === null || key >= Math.round(get().t) ? null : key, whatIf: {} });
   },
 }));
@@ -169,32 +237,7 @@ export const useApp = create<State & Actions>()((set, get) => ({
 // The address hash names the page, as in production (web/src/nav/route.ts).
 window.addEventListener("hashchange", () => useApp.setState({ view: initialView() }));
 
-// ── Derived values ────────────────────────────────────────────────────────────────────────
-
-/** The recorded network data of the selected car, or null (only the featured cars were recorded). */
-export function useRecord(): CarRecord | null {
-  return useApp((s) => s.data?.cars.get(s.car) ?? null);
-}
-
-/** The frame position the views show: the step being looked at, else now. */
-export function useShownT(): number {
-  return useApp((s) => s.viewKey ?? s.t);
-}
-
-/** The selected car's sensors, trace and explanation at the shown moment. */
-export function useDetail(): CarFrame | null {
-  const record = useRecord();
-  const t = useShownT();
-  return record === null ? null : detailAt(record, t);
-}
-
-/** The selected car's pose at the shown moment. */
-export function usePose(): CarPose | null {
-  const race = useApp((s) => s.data?.race ?? null);
-  const car = useApp((s) => s.car);
-  const t = useShownT();
-  return race === null ? null : poseAt(race, t, car);
-}
+// ── Words and numbers shared by the views ─────────────────────────────────────────────────
 
 export const STATUS = [
   { key: "running", label: "Running", kind: "run" },
@@ -236,17 +279,7 @@ export function describeThrottle(v: number): string {
   return "hard braking";
 }
 
-/** How the prototype names a car: its role in the generation. */
-export function carName(data: Recorded, i: number): string {
-  const info = data.race.scenario.population;
-  if (i === info.ghost_car) return `Ghost · gen ${info.ghost_unit} champion`;
-  return `Car ${i + 1}`;
-}
-
-export function carRole(data: Recorded, i: number): string {
-  const info = data.race.scenario.population;
-  if (i === info.ghost_car) return "ghost";
-  if (i === info.champion) return "champion";
-  if (info.elite.includes(i)) return "elite";
-  return "child";
+/** A run id without its time stamp: "20261114-140528-ga-lineage78" → "ga-lineage78". */
+export function shortRun(runId: string): string {
+  return runId.replace(/^\d{8}-\d{6}-/, "");
 }

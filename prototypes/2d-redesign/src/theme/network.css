@@ -411,6 +411,11 @@
   color: var(--text-3);
 }
 
+/* The neuron driver's receipt sits in a wide panel: a wider first column, so a term fits one line. */
+.neuron-panel .insp-row {
+  grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr) 64px;
+}
+
 .insp-sum {
   display: flex;
   align-items: center;

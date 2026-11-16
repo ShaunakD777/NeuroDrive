@@ -1,26 +1,37 @@
-import { STATUS, useApp, usePose } from "../../state/store";
+import { useEffect, useState } from "react";
+
+import type { RunSummary } from "@prod/api/generated";
+import { fetchRuns } from "@prod/api/rest";
+import { type ScenarioRequest, useLive } from "@prod/state/live";
+import { defaultGhost } from "@prod/views/environment/population";
+import { useDrivingKeys } from "@prod/views/environment/useDrivingKeys";
+
+import { POLICY_LABEL, type Policy, type World } from "../../source/model";
+import { useWorld } from "../../source/world";
+import { shortRun, STATUS, useApp } from "../../state/store";
 import { Button, Chip, Field, Segmented, Select } from "../../ui/controls";
+import { SourceWaiting } from "../../ui/SourceWaiting";
 import { Minimap, RaceLegend, TrailStrip } from "./Extras";
 import { Stage } from "./Stage";
 import { Telemetry } from "./Telemetry";
 
 const SPEEDS = [0.5, 1, 2, 4, 8];
+const DEFAULT_SEED = 0;
 
 const zoom = (factor: number) => window.dispatchEvent(new CustomEvent("nd-zoom", { detail: factor }));
 
 /** Play, step, reset and the speed: the controls used most, floating at the top left of the stage. */
-function Transport() {
-  const playing = useApp((s) => s.playing);
-  const speed = useApp((s) => s.speed);
-  const ended = useApp((s) => s.data !== null && s.t >= s.data.race.frames.step.length - 1);
-  const { play, pause, stepOnce, reset, set } = useApp.getState();
+function Transport({ world }: { world: World }) {
+  const { play, pause, stepOnce, reset, setSpeed } = useApp.getState();
+  const { playing, speed, ended } = world;
   return (
     <div className="hudbar" role="toolbar" aria-label="Simulation">
       <Button
         variant="hud"
         icon={playing ? "pause" : "play"}
         onClick={playing ? pause : play}
-        title={playing ? "Pause (Space)" : ended ? "Play again from the start" : "Play (Space)"}
+        title={playing ? "Pause (Space)" : ended ? "The episode has ended: Reset to drive again" : "Play (Space)"}
+        disabled={ended && !playing && world.source === "live"}
         testId="btn-play"
       >
         {playing ? "Pause" : "Play"}
@@ -32,7 +43,7 @@ function Transport() {
         variant="hud"
         label="Speed"
         value={String(speed)}
-        onChange={(id) => set({ speed: Number(id) })}
+        onChange={(id) => setSpeed(Number(id))}
         options={SPEEDS.map((s) => ({ id: String(s), label: `${s}×` }))}
       />
     </div>
@@ -67,24 +78,51 @@ function CameraBar() {
   );
 }
 
-/** The scenario: what is on the track. Fixed in the prototype (one recorded race). */
-function ScenarioBar() {
-  const data = useApp((s) => s.data);
-  if (data === null) return null;
-  const info = data.race.scenario.population;
-  const fixed = "Fixed in the prototype: it replays one recorded race";
+/**
+ * A whole number typed in a small box, sent when the user presses Enter or leaves the box (as
+ * production's IntField: no request per keystroke, out-of-range values clamped).
+ */
+function IntField({ value, min, max, onCommit, disabled, testId, wide }: { value: number; min: number; max: number; onCommit: (n: number) => void; disabled?: boolean; testId?: string; wide?: boolean }) {
+  const [text, setText] = useState(String(value));
+  useEffect(() => setText(String(value)), [value]);
+  const commit = () => {
+    const n = Math.round(Number(text));
+    if (!Number.isFinite(n)) return setText(String(value));
+    const clamped = Math.max(min, Math.min(max, n));
+    setText(String(clamped));
+    if (clamped !== value) onCommit(clamped);
+  };
+  return (
+    <input
+      className={`input${wide ? " input-wide" : ""}`}
+      inputMode="numeric"
+      value={text}
+      disabled={disabled}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          commit();
+          (e.target as HTMLInputElement).blur(); // so the arrow keys drive the car again
+        }
+      }}
+      data-testid={testId}
+    />
+  );
+}
+
+/** The scenario of the recorded race: shown, but fixed (one recorded generation). */
+function RecordedScenarioBar({ world }: { world: World }) {
+  const info = world.scenario.population;
+  const fixed = "Fixed with the recorded source: it replays one race. Switch the top bar to Live for every driver and track.";
+  if (info === null) return null;
   return (
     <div className="scenario">
       <Field label="Track" hint={fixed}>
-        <Select value={data.track.name} options={[{ value: data.track.name, label: data.track.name }]} onChange={() => {}} disabled />
+        <Select value={world.track.name} options={[{ value: world.track.name, label: world.track.name }]} onChange={() => {}} disabled />
       </Field>
       <Field label="Driver" hint={fixed}>
-        <Select
-          value="population"
-          options={[{ value: "population", label: `GA generation · ${info.run.replace(/^\d{8}-\d{6}-/, "")}` }]}
-          onChange={() => {}}
-          disabled
-        />
+        <Select value="population" options={[{ value: "population", label: `GA generation · ${shortRun(info.run)}` }]} onChange={() => {}} disabled />
       </Field>
       <Field label="Generation" hint={fixed}>
         <input className="input" value={info.unit} readOnly disabled />
@@ -101,25 +139,221 @@ function ScenarioBar() {
   );
 }
 
-/** Why the selected car stopped, in words (production: the status banner). */
-function EndBanner() {
-  const pose = usePose();
-  const car = useApp((s) => s.car);
-  if (pose === null || pose.status === 0) return null;
-  const status = STATUS[pose.status];
-  const reason = {
-    crashed: "left the road",
-    finished: "completed both laps",
-    stalled: "made no progress for 3 s",
-    timeout: "ran out of time before finishing 2 laps",
-  }[status.key as "crashed"];
+/** GA runs with at least one saved generation, newest first (the run list is newest first). */
+function useGaRuns(): RunSummary[] {
+  const [runs, setRuns] = useState<RunSummary[]>([]);
+  useEffect(() => {
+    let live = true;
+    fetchRuns()
+      .then((list) => live && setRuns(list.runs.filter((r) => r.method === "ga" && r.checkpoints > 0)))
+      .catch(() => live && setRuns([]));
+    return () => {
+      live = false;
+    };
+  }, []);
+  return runs;
+}
+
+/**
+ * The live scenario: every choice production's Controls offers, in one row. Each change is a
+ * `load_scenario` built by production's own `loadScenario`, which keeps the other settings.
+ */
+function LiveScenarioBar({ world }: { world: World }) {
+  const tracks = useLive((s) => s.tracks);
+  const recording = useLive((s) => s.recording !== null);
+  const loadScenario = useLive((s) => s.loadScenario);
+  const gaRuns = useGaRuns();
+  const { scenario } = world;
+  const race = scenario.population;
+  const replay = scenario.checkpoint;
+  const policy = scenario.policy;
+
+  const policies: { value: Policy; label: string }[] = (["keyboard", "constant", "neuron", "random_networks", "expert"] as Policy[]).map((p) => ({
+    value: p,
+    label: POLICY_LABEL[p],
+  }));
+  if (gaRuns.length > 0 || race !== null) policies.push({ value: "population", label: race ? `GA generation · ${shortRun(race.run)}` : "GA generation (a run of yours)" });
+  if (replay !== null) policies.push({ value: "checkpoint", label: `Checkpoint · ${shortRun(replay.run)} unit ${replay.unit}` });
+
+  const choosePolicy = (next: Policy) => {
+    if (next === "population" && race === null) {
+      const run = gaRuns[0];
+      if (run === undefined) return;
+      const unit = Math.max(1, run.last_unit ?? 1);
+      loadScenario({ policy: "population", population: { run: run.run_id, unit, start: 0, ghost_unit: defaultGhost(unit) } });
+      return;
+    }
+    loadScenario({ policy: next as ScenarioRequest["policy"] });
+  };
+  const raceWith = (changes: Partial<{ run: string; unit: number; start: number; ghost_unit: number | null }>) => {
+    if (race === null) return;
+    const next = { run: race.run, unit: race.unit, start: race.start, ghost_unit: race.ghost_unit, ...changes };
+    loadScenario({ policy: "population", population: next });
+  };
+
   return (
-    <div className="endbanner" data-kind={status.kind} role="status" data-testid="status-banner">
-      <Chip kind={status.kind}>{status.label}</Chip>
-      <span>
-        Car {car + 1} {reason}.
-      </span>
+    <div className="scenario" data-testid="scenario-bar">
+      <Field label="Track" hint={race !== null ? "A GA generation races on the run's own fitness track" : undefined}>
+        <Select
+          value={scenario.track}
+          options={tracks.map((t) => ({ value: t.name, label: t.split === "heldout" ? `${t.name} · held out` : t.name }))}
+          onChange={(name) => loadScenario({ track: name })}
+          disabled={race !== null || recording}
+          label="Track"
+        />
+      </Field>
+      <Field label="Driver">
+        <Select value={policy} options={policies} onChange={choosePolicy} disabled={recording} label="Driver" />
+      </Field>
+
+      {race !== null ? (
+        <>
+          <Field label="Run">
+            <Select
+              value={race.run}
+              options={(gaRuns.some((r) => r.run_id === race.run) ? gaRuns : [{ run_id: race.run } as RunSummary, ...gaRuns]).map((r) => ({
+                value: r.run_id,
+                label: shortRun(r.run_id),
+              }))}
+              onChange={(run) => {
+                const unit = Math.max(1, gaRuns.find((r) => r.run_id === run)?.last_unit ?? 1);
+                raceWith({ run, unit, start: 0, ghost_unit: defaultGhost(unit) });
+              }}
+              label="Run"
+            />
+          </Field>
+          <Field label="Generation">
+            <IntField value={race.unit} min={1} max={race.last_unit} onCommit={(unit) => raceWith({ unit, ghost_unit: race.ghost_unit === null ? null : defaultGhost(unit) })} testId="race-generation" />
+            <span className="muted">of {race.last_unit}</span>
+          </Field>
+          <Field label="Start">
+            <IntField value={race.start + 1} min={1} max={race.n_starts} onCommit={(n) => raceWith({ start: n - 1 })} testId="race-start" />
+            <span className="muted">of {race.n_starts}</span>
+          </Field>
+          <Field label="Ghost gen" hint="An earlier generation's champion, see-through, racing alongside; 0 for none">
+            <IntField
+              value={race.ghost_unit ?? 0}
+              min={0}
+              max={Math.max(0, race.unit - 1)}
+              onCommit={(n) => raceWith({ ghost_unit: n === 0 ? null : n })}
+              testId="race-ghost"
+            />
+          </Field>
+        </>
+      ) : replay !== null ? (
+        <span className="muted">The exam&apos;s 10 starts; pick another checkpoint in Experiment → Timeline.</span>
+      ) : (
+        <>
+          {policy !== "keyboard" && policy !== "neuron" && (
+            <Field label="Cars">
+              <IntField value={scenario.n_cars} min={1} max={100} onCommit={(n) => loadScenario({ n_cars: n })} testId="input-cars" />
+            </Field>
+          )}
+          <label className="scenario-check">
+            <input
+              type="checkbox"
+              checked={scenario.seed !== null}
+              onChange={(e) => loadScenario({ seed: e.target.checked ? DEFAULT_SEED : null })}
+              data-testid="check-random-start"
+            />
+            Random start
+          </label>
+          {scenario.seed !== null && (
+            <Field label="Seed">
+              <IntField value={scenario.seed} min={0} max={999999} onCommit={(n) => loadScenario({ seed: n })} testId="input-seed" wide />
+            </Field>
+          )}
+        </>
+      )}
     </div>
+  );
+}
+
+/** Drive the car with the arrow keys or W A S D (production's own key handling). */
+function KeyboardDriving() {
+  useDrivingKeys();
+  return null;
+}
+
+/**
+ * Recording keyboard demonstrations (task 6.1b): a second floating bar under the transport,
+ * shown for the keyboard driver only (PRODUCTION_MAPPING.md §3.2).
+ */
+function RecordBar() {
+  const recording = useLive((s) => s.recording);
+  const saved = useLive((s) => s.savedDataset);
+  const send = useLive((s) => s.send);
+  const [tag, setTag] = useState("");
+  const cleanTag = tag.trim().replace(/[^A-Za-z0-9_-]+/g, "-");
+  return (
+    <div className="hudbar recbar" role="toolbar" aria-label="Record demonstrations">
+      {recording === null ? (
+        <>
+          <Button variant="hud" icon="dot" onClick={() => send({ type: "record_start" })} title="Record your driving as a demonstration dataset" testId="btn-record">
+            Record
+          </Button>
+          {saved !== null && (
+            <span className="recbar-note" data-testid="record-saved">
+              Saved {saved.dataset_id} · {saved.frames} frames
+            </span>
+          )}
+        </>
+      ) : (
+        <>
+          <span className="rec-badge" data-testid="rec-badge">
+            REC <span className="num">{recording.frames}</span> frames · {recording.episodes} drive{recording.episodes === 1 ? "" : "s"}
+          </span>
+          <input className="hud-input" placeholder="tag" value={tag} onChange={(e) => setTag(e.target.value)} aria-label="Dataset tag" data-testid="record-tag" />
+          <Button
+            variant="hud"
+            icon="check"
+            disabled={cleanTag === "" || recording.frames === 0}
+            onClick={() => send({ type: "record_stop", save: true, tag: cleanTag })}
+            title={cleanTag === "" ? "Give the dataset a tag first" : `Save as …-keyboard-${cleanTag}`}
+            testId="btn-record-save"
+          >
+            Save
+          </Button>
+          <Button variant="hud" icon="cross" onClick={() => send({ type: "record_stop", save: false, tag: "" })} title="Forget this recording" testId="btn-record-discard">
+            Discard
+          </Button>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Why the selected car stopped, in words (production: the status banner); or the server's error. */
+function Banners({ world }: { world: World }) {
+  const error = useLive((s) => s.error);
+  const pose = world.shown?.pose;
+  const status = pose === undefined ? null : STATUS[pose.status];
+  const reason =
+    status === null || status.key === "running"
+      ? null
+      : {
+          crashed: "left the road",
+          finished: `completed ${world.scenario.target_laps === 1 ? "its lap" : `all ${world.scenario.target_laps} laps`}`,
+          stalled: "made no progress for 3 s",
+          timeout: `ran out of time before finishing ${world.scenario.target_laps} laps`,
+        }[status.key];
+  return (
+    <>
+      {world.source === "live" && error !== null && (
+        <div className="endbanner" data-kind="bad" role="alert" data-testid="server-error">
+          <Chip kind="bad">Server</Chip>
+          <span>{error}</span>
+        </div>
+      )}
+      {status !== null && reason !== null && (
+        <div className="endbanner" data-kind={status.kind} role="status" data-testid="status-banner">
+          <Chip kind={status.kind}>{status.label}</Chip>
+          <span>
+            {world.scenario.policy === "keyboard" ? "You" : `Car ${world.selected + 1}`} {reason}.
+          </span>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -129,14 +363,15 @@ function EndBanner() {
  * following the selected car, with a one-line read-out.
  */
 export function EnvironmentView({ compact = false }: { compact?: boolean }) {
-  const pose = usePose();
-  const ready = useApp((s) => s.data !== null);
+  const world = useWorld();
+  const keyboard = world?.source === "live" && world.scenario.policy === "keyboard";
 
   if (compact) {
+    const pose = world?.shown?.pose ?? null;
     const status = STATUS[pose?.status ?? 0];
     return (
       <div className="env-compact" data-testid="environment-compact">
-        {ready ? <Stage compact /> : <div className="skeleton" style={{ height: "100%" }} />}
+        {world !== null ? <Stage compact /> : <SourceWaiting what="the track" />}
         {pose !== null && (
           <div className="env-compact-hud">
             <span className="num">{(pose.v * 3.6).toFixed(0)} km/h</span>
@@ -149,30 +384,38 @@ export function EnvironmentView({ compact = false }: { compact?: boolean }) {
 
   return (
     <section className="view env-view" data-testid="environment-view">
+      {keyboard && <KeyboardDriving />}
       <header className="view-head">
         <div className="view-title">
           <h2>Environment</h2>
           <span className="view-question">What does the car do?</span>
         </div>
-        <ScenarioBar />
+        {world !== null && (world.source === "live" ? <LiveScenarioBar world={world} /> : <RecordedScenarioBar world={world} />)}
       </header>
       <div className="env-body">
         <div className="stage">
-          {ready ? <Stage compact={false} /> : <div className="skeleton" style={{ position: "absolute", inset: 0 }} />}
-          <div className="stage-top">
-            <Transport />
-            <div className="stage-top-right">
-              <CameraBar />
-              <Minimap />
-            </div>
-          </div>
-          <div className="stage-bottom">
-            <EndBanner />
-            <RaceLegend />
-            <Telemetry />
-          </div>
+          {world !== null ? <Stage compact={false} /> : <SourceWaiting what="a track and its first frame" />}
+          {world !== null && (
+            <>
+              <div className="stage-top">
+                <div className="stage-top-left">
+                  <Transport world={world} />
+                  {keyboard && <RecordBar />}
+                </div>
+                <div className="stage-top-right">
+                  <CameraBar />
+                  <Minimap />
+                </div>
+              </div>
+              <div className="stage-bottom">
+                <Banners world={world} />
+                <RaceLegend />
+                <Telemetry />
+              </div>
+            </>
+          )}
         </div>
-        <TrailStrip />
+        {world !== null && <TrailStrip />}
       </div>
     </section>
   );

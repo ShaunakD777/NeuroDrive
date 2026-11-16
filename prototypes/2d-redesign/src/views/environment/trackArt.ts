@@ -4,7 +4,7 @@
 // edge loops. Kerbs, sand and verges sit OUTSIDE those loops, so the picture never suggests the
 // car has room it does not have. The white edge line is drawn exactly on the edge.
 
-import type { Track } from "../../mock/types";
+import type { Track } from "../../source/model";
 
 export interface Quad {
   points: [number, number][];

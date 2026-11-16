@@ -25,7 +25,7 @@ async function open(width = 1440, height = 900) {
   page = await browser.newPage({ viewport: { width, height } });
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
   page.on("pageerror", (e) => errors.push(String(e)));
-  await page.goto(`${BASE}/#/environment`).catch(() => {
+  await page.goto(`${BASE}/?source=recorded#/environment`).catch(() => {
     console.error(`Cannot reach ${BASE}. Start the prototype first: npm run dev`);
     process.exit(1);
   });

@@ -1,7 +1,6 @@
 import { memo, useMemo, useState } from "react";
 
-import { contributionsOf } from "../../mock/mockServer";
-import type { CarFrame, Mutation, Network } from "../../mock/types";
+import type { Diff, Mutation, Network, NetworkDetail } from "../../source/model";
 import {
   describeSteer,
   describeThrottle,
@@ -14,7 +13,7 @@ import {
   type LineMode,
   type NeuronRef,
 } from "../../state/store";
-import { collectEdges, edgePath, FRAME, layoutNodes, NODE_R, nodeName, OUTPUT_R, type Point, strokeFor, strongPaths } from "./encode";
+import { collectEdges, edgePath, FRAME, layoutNodes, NODE_R, nodeName, OUTPUT_R, type Point, receiptPaths, strokeFor, strongPaths } from "./encode";
 
 type Focus = { kind: "node"; layer: number; index: number } | { kind: "edge"; layer: number; from: number; to: number } | null;
 
@@ -27,6 +26,7 @@ interface EdgesProps {
   mode: LineMode;
   flow: number[][][] | null;
   mutation: Mutation | null;
+  diff: Diff | null;
   focus: Focus;
   selected: Focus;
   paths: Set<string> | null;
@@ -38,7 +38,7 @@ interface EdgesProps {
  * a hair-thin weight can still be hovered and clicked. Related lines keep their strength, the
  * rest fade back: with nothing in focus, every line shows.
  */
-const Edges = memo(function Edges({ network, nodes, mode, flow, mutation, focus, selected, paths, onHover }: EdgesProps) {
+const Edges = memo(function Edges({ network, nodes, mode, flow, mutation, diff, focus, selected, paths, onHover }: EdgesProps) {
   const toggleConnection = useApp((s) => s.toggleConnection);
   const edges = useMemo(() => collectEdges(network), [network]);
   const layers = network.layer_sizes.length;
@@ -53,7 +53,7 @@ const Edges = memo(function Edges({ network, nodes, mode, flow, mutation, focus,
         const a = nodes[e.layer][e.from];
         const b = nodes[e.layer + 1][e.to];
         const key = `${e.layer}-${e.from}-${e.to}`;
-        const stroke = strokeFor(mode, e, flow, flowMax, mutation);
+        const stroke = strokeFor(mode, e, flow, flowMax, mutation, diff);
         const isSelected = sameEdge(selected, e);
         const related =
           focus === null
@@ -100,11 +100,16 @@ export function Diagram({
   network,
   frame,
   mutation,
+  diff,
+  flow,
   mode,
 }: {
   network: Network;
-  frame: CarFrame;
+  frame: NetworkDetail;
   mutation: Mutation | null;
+  diff: Diff | null;
+  /** Every connection's weight × value, or null when the source does not send it (live). */
+  flow: number[][][] | null;
   mode: LineMode;
 }) {
   const [hover, setHover] = useState<Focus>(null);
@@ -126,12 +131,14 @@ export function Diagram({
   const peeked: Focus = peek === null ? null : { kind: "node", ...peek };
   const focus = hover ?? peeked ?? selected;
 
-  // What every connection carries now. Needed for "Flow" and for the strongest paths to an output.
-  const flow = useMemo(() => contributionsOf(network, trace.activations), [network, trace]);
-  const paths = useMemo(
-    () => (output === null || hover !== null || peek !== null ? null : strongPaths(flow, output === "steer" ? 0 : 1)),
-    [flow, output, hover, peek],
-  );
+  // The strongest routes to the selected output: back to the inputs when every layer's
+  // contributions are known (recorded stand-in), else one layer back from Python's receipt.
+  const receipts = frame.explain.receipts;
+  const paths = useMemo(() => {
+    if (output === null || hover !== null || peek !== null) return null;
+    const m = output === "steer" ? 0 : 1;
+    return flow !== null ? strongPaths(flow, m) : receiptPaths(receipts, m, layers - 2);
+  }, [flow, receipts, output, hover, peek, layers]);
 
   const onHover = (f: Focus, event?: React.MouseEvent) => {
     setHover(f);
@@ -161,8 +168,12 @@ export function Diagram({
     const rows = [
       ["weight w", signed(w, 3)],
       ["source value a", signed(a, 3)],
-      ["carries w × a", signed(flow[f.layer][f.to][f.from], 3)],
     ];
+    // What the connection carries now, only where a source computed it: every layer from the
+    // recorded stand-in, the last layer from Python's receipt.
+    const carries = flow?.[f.layer]?.[f.to]?.[f.from] ?? (f.layer === layers - 2 ? receipts[f.to]?.contributions[f.from] : undefined);
+    if (carries !== undefined) rows.push(["carries w × a", signed(carries, 3)]);
+    if (mode === "change" && diff !== null) rows.push([`change since unit ${diff.from_unit}`, signed(diff.weight_delta[f.layer]?.[f.to]?.[f.from] ?? 0, 4)]);
     if (mode === "mutation" && mutation !== null) {
       const mutated = mutation.weight_mutated[f.layer][f.to][f.from];
       const other = mutation.weight_from_other[f.layer][f.to][f.from];
@@ -219,6 +230,7 @@ export function Diagram({
           mode={mode}
           flow={flow}
           mutation={mutation}
+          diff={diff}
           focus={focus}
           selected={selected}
           paths={paths}

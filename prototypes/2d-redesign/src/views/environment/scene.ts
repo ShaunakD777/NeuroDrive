@@ -10,8 +10,7 @@
 // Rule of the scene: decoration never sits above data. Everything a car or a ray can touch is
 // inside the two white edge lines.
 
-import type { CarPose } from "../../mock/mockServer";
-import type { Track } from "../../mock/types";
+import type { CarPose, Track } from "../../source/model";
 import { type Camera, type Size, worldToScreen } from "./camera";
 import type { TrackArt } from "./trackArt";
 
@@ -31,6 +30,10 @@ export interface WorldTheme {
   board: string;
   boardInk: string;
   rank: string[];
+  /** Body colours for drivers other than a GA generation (DESIGN_SPEC §7.2). */
+  livery: string[];
+  solo: string;
+  plain: string;
   elite: string;
   rayClear: string;
   rayNear: string;
@@ -68,6 +71,9 @@ export function readWorldTheme(el: Element): WorldTheme {
     board: get("--w-board"),
     boardInk: get("--w-board-ink"),
     rank: [1, 2, 3, 4, 5].map((k) => get(`--car-rank-${k}`)),
+    livery: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((k) => get(`--car-livery-${k}`)),
+    solo: get("--car-solo"),
+    plain: get("--car-plain"),
     elite: get("--car-elite"),
     rayClear: get("--ray-clear"),
     rayNear: get("--ray-near"),
@@ -631,9 +637,10 @@ function drawRays(ctx: CanvasRenderingContext2D, theme: WorldTheme, scene: Scene
   const rays = scene.rays;
   if (rays === null) return;
   const [sx, sy] = worldToScreen(scene.camera, scene.size, rays.x, rays.y);
-  const ends = rays.distances.map((d, k) => {
+  const ends = rays.distances.map((d, k): [number, number] => {
     const angle = rays.psi + rays.angles[k];
-    return worldToScreen(scene.camera, scene.size, rays.x + Math.cos(angle) * d, rays.y + Math.sin(angle) * d);
+    const [x, y] = worldToScreen(scene.camera, scene.size, rays.x + Math.cos(angle) * d, rays.y + Math.sin(angle) * d);
+    return [x, y];
   });
 
   // The field of view: a faint fan through the ray ends.
@@ -689,20 +696,62 @@ function drawRays(ctx: CanvasRenderingContext2D, theme: WorldTheme, scene: Scene
       ctx.fillStyle = colour;
       ctx.fill();
     }
-    if (!scene.compact || emphasised) {
-      const label = s !== undefined ? `s ${s >= 0 ? "+" : "−"}${Math.abs(s).toFixed(2)}` : hit ? `${distance.toFixed(1)} m` : `≥${rays.range.toFixed(0)} m`;
-      // Push the label outward along the ray, so labels of neighbouring rays do not stack.
-      const len = Math.hypot(ex - sx, ey - sy) || 1;
-      const ux = (ex - sx) / len;
-      const uy = (ey - sy) / len;
-      ctx.font = "500 11px 'IBM Plex Mono', ui-monospace, monospace";
-      const w = ctx.measureText(label).width + 10;
-      const lx = ex + ux * 12 + (ux < 0 ? -w : 0) * (Math.abs(ux) > 0.35 ? 1 : 0.5);
-      const ly = ey + uy * 13;
-      pill(ctx, label, lx, ly, { bg: theme.hudBg, fg: hit || s !== undefined ? theme.hudText : "#a3acba" });
-    }
     ctx.globalAlpha = 1;
   });
+  drawRayLabels(ctx, theme, scene, rays, sx, sy, ends);
+}
+
+/**
+ * The distance (or sensitivity) pills at the ray ends. They are placed before any is drawn:
+ * emphasised rays first, then from the centre ray outwards. A pill that would overlap one already
+ * placed is pushed further out along its ray, and left out if it still overlaps; the telemetry
+ * strip always shows every distance, so nothing is lost.
+ */
+function drawRayLabels(
+  ctx: CanvasRenderingContext2D,
+  theme: WorldTheme,
+  scene: Scene,
+  rays: SceneRays,
+  sx: number,
+  sy: number,
+  ends: [number, number][],
+): void {
+  const H = 17;
+  const placed: { x: number; y: number; w: number }[] = [];
+  const overlaps = (x: number, y: number, w: number) =>
+    placed.some((b) => x < b.x + b.w + 2 && b.x < x + w + 2 && Math.abs(y - b.y) < H + 2);
+  const centre = (rays.distances.length - 1) / 2;
+  const order = rays.distances
+    .map((_, k) => k)
+    .sort((a, b) => Number(rays.highlight.includes(b)) - Number(rays.highlight.includes(a)) || Math.abs(a - centre) - Math.abs(b - centre));
+  ctx.font = "500 11px 'IBM Plex Mono', ui-monospace, monospace";
+  for (const k of order) {
+    const emphasised = rays.highlight.includes(k);
+    if (scene.compact && !emphasised) continue;
+    const distance = rays.distances[k];
+    const hit = distance < rays.range - 1e-6;
+    const s = rays.sensitivity?.[k];
+    const label = s !== undefined ? `s ${s >= 0 ? "+" : "−"}${Math.abs(s).toFixed(2)}` : hit ? `${distance.toFixed(1)} m` : `≥${rays.range.toFixed(0)} m`;
+    const [ex, ey] = ends[k];
+    const len = Math.hypot(ex - sx, ey - sy) || 1;
+    const ux = (ex - sx) / len;
+    const uy = (ey - sy) / len;
+    const w = Math.ceil(ctx.measureText(label).width) + 10;
+    let spot: { x: number; y: number } | null = null;
+    for (const push of [12, 26, 40]) {
+      const x = ex + ux * push + (ux < 0 ? -w : 0) * (Math.abs(ux) > 0.35 ? 1 : 0.5);
+      const y = ey + uy * (push + 1);
+      if (!overlaps(x, y, w)) {
+        spot = { x, y };
+        break;
+      }
+    }
+    if (spot === null) continue;
+    placed.push({ ...spot, w });
+    ctx.globalAlpha = rays.highlight.length > 0 && !emphasised ? 0.28 : 1;
+    pill(ctx, label, spot.x, spot.y, { bg: theme.hudBg, fg: hit || s !== undefined ? theme.hudText : "#a3acba" });
+  }
+  ctx.globalAlpha = 1;
 }
 
 function drawGhostPaths(ctx: CanvasRenderingContext2D, theme: WorldTheme, scene: Scene): void {

@@ -1,14 +1,26 @@
 import { useMemo, useRef } from "react";
 
-import { poseAt } from "../../mock/mockServer";
-import { carName, carRole, num, STATUS, useApp } from "../../state/store";
+import { carName, carRole, type Track } from "../../source/model";
+import { useWorld } from "../../source/world";
+import { num, STATUS, useApp } from "../../state/store";
 import { Button } from "../../ui/controls";
 import { Icon } from "../../ui/Icon";
-import { rankBand } from "./Stage";
+import { bodyCss, bodyOf } from "./cars";
 
-/** A whole-number version of the playback position: re-renders once per recorded frame, not per display frame. */
-function useKey(): number {
-  return useApp((s) => Math.floor(s.t));
+/** The minimap's frame for a track: computed once per outline. */
+function useTrackBox(track: Track | null) {
+  return useMemo(() => {
+    if (track === null) return null;
+    const pts = [...track.left, ...track.right];
+    const xs = pts.map((p) => p[0]);
+    const ys = pts.map((p) => p[1]);
+    const minX = Math.min(...xs);
+    const maxY = Math.max(...ys);
+    const w = Math.max(...xs) - minX;
+    const h = maxY - Math.min(...ys);
+    const path = (loop: number[][]) => `M${loop.map(([x, y]) => `${(x - minX).toFixed(1)} ${(maxY - y).toFixed(1)}`).join("L")}Z`;
+    return { minX, maxY, w, h, road: path(track.centerline) };
+  }, [track]);
 }
 
 /**
@@ -17,50 +29,33 @@ function useKey(): number {
  * that car.
  */
 export function Minimap() {
-  const data = useApp((s) => s.data);
-  const car = useApp((s) => s.car);
+  const world = useWorld();
   const selectCar = useApp((s) => s.selectCar);
-  const key = useKey();
-  const box = useMemo(() => {
-    if (data === null) return null;
-    const pts = [...data.track.left, ...data.track.right];
-    const xs = pts.map((p) => p[0]);
-    const ys = pts.map((p) => p[1]);
-    const minX = Math.min(...xs);
-    const maxY = Math.max(...ys);
-    const w = Math.max(...xs) - minX;
-    const h = maxY - Math.min(...ys);
-    const path = (loop: number[][]) => `M${loop.map(([x, y]) => `${(x - minX).toFixed(1)} ${(maxY - y).toFixed(1)}`).join("L")}Z`;
-    return { minX, maxY, w, h, road: path(data.track.centerline) };
-  }, [data]);
-  if (data === null || box === null) return null;
-  const info = data.race.scenario.population;
+  const box = useTrackBox(world?.track ?? null);
+  if (world === null || box === null) return null;
+  const { track, scenario, cars, selected } = world;
   const pad = 14;
+  const me = cars[selected];
   return (
     <div className="minimap" data-testid="minimap">
       <svg viewBox={`${-pad} ${-pad} ${box.w + 2 * pad} ${box.h + 2 * pad}`} role="img" aria-label="Map of the whole track">
-        <path d={box.road} className="minimap-road" strokeWidth={data.track.width} />
+        <path d={box.road} className="minimap-road" strokeWidth={track.width} />
         <path d={box.road} className="minimap-centre" />
-        {Array.from({ length: data.race.scenario.n_cars }, (_, i) => {
-          if (i === car) return null;
-          const p = poseAt(data.race, key, i);
-          return (
+        {cars.map((p, i) =>
+          i === selected ? null : (
             <circle
               key={i}
               cx={p.x - box.minX}
               cy={box.maxY - p.y}
               r={5}
               className="minimap-car"
-              style={{ fill: i < info.size ? `var(--car-rank-${rankBand(info.ranks[i], info.size) + 1})` : "#c9ccd2" }}
+              style={{ fill: bodyCss(bodyOf(scenario, i)) }}
               opacity={p.status === 0 ? 1 : 0.4}
               onClick={() => selectCar(i)}
             />
-          );
-        })}
-        {(() => {
-          const p = poseAt(data.race, key, car);
-          return <circle cx={p.x - box.minX} cy={box.maxY - p.y} r={9} className="minimap-selected" />;
-        })()}
+          ),
+        )}
+        {me !== undefined && <circle cx={me.x - box.minX} cy={box.maxY - me.y} r={9} className="minimap-selected" />}
       </svg>
     </div>
   );
@@ -68,32 +63,45 @@ export function Minimap() {
 
 /** Words for the colours on the track. One row; it never covers the road in whole-track view. */
 export function RaceLegend() {
-  const data = useApp((s) => s.data);
+  const world = useWorld();
   const output = useApp((s) => s.output);
-  const whatIf = useApp((s) => Object.keys(s.whatIf).length > 0);
-  if (data === null) return null;
-  const info = data.race.scenario.population;
+  if (world === null) return null;
+  const info = world.scenario.population;
+  const many = info === null && world.scenario.n_cars > 10;
+  const rays = output !== null && world.shown?.explain != null;
+  const ghost = world.whatIf?.ghost != null;
+  // One car on its own, nothing selected: the legend would be an empty pill.
+  if (info === null && !many && world.cars.length <= 1 && !rays && !ghost) return null;
   return (
     <div className="stage-legend" data-testid="race-legend">
-      <span className="stage-legend-group">
-        <b>Rank</b>
-        <span className="rank-ramp" aria-hidden="true">
-          {[1, 2, 3, 4, 5].map((k) => (
-            <i key={k} style={{ background: `var(--car-rank-${k})` }} />
-          ))}
+      {info !== null && (
+        <>
+          <span className="stage-legend-group">
+            <b>Rank</b>
+            <span className="rank-ramp" aria-hidden="true">
+              {[1, 2, 3, 4, 5].map((k) => (
+                <i key={k} style={{ background: `var(--car-rank-${k})` }} />
+              ))}
+            </span>
+            best fifth → worst
+          </span>
+          <span className="stage-legend-group">
+            <i className="legend-ring" aria-hidden="true" /> elite
+          </span>
+          {info.ghost_unit !== null && (
+            <span className="stage-legend-group">
+              <i className="legend-ghost" aria-hidden="true" /> ghost, gen {info.ghost_unit} champion
+            </span>
+          )}
+        </>
+      )}
+      {many && <span className="stage-legend-group">{world.scenario.n_cars} cars: the selected one has the ring and the name tag</span>}
+      {world.cars.length > 1 && (
+        <span className="stage-legend-group">
+          <i className="legend-faded" aria-hidden="true" /> stopped
         </span>
-        best fifth → worst
-      </span>
-      <span className="stage-legend-group">
-        <i className="legend-ring" aria-hidden="true" /> elite
-      </span>
-      <span className="stage-legend-group">
-        <i className="legend-ghost" aria-hidden="true" /> ghost, gen {info.ghost_unit} champion
-      </span>
-      <span className="stage-legend-group">
-        <i className="legend-faded" aria-hidden="true" /> stopped
-      </span>
-      {output !== null && (
+      )}
+      {rays && (
         <span className="stage-legend-group" data-testid="ray-legend">
           <i className="legend-line" style={{ background: "var(--track-pos)" }} aria-hidden="true" />
           longer ray → {output === "steer" ? "steer right" : "accelerate"}
@@ -101,9 +109,10 @@ export function RaceLegend() {
           {output === "steer" ? "steer left" : "brake"} · thicker = stronger
         </span>
       )}
-      {whatIf && (
+      {ghost && (
         <span className="stage-legend-group" data-testid="ghost-legend">
-          <i className="legend-line" style={{ background: "var(--track-select)" }} aria-hidden="true" /> what-if action held 2 s
+          <i className="legend-line" style={{ background: "var(--track-select)" }} aria-hidden="true" /> what-if action held{" "}
+          {world.source === "live" ? "2 s, by Python's physics" : "2 s"}
           <i className="legend-dash" aria-hidden="true" /> real action
         </span>
       )}
@@ -112,56 +121,67 @@ export function RaceLegend() {
 }
 
 /**
+ * One row of the strip as two filled areas, above and below the zero line: the positive part of
+ * the signal (max(v, 0)) and the negative part (min(v, 0)). Two paths whatever the number of
+ * remembered steps, so 1,800 live steps cost the same as 225 recorded frames.
+ */
+function areaPaths(values: number[], xs: number[], mid: number, half: number, top: number): { pos: string; neg: string } {
+  if (values.length === 0) return { pos: "", neg: "" };
+  const y = (v: number) => (mid - (v / top) * half).toFixed(1);
+  const x = (i: number) => xs[i].toFixed(1);
+  let pos = `M${x(0)} ${mid}`;
+  let neg = pos;
+  values.forEach((v, i) => {
+    pos += `L${x(i)} ${y(Math.max(0, v))}`;
+    neg += `L${x(i)} ${y(Math.min(0, v))}`;
+  });
+  const end = `L${x(values.length - 1)} ${mid}Z`;
+  return { pos: pos + end, neg: neg + end };
+}
+
+/**
  * The look-back timeline (production: Trail.tsx, a bare slider). Here the slider sits on what it
  * scrubs: the car's steer and throttle over the remembered 60 s, so interesting moments (a hard
  * brake, a steering reversal) can be seen before they are looked at.
  */
 export function TrailStrip() {
-  const data = useApp((s) => s.data);
-  const car = useApp((s) => s.car);
-  const playing = useApp((s) => s.playing);
-  const viewKey = useApp((s) => s.viewKey);
+  const world = useWorld();
   const output = useApp((s) => s.output);
   const lookAt = useApp((s) => s.lookAt);
-  const key = useKey();
   const stripRef = useRef<SVGSVGElement>(null);
-  if (data === null) return null;
-  const { race } = data;
-  const secondsPerFrame = race.stepsPerFrame * race.scenario.dt;
-  const back = Math.round(race.scenario.trail_seconds / secondsPerFrame);
-  const first = Math.max(0, key - back);
-  const count = key - first;
+  if (world === null) return null;
+  const trail = world.trail;
+  const steps = trail?.steps ?? [];
+  const first = steps[0] ?? world.step;
+  const last = world.step;
+  const span = Math.max(1, last - first);
   const W = 1000;
   const H = 56;
-  const x = (k: number) => (count === 0 ? W : ((k - first) / count) * W);
-
-  // One thin bar per remembered frame: height = size, colour = sign. Each row is scaled to its
-  // own largest value in the window (printed beside the row), so small steering still shows.
-  const peak = (column: number[][]) => {
-    let m = 0.1;
-    for (let k = first; k <= key; k++) m = Math.max(m, Math.abs(column[k][car]));
-    return m;
-  };
-  const bars = (column: number[][], mid: number, half: number, top: number) => {
-    const out = [];
-    const w = Math.max(1, W / Math.max(1, count + 1));
-    for (let k = first; k <= key; k++) {
-      const v = column[k][car];
-      const h = (Math.abs(v) / top) * half;
-      out.push(<rect key={k} x={x(k) - w / 2} y={v >= 0 ? mid - h : mid} width={w} height={h} className={v >= 0 ? "ts-pos" : "ts-neg"} />);
-    }
-    return out;
-  };
-  const steerTop = peak(race.frames.steer);
-  const throttleTop = peak(race.frames.throttle);
-  const shown = viewKey ?? key;
-  const ago = (key - shown) * secondsPerFrame;
+  const x = (s: number) => ((s - first) / span) * W;
+  const xs = steps.map(x);
+  const steer = trail?.action.map((a) => a[0] ?? 0) ?? [];
+  const throttle = trail?.action.map((a) => a[1] ?? 0) ?? [];
+  // Each row is scaled to its own largest value in the window (printed beside the row), so
+  // small steering still shows.
+  const peak = (vs: number[]) => vs.reduce((m, v) => Math.max(m, Math.abs(v)), 0.1);
+  const steerTop = peak(steer);
+  const throttleTop = peak(throttle);
+  const s = areaPaths(steer, xs, 14, 12, steerTop);
+  const th = areaPaths(throttle, xs, 42, 12, throttleTop);
+  const shown = world.lookStep ?? last;
+  const dt = world.scenario.dt;
+  const ago = (last - shown) * dt;
+  const playing = world.playing;
 
   const pick = (event: React.PointerEvent<SVGSVGElement>) => {
-    if (playing || count === 0) return;
+    if (playing || steps.length === 0) return;
     const rect = stripRef.current!.getBoundingClientRect();
     const u = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
-    lookAt(first + Math.round(u * count));
+    const wanted = first + u * span;
+    // Snap to a remembered step: the source can only show steps it remembers.
+    let best = steps[0];
+    for (const step of steps) if (Math.abs(step - wanted) < Math.abs(best - wanted)) best = step;
+    lookAt(best >= last ? null : best);
   };
 
   return (
@@ -169,8 +189,8 @@ export function TrailStrip() {
       <div className="trailstrip-side">
         <span className="eyebrow">Look back</span>
         <span className="trailstrip-now num">
-          {viewKey === null ? "now" : `−${ago.toFixed(1)} s`}
-          <small>step {race.frames.step[shown]}</small>
+          {world.lookStep === null ? "now" : `−${ago.toFixed(1)} s`}
+          <small>step {shown}</small>
         </span>
       </div>
       <div className="trailstrip-chart">
@@ -186,8 +206,14 @@ export function TrailStrip() {
         >
           <line x1={0} x2={W} y1={14} y2={14} className="trailstrip-zero" />
           <line x1={0} x2={W} y1={42} y2={42} className="trailstrip-zero" />
-          <g className={`trailstrip-area${output === "throttle" ? " dim" : ""}`}>{bars(race.frames.steer, 14, 12, steerTop)}</g>
-          <g className={`trailstrip-area${output === "steer" ? " dim" : ""}`}>{bars(race.frames.throttle, 42, 12, throttleTop)}</g>
+          <g className={`trailstrip-area${output === "throttle" ? " dim" : ""}`}>
+            <path d={s.pos} className="ts-pos" />
+            <path d={s.neg} className="ts-neg" />
+          </g>
+          <g className={`trailstrip-area${output === "steer" ? " dim" : ""}`}>
+            <path d={th.pos} className="ts-pos" />
+            <path d={th.neg} className="ts-neg" />
+          </g>
           <line x1={x(shown)} x2={x(shown)} y1={0} y2={H} className="trailstrip-cursor" vectorEffect="non-scaling-stroke" />
         </svg>
         <span className="trailstrip-label" style={{ top: 2 }}>
@@ -197,14 +223,14 @@ export function TrailStrip() {
           throttle ±{throttleTop.toFixed(2)}
         </span>
         <span className="trailstrip-scale num">
-          <span>−{(count * secondsPerFrame).toFixed(0)} s</span>
+          <span>−{(span * dt).toFixed(0)} s</span>
           <span>now</span>
         </span>
       </div>
       <div className="trailstrip-side trailstrip-end">
         {playing ? (
           <span className="trailstrip-hint">Pause to look back at an earlier decision.</span>
-        ) : viewKey === null ? (
+        ) : world.lookStep === null ? (
           <span className="trailstrip-hint">Drag here, or click a point of the trail on the track.</span>
         ) : (
           <Button icon="right" onClick={() => lookAt(null)} testId="back-to-now">
@@ -219,22 +245,18 @@ export function TrailStrip() {
 const STATUS_ICON = ["", "cross", "flag", "stall", "clock"] as const;
 
 /**
- * Standings: every car of the generation in the order they are on the road right now, with the
- * rank the GA gave it (the colour band), how far it is, and its fitness F. A click selects the
- * car in every view.
+ * Standings: every car in the order they are on the road right now. In a GA race each row also
+ * has the rank the GA gave it (the colour band) and its fitness F; for other drivers, its speed.
+ * A click selects the car in every view.
  */
 export function Standings() {
-  const data = useApp((s) => s.data);
-  const car = useApp((s) => s.car);
+  const world = useWorld();
   const selectCar = useApp((s) => s.selectCar);
-  const key = useKey();
-  if (data === null) return null;
-  const { race, track } = data;
-  const info = race.scenario.population;
-  const total = race.scenario.target_laps * track.length;
-  const rows = Array.from({ length: race.scenario.n_cars }, (_, i) => ({ i, pose: poseAt(race, key, i) })).sort(
-    (a, b) => b.pose.progress - a.pose.progress,
-  );
+  if (world === null) return <div className="skeleton" style={{ height: 240, margin: 12 }} />;
+  const { scenario, track, cars, selected } = world;
+  const info = scenario.population;
+  const total = scenario.target_laps * track.length;
+  const rows = cars.map((pose, i) => ({ i, pose })).sort((a, b) => b.pose.progress - a.pose.progress);
   const counts = [0, 0, 0, 0, 0];
   rows.forEach((r) => (counts[r.pose.status] += 1));
   return (
@@ -259,18 +281,22 @@ export function Standings() {
             <th className="r">Pos</th>
             <th>Car</th>
             <th>Progress</th>
-            <th className="r" data-tip="The GA's fitness over all 10 starts">
-              F
-            </th>
+            {info !== null ? (
+              <th className="r" data-tip={`The GA's fitness over all ${info.n_starts} starts`}>
+                F
+              </th>
+            ) : (
+              <th className="r">km/h</th>
+            )}
           </tr>
         </thead>
         <tbody>
           {rows.map(({ i, pose }, position) => {
-            const role = carRole(data, i);
+            const role = carRole(scenario, i);
             const ghost = role === "ghost";
             const status = STATUS[pose.status] ?? STATUS[0];
             return (
-              <tr key={i} data-selected={i === car} onClick={() => selectCar(i)} data-testid="standings-row">
+              <tr key={i} data-selected={i === selected} onClick={() => selectCar(i)} data-testid="standings-row">
                 <td className="r num">{position + 1}</td>
                 <td>
                   <span className="standings-car">
@@ -279,12 +305,12 @@ export function Standings() {
                     ) : (
                       <i
                         className="standings-swatch"
-                        style={{ background: `var(--car-rank-${rankBand(info.ranks[i], info.size) + 1})` }}
-                        data-elite={info.elite.includes(i)}
+                        style={{ background: bodyCss(bodyOf(scenario, i)) }}
+                        data-elite={info?.elite.includes(i) ?? false}
                         aria-hidden="true"
                       />
                     )}
-                    {ghost ? "Ghost" : carName(data, i)}
+                    {ghost ? "Ghost" : carName(scenario, i)}
                     {role === "champion" && (
                       <span className="standings-role" data-tip="This generation's champion">
                         <Icon name="crown" size={12} />
@@ -302,7 +328,9 @@ export function Standings() {
                     <span style={{ width: `${Math.max(0, Math.min(1, pose.progress / total)) * 100}%` }} data-kind={status.kind} />
                   </span>
                 </td>
-                <td className="r num">{ghost ? num(info.ghost_fitness ?? 0, 3) : num(info.fitness[i], 3)}</td>
+                <td className="r num">
+                  {info === null ? (pose.v * 3.6).toFixed(0) : ghost ? num(info.ghost_fitness ?? 0, 3) : num(info.fitness[i], 3)}
+                </td>
               </tr>
             );
           })}

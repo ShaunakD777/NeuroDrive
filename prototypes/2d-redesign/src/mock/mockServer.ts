@@ -8,7 +8,9 @@
 //   - returns the frame at any playback time by interpolating between recorded frames;
 //   - answers a what-if question by running the recorded network on changed inputs;
 //   - rolls a held action forward for 2 s to draw the what-if ghost (physics v1 equations);
-//   - measures ray lengths for cars whose sensor readings were not recorded.
+//   - measures ray lengths for cars whose sensor readings were not recorded;
+//   - computes weight × value for every connection (the proposed "Flow" mode);
+//   - samples the activation functions for the activation plot.
 
 import type { CarFrame, CarRecord, Network, Race, Recorded, Track } from "./types";
 
@@ -162,6 +164,16 @@ const ACTIVATIONS: Record<string, (z: number) => number> = {
   relu: (z) => Math.max(0, z),
   linear: (z) => z,
 };
+
+/**
+ * An activation function sampled on z from −5 to 5, as `GET activations` returns it. Live, the
+ * curve comes from Python; this stands in for it with the recorded source.
+ */
+export function sampleActivation(name: string): { z: number[]; values: number[] } {
+  const f = ACTIVATIONS[name] ?? Math.tanh;
+  const z = Array.from({ length: 101 }, (_, i) => -5 + i / 10);
+  return { z, values: z.map(f) };
+}
 
 /** Forward pass. Production asks Python (`what_if` command); the browser never does this. */
 export function forward(network: Network, observation: number[]): number[] {

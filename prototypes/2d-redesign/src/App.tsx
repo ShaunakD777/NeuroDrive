@@ -1,7 +1,11 @@
 import { useEffect } from "react";
 
+import { useLiveConnection } from "@prod/api/useLiveConnection";
+
 import { loadRecorded } from "./mock/mockServer";
-import { carName, OUTPUT_LABELS, INPUT_LABELS, useApp, type ThemeChoice, type ViewId } from "./state/store";
+import { carName, POLICY_LABEL, type World } from "./source/model";
+import { getWorld, startWorld, useWorld } from "./source/world";
+import { INPUT_LABELS, OUTPUT_LABELS, shortRun, switchSource, useApp, type ThemeChoice, type ViewId } from "./state/store";
 import { Button, Segmented } from "./ui/controls";
 import { Icon, type IconName } from "./ui/Icon";
 import { NoteList, NoteMarkers } from "./ui/Notes";
@@ -17,18 +21,29 @@ const VIEWS: { id: ViewId; title: string; question: string; icon: IconName }[] =
   { id: "experiment", title: "Experiment", question: "How did it learn to?", icon: "flask" },
 ];
 
-/** Load the recorded data once, run the playback clock, and keep <html data-theme> in step. */
+/** The production app's live connection (socket, reconnects, track outlines). Live source only. */
+function LiveLink() {
+  useLiveConnection();
+  return null;
+}
+
+/** Start the chosen source, run the recorded clock, and keep <html data-theme> in step. */
 function useAppLife(): void {
+  const source = useApp((s) => s.source);
   const setData = useApp((s) => s.setData);
   const theme = useApp((s) => s.theme);
 
-  useEffect(() => {
-    loadRecorded().then(setData, (error: Error) => useApp.setState({ loadError: error.message }));
-  }, [setData]);
+  useEffect(() => startWorld(source), [source]);
 
-  // The clock: in production the Python server advances the simulation and sends frames; here
-  // the recorded frames are stepped through at the same rate (30 steps per second × speed).
   useEffect(() => {
+    if (source !== "recorded") return;
+    loadRecorded().then(setData, (error: Error) => useApp.setState({ loadError: error.message }));
+  }, [setData, source]);
+
+  // The recorded clock: in live mode the Python server advances the simulation and sends frames;
+  // here the recorded frames are stepped through at the same rate (30 steps per second × speed).
+  useEffect(() => {
+    if (source !== "recorded") return;
     let raf = 0;
     let last = performance.now();
     const tick = (now: number) => {
@@ -44,7 +59,7 @@ function useAppLife(): void {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, []);
+  }, [source]);
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
@@ -61,14 +76,46 @@ function useAppLife(): void {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (event.code !== "Space" || (target && /INPUT|SELECT|TEXTAREA|BUTTON/.test(target.tagName))) return;
+      const world = getWorld();
+      if (world === null) return;
       event.preventDefault();
       const s = useApp.getState();
-      if (s.playing) s.pause();
+      if (world.playing) s.pause();
       else s.play();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+}
+
+interface Crumb {
+  label: string;
+  value: string;
+  view: ViewId;
+  empty?: boolean;
+  optional?: boolean;
+}
+
+/** The first crumbs: where the cars' behaviour comes from (a run's generation or checkpoint, or a driver). */
+function originCrumbs(world: World): Crumb[] {
+  const { scenario } = world;
+  const info = scenario.population;
+  if (info !== null)
+    return [
+      { label: "Run", value: shortRun(info.run), view: "experiment" },
+      { label: "Generation", value: `${info.unit} of ${info.last_unit}`, view: "experiment" },
+      { label: "Start", value: `${info.start + 1} of ${info.n_starts}`, view: "experiment", optional: true },
+    ];
+  if (scenario.checkpoint !== null)
+    return [
+      { label: "Run", value: shortRun(scenario.checkpoint.run), view: "experiment" },
+      { label: "Checkpoint", value: `unit ${scenario.checkpoint.unit}`, view: "experiment" },
+      { label: "Track", value: scenario.track, view: "environment", optional: true },
+    ];
+  return [
+    { label: "Driver", value: POLICY_LABEL[scenario.policy].replace(/ \(.*\)$/, ""), view: "environment" },
+    { label: "Track", value: scenario.track, view: "environment", optional: true },
+  ];
 }
 
 /**
@@ -77,15 +124,11 @@ function useAppLife(): void {
  * and jump to the view where each part is chosen.
  */
 function Crumbs() {
-  const data = useApp((s) => s.data);
-  const car = useApp((s) => s.car);
+  const world = useWorld();
   const neuron = useApp((s) => s.neuron);
   const connection = useApp((s) => s.connection);
-  const viewKey = useApp((s) => s.viewKey);
-  const generation = useApp((s) => s.generation);
-  if (data === null) return null;
-  const info = data.race.scenario.population;
-  const layers = data.run.config.network.layer_sizes.length;
+  if (world === null) return null;
+  const layers = world.network?.layer_sizes.length ?? 0;
   const neuronText =
     neuron !== null
       ? neuron.layer === 0
@@ -99,17 +142,15 @@ function Crumbs() {
   const go = (view: ViewId) => () => {
     window.location.hash = `#/${view}`;
   };
-  const items: { label: string; value: string; view: ViewId; empty?: boolean; optional?: boolean }[] = [
-    { label: "Run", value: info.run.replace(/^\d{8}-\d{6}-/, ""), view: "experiment" },
-    { label: "Generation", value: `${generation} of ${info.last_unit}`, view: "experiment" },
-    { label: "Start", value: `${info.start + 1} of ${info.n_starts}`, view: "experiment", optional: true },
-    { label: "Car", value: carName(data, car), view: "environment" },
+  const items: Crumb[] = [
+    ...originCrumbs(world),
+    { label: "Car", value: carName(world.scenario, world.selected), view: "environment" },
     { label: "Neuron", value: neuronText, view: "network", empty: neuron === null && connection === null },
     {
       label: "Moment",
-      value: viewKey === null ? "now" : `step ${data.race.frames.step[viewKey]}`,
+      value: world.lookStep === null ? "now" : `step ${world.lookStep}`,
       view: "environment",
-      empty: viewKey === null,
+      empty: world.lookStep === null,
       optional: true,
     },
   ];
@@ -129,6 +170,34 @@ function Crumbs() {
         </span>
       ))}
     </nav>
+  );
+}
+
+/** Where the data comes from, and (live) whether the server is there. A click switches. */
+function SourceSwitch() {
+  const source = useApp((s) => s.source);
+  const status = useApp((s) => s.liveStatus);
+  const state = source === "recorded" ? "recorded" : status;
+  const text = { recorded: "Recorded", connecting: "Connecting…", connected: "Live", disconnected: "Server offline" }[state];
+  const tip =
+    source === "recorded"
+      ? "Replaying one recorded GA race. Click to connect to the Python server (uv run python -m neurodrive serve)."
+      : status === "disconnected"
+        ? "No Python server on port 8000; retrying every 2 s. Click to go back to the recorded race."
+        : "Showing the Python server's simulation. Click to go back to the recorded race.";
+  return (
+    <button
+      type="button"
+      className="conn"
+      data-state={state}
+      data-tip={tip}
+      onClick={() => switchSource(source === "recorded" ? "live" : "recorded")}
+      data-testid="source-switch"
+      data-status={state}
+    >
+      <span className="conn-dot" />
+      <span className="conn-text">{text}</span>
+    </button>
   );
 }
 
@@ -191,10 +260,7 @@ function TopBar() {
             { id: "auto", label: "", icon: "auto", hint: "Follow the system" },
           ]}
         />
-        <span className="conn" data-tip="The prototype replays recorded data; production shows the server connection here">
-          <span className="conn-dot" />
-          <span className="conn-text">Recorded</span>
-        </span>
+        <SourceSwitch />
       </div>
     </header>
   );
@@ -255,13 +321,15 @@ function Drawer({ page }: { page: ViewId }) {
 
 export function App() {
   useAppLife();
+  const source = useApp((s) => s.source);
   const view = useApp((s) => s.view);
   const layout = useApp((s) => s.layout);
   const error = useApp((s) => s.loadError);
   const partner: ViewId = view === "network" ? "environment" : "network";
 
   return (
-    <div className="app">
+    <div className="app" data-source={source}>
+      {source === "live" && <LiveLink />}
       <TopBar />
       <main className="workspace" data-layout={layout}>
         {error !== null ? (

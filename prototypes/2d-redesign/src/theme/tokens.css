@@ -51,6 +51,21 @@
   --car-rank-4: #3987e5;
   --car-rank-5: #256abf;
   --car-elite: #f2c230; /* the elite ring: gold, used for nothing else */
+  /* Liveries for drivers other than a GA generation (DESIGN_SPEC §7.2): one car is white; up to
+     ten take the eight dark-surface series colours, then white and graphite; more than ten are
+     all pale grey (identity then comes from the reticle, the name tag and the car picker). */
+  --car-livery-1: #3987e5;
+  --car-livery-2: #d95926;
+  --car-livery-3: #199e70;
+  --car-livery-4: #c98500;
+  --car-livery-5: #d55181;
+  --car-livery-6: #008300;
+  --car-livery-7: #9085e9;
+  --car-livery-8: #e66767;
+  --car-livery-9: #f4f5f7;
+  --car-livery-10: #5d6573;
+  --car-solo: #f4f5f7;
+  --car-plain: #c9ccd2;
 
   /* ── Proximity colours for sensor rays (on asphalt, both themes) ──────────────── */
   --ray-clear: #4ad17f;

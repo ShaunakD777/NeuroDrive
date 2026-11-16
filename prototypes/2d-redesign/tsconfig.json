@@ -11,7 +11,8 @@
     "noEmit": true,
     "skipLibCheck": true,
     "isolatedModules": true,
-    "types": ["vite/client", "node"]
+    "types": ["vite/client", "node"],
+    "paths": { "@prod/*": ["../../web/src/*"] }
   },
   "include": ["src", "vite.config.ts"]
 }

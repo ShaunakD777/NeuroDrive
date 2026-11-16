@@ -1,5 +1,9 @@
-import { carName, describeSteer, describeThrottle, INPUT_LABELS, num, OUTPUT_LABELS, useApp, useDetail, useRecord } from "../../state/store";
+import { carName, hasNetwork } from "../../source/model";
+import { featuredCars } from "../../source/recorded";
+import { useWorld } from "../../source/world";
+import { describeSteer, describeThrottle, INPUT_LABELS, num, OUTPUT_LABELS, useApp } from "../../state/store";
 import { Button, ValueBar } from "../../ui/controls";
+import { SourceWaiting } from "../../ui/SourceWaiting";
 
 /**
  * The network in a drawer: a summary built for a narrow column, not a shrunken diagram (as in
@@ -7,24 +11,35 @@ import { Button, ValueBar } from "../../ui/controls";
  * words. Every row and cell selects that neuron in every view.
  */
 export function NetworkCompact() {
+  const world = useWorld();
   const data = useApp((s) => s.data);
-  const car = useApp((s) => s.car);
   const neuron = useApp((s) => s.neuron);
   const toggleNeuron = useApp((s) => s.toggleNeuron);
   const selectCar = useApp((s) => s.selectCar);
-  const record = useRecord();
-  const frame = useDetail();
-  if (data === null) return <div className="skeleton" style={{ height: 240, margin: 12 }} />;
-  if (record === null || frame === null) {
+  if (world === null) return <SourceWaiting what="a car" height={240} />;
+  const network = world.network;
+  const frame = world.shown;
+  if (network === null || !hasNetwork(frame)) {
+    const featured = world.source === "recorded" ? featuredCars(data) : null;
     return (
       <div className="empty">
-        <span className="empty-title">{carName(data, car)} was not recorded with its network</span>
-        <span>The prototype recorded five networks. In the app, any car&apos;s network appears here.</span>
-        <Button onClick={() => selectCar(data.race.scenario.population.champion)}>Show the champion</Button>
+        <span className="empty-title">
+          {featured !== null ? `${carName(world.scenario, world.selected)} was not recorded with its network` : "No network to show"}
+        </span>
+        {featured !== null ? (
+          <>
+            <span>The recording kept five networks. Live, any car&apos;s network appears here.</span>
+            <Button onClick={() => selectCar(world.scenario.population?.champion ?? featured[0])}>Show the champion</Button>
+          </>
+        ) : (
+          <span>
+            {frame?.neuron ? "The neuron driver has one neuron: open the Network view to set its weights." : "This driver decides without a neural network."}
+          </span>
+        )}
       </div>
     );
   }
-  const sizes = record.network.layer_sizes;
+  const sizes = network.layer_sizes;
   const layers = sizes.length;
   const isSelected = (layer: number, index: number) => neuron !== null && neuron.layer === layer && neuron.index === index;
   const acts = frame.trace.activations;
@@ -43,7 +58,7 @@ export function NetworkCompact() {
       {acts.slice(1, -1).map((row, h) => (
         <div className="cnet-group" key={h}>
           <span className="eyebrow">
-            Hidden {h + 1} · {row.length} neurons · {record.network.activations[h]}
+            Hidden {h + 1} · {row.length} neurons · {network.activations[h]}
           </span>
           <div className="cnet-cells">
             {row.map((v, k) => (

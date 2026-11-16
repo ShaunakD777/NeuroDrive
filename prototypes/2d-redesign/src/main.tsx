@@ -9,7 +9,12 @@ import "@fontsource/ibm-plex-mono/500.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
+import { useLive } from "@prod/state/live";
+import { usePlayback } from "@prod/state/playback";
+import { useSelection } from "@prod/state/selection";
+
 import { App } from "./App";
+import { getWorld } from "./source/world";
 import { useApp } from "./state/store";
 import "./theme/tokens.css";
 import "./theme/base.css";
@@ -17,9 +22,10 @@ import "./theme/environment.css";
 import "./theme/network.css";
 import "./theme/experiment.css";
 
-// For the screenshot script and for poking at the prototype from the browser console:
-// `__nd.setState({ theme: "dark", t: 200 })`, `__nd.getState().selectCar(30)`.
-(window as unknown as { __nd: typeof useApp }).__nd = useApp;
+// For the scripts in scripts/ and for poking at the prototype from the browser console:
+// `__nd.setState({ theme: "dark", t: 200 })`, `__nd.getState().selectCar(30)`, `__ndWorld()` (the
+// snapshot the views draw), `__ndProd.useLive.getState()` (production's live store, live source).
+Object.assign(window, { __nd: useApp, __ndWorld: getWorld, __ndProd: { useLive, useSelection, usePlayback } });
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

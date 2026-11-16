@@ -1,17 +1,8 @@
-import { castRay } from "../../mock/mockServer";
-import {
-  carName,
-  carRole,
-  describeSteer,
-  describeThrottle,
-  num,
-  STATUS,
-  useApp,
-  useDetail,
-  usePose,
-} from "../../state/store";
+import { carName, carRole } from "../../source/model";
+import { useWorld } from "../../source/world";
+import { describeSteer, describeThrottle, num, STATUS, useApp } from "../../state/store";
 import { Chip } from "../../ui/controls";
-import { rankBand } from "./Stage";
+import { bodyCss, bodyOf } from "./cars";
 
 /** A signed gauge on the dark HUD: the bar grows from the middle, the tick marks zero. */
 function Gauge({ value, left, right }: { value: number; left: string; right: string }) {
@@ -63,55 +54,49 @@ function RayFan({ distances, angles, range, highlight }: { distances: number[]; 
 /**
  * The telemetry strip docked along the bottom of the stage. It replaces the tall HUD table that
  * covered the upper-left of the track: one row, grouped as a dashboard (who, how fast, what it is
- * doing, how far it is, what it senses), every number in the tabular number face.
+ * doing, how far it is, what it senses), every number in the tabular number face. The fitness
+ * group appears only when a GA generation is racing.
  */
 export function Telemetry() {
-  const data = useApp((s) => s.data);
-  const car = useApp((s) => s.car);
-  const viewKey = useApp((s) => s.viewKey);
+  const world = useWorld();
   const neuron = useApp((s) => s.neuron);
-  const t = useApp((s) => s.t);
-  const pose = usePose();
-  const detail = useDetail();
-  if (data === null || pose === null) return null;
+  if (world === null || world.shown === null) return null;
 
-  const { race, track } = data;
-  const info = race.scenario.population;
-  const shown = viewKey ?? t;
-  const key = Math.min(race.frames.step.length - 1, Math.floor(shown));
-  const step = Math.round(race.frames.step[key] + (shown - key) * race.stepsPerFrame);
-  const time = step * race.scenario.dt;
+  const { scenario, track, shown } = world;
+  const car = world.selected;
+  const pose = shown.pose;
+  const info = scenario.population;
   const status = STATUS[pose.status] ?? STATUS[0];
-  const role = carRole(data, car);
+  const role = carRole(scenario, car);
   const isGhost = role === "ghost";
   const laps = pose.progress / track.length;
-  const lapNow = Math.min(race.scenario.target_laps, Math.floor(laps) + 1);
-  const fitness = isGhost ? info.ghost_fitness : info.fitness[car];
-  const angles = race.scenario.ray_angles;
-  const range = race.scenario.ray_range;
-  const rays = detail?.rays ?? angles.map((a) => castRay(track, pose.x, pose.y, pose.psi + a, range));
+  const lapNow = Math.min(scenario.target_laps, Math.floor(laps) + 1);
   const highlight = neuron !== null && neuron.layer === 0 && neuron.index < 5 ? [neuron.index] : [];
-  const ended = t >= race.frames.step.length - 1;
-  const startFitness = ended ? (race.end.fitness?.[car] ?? null) : null;
+  const looking = world.lookStep !== null;
+  const body = bodyOf(scenario, car);
+  const sub =
+    info === null
+      ? scenario.policy === "keyboard"
+        ? "you drive: arrow keys or W A S D"
+        : `${scenario.n_cars} car${scenario.n_cars === 1 ? "" : "s"} · ${scenario.track}`
+      : isGhost
+        ? `not part of generation ${info.unit}`
+        : `rank ${info.ranks[car] + 1} of ${info.size} · ${role}`;
 
   return (
-    <div className="telemetry" data-testid="telemetry" data-past={viewKey !== null}>
+    <div className="telemetry" data-testid="telemetry" data-past={looking}>
       <div className="tele-group tele-id">
         <span className="tele-name">
-          {!isGhost && (
-            <i className="tele-swatch" style={{ background: `var(--car-rank-${rankBand(info.ranks[car], info.size) + 1})` }} />
-          )}
-          {carName(data, car)}
+          {!isGhost && <i className="tele-swatch" style={{ background: bodyCss(body) }} />}
+          {carName(scenario, car)}
         </span>
-        <span className="tele-sub">
-          {isGhost ? `not part of generation ${info.unit}` : `rank ${info.ranks[car] + 1} of ${info.size} · ${role}`}
-        </span>
+        <span className="tele-sub">{sub}</span>
         <Chip kind={status.kind}>{status.label}</Chip>
       </div>
 
       <div className="tele-group tele-speed">
         <span className="eyebrow">Speed</span>
-        <span className="tele-big num">
+        <span className="tele-big num" data-testid="hud-speed">
           {(pose.v * 3.6).toFixed(0)}
           <small>km/h</small>
         </span>
@@ -122,62 +107,73 @@ export function Telemetry() {
         <div className="tele-row">
           <span className="eyebrow">Steer</span>
           <Gauge value={pose.steer} left="L" right="R" />
-          <span className="num tele-val">{num(pose.steer)}</span>
+          <span className="num tele-val" data-testid="hud-steer">
+            {num(pose.steer)}
+          </span>
           <span className="tele-word">{describeSteer(pose.steer)}</span>
         </div>
         <div className="tele-row">
           <span className="eyebrow">Throttle</span>
           <Gauge value={pose.throttle} left="B" right="A" />
-          <span className="num tele-val">{num(pose.throttle)}</span>
+          <span className="num tele-val" data-testid="hud-throttle">
+            {num(pose.throttle)}
+          </span>
           <span className="tele-word">{describeThrottle(pose.throttle)}</span>
         </div>
       </div>
 
       <div className="tele-group tele-progress">
         <span className="eyebrow">
-          Lap {lapNow} of {race.scenario.target_laps}
+          Lap {lapNow} of {scenario.target_laps}
         </span>
         <div className="lapbar" aria-hidden="true">
-          {Array.from({ length: race.scenario.target_laps }, (_, lap) => (
+          {Array.from({ length: scenario.target_laps }, (_, lap) => (
             <span key={lap} className="lapbar-lap">
               <span className="lapbar-fill" style={{ width: `${Math.max(0, Math.min(1, laps - lap)) * 100}%` }} />
             </span>
           ))}
         </div>
-        <span className="tele-sub num">
+        <span className="tele-sub num" data-testid="hud-progress">
           {pose.progress.toFixed(0)} m · {laps.toFixed(2)} laps
         </span>
       </div>
 
-      <div className="tele-group tele-rays">
-        <span className="eyebrow">Rays (m)</span>
-        <RayFan distances={rays} angles={angles} range={range} highlight={highlight} />
-        <span className="tele-raynums num">
-          {rays.map((d, k) => (
-            <span key={k} data-dim={highlight.length > 0 && !highlight.includes(k)}>
-              {d >= range - 1e-6 ? "50+" : d.toFixed(1)}
-            </span>
-          ))}
-        </span>
-      </div>
+      {shown.rays.length > 0 && (
+        <div className="tele-group tele-rays">
+          <span className="eyebrow">Rays (m)</span>
+          <RayFan distances={shown.rays} angles={scenario.ray_angles} range={scenario.ray_range} highlight={highlight} />
+          <span className="tele-raynums num">
+            {shown.rays.map((d, k) => (
+              <span key={k} data-dim={highlight.length > 0 && !highlight.includes(k)} data-testid={`ray-${k}`}>
+                {d >= scenario.ray_range - 1e-6 ? `${scenario.ray_range.toFixed(0)}+` : d.toFixed(1)}
+              </span>
+            ))}
+          </span>
+        </div>
+      )}
 
-      <div className="tele-group tele-fit">
-        <span className="eyebrow">Fitness F</span>
-        <span className="tele-mid num">{fitness === null ? "–" : fitness.toFixed(3)}</span>
-        <span className="tele-sub">
-          {isGhost
-            ? `in generation ${info.ghost_unit}`
-            : `10 starts: ${info.finished[car]} finished, ${info.crashed[car]} crashed`}
-        </span>
-        <span className="tele-sub">
-          this start: f = {startFitness === null ? "after the race" : <b className="num">{startFitness.toFixed(3)}</b>}
-        </span>
-      </div>
+      {info !== null && (
+        <div className="tele-group tele-fit">
+          <span className="eyebrow">Fitness F</span>
+          <span className="tele-mid num">{(isGhost ? info.ghost_fitness : info.fitness[car])?.toFixed(3) ?? "–"}</span>
+          <span className="tele-sub">
+            {isGhost
+              ? `in generation ${info.ghost_unit}`
+              : `${info.n_starts} starts: ${info.finished[car]} finished, ${info.crashed[car]} crashed`}
+          </span>
+          <span className="tele-sub">
+            this start: f ={" "}
+            {world.endFitness?.[car] === undefined ? "after the race" : <b className="num">{world.endFitness[car].toFixed(3)}</b>}
+          </span>
+        </div>
+      )}
 
       <div className="tele-group tele-clock">
-        <span className="eyebrow">{viewKey === null ? "Step" : "Looking back"}</span>
-        <span className="tele-mid num">{step}</span>
-        <span className="tele-sub num">{time.toFixed(2)} s</span>
+        <span className="eyebrow">{looking ? "Looking back" : "Step"}</span>
+        <span className="tele-mid num" data-testid="hud-step">
+          {shown.step}
+        </span>
+        <span className="tele-sub num">{(shown.step * scenario.dt).toFixed(2)} s</span>
       </div>
     </div>
   );

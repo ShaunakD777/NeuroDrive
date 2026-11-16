@@ -1,7 +1,10 @@
 // How numbers become marks in the network diagram. Pure functions: no React, no network maths
 // (production: web/src/views/network/networkLayout.ts and diff.ts hold the same kind of helper).
 
-import type { Mutation, Network } from "../../mock/types";
+import type { OutputReceipt } from "@prod/api/generated";
+import { changeStroke } from "@prod/views/network/diff";
+
+import type { Diff, Mutation, Network } from "../../source/model";
 import type { LineMode } from "../../state/store";
 
 export interface Point {
@@ -68,6 +71,15 @@ export function mutationStroke(change: number, mutated: boolean, fromOther: bool
   return { tone: "none", width: 0.5, opacity: 0.05 };
 }
 
+/**
+ * A checkpoint change (task 5.9): production's own `changeStroke`, so a migrated diagram draws
+ * the same widths the browser tests read. An unchanged weight is not drawn.
+ */
+export function checkpointStroke(c: number): Stroke {
+  const s = changeStroke(c);
+  return { tone: s.sign ?? "none", width: s.sign === null ? 0.5 : s.width, opacity: s.sign === null ? 0.05 : s.opacity };
+}
+
 export interface Edge {
   layer: number;
   from: number;
@@ -90,8 +102,10 @@ export function strokeFor(
   flow: number[][][] | null,
   flowMax: number[],
   mutation: Mutation | null,
+  diff: Diff | null,
 ): Stroke {
   if (mode === "flow" && flow !== null) return flowStroke(flow[e.layer][e.to][e.from], flowMax[e.layer]);
+  if (mode === "change" && diff !== null) return checkpointStroke(diff.weight_change[e.layer]?.[e.to]?.[e.from] ?? 0);
   if (mode === "mutation" && mutation !== null) {
     return mutationStroke(
       mutation.weight_change[e.layer][e.to][e.from],
@@ -123,6 +137,19 @@ export function strongPaths(flow: number[][][], output: number, fan = [4, 2, 2])
     targets = [...next];
   }
   return keys;
+}
+
+/**
+ * The strongest connections into one output, from what Python sends today: the output's receipt
+ * holds c = weight × value for every neuron of the last hidden layer, so the `fan` largest |c| can
+ * be lit one layer back (PRODUCTION_MAPPING.md N13). Further back needs every layer's
+ * contributions (N14, an API addition), which only the recorded stand-in has.
+ */
+export function receiptPaths(receipts: OutputReceipt[], output: number, lastLayer: number, fan = 4): Set<string> {
+  const receipt = receipts[output];
+  if (receipt === undefined) return new Set();
+  const order = receipt.contributions.map((c, from) => ({ from, size: Math.abs(c) })).sort((a, b) => b.size - a.size);
+  return new Set(order.slice(0, fan).map(({ from }) => `${lastLayer}-${from}-${output}`));
 }
 
 export function nodeName(layer: number, index: number, layers: number, inputs: string[], outputs: string[]): string {
