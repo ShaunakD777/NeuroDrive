@@ -114,17 +114,30 @@
   --shadow-1: 0 1px 2px rgba(16, 20, 28, 0.05);
   --shadow-2: 0 8px 24px rgba(16, 20, 28, 0.16), 0 1px 3px rgba(16, 20, 28, 0.1);
 
-  /* The track canvas keeps the colours it had before the redesign until task E1 gives it its
-     own world palette (draw.ts readTheme reads these, not the page tokens). */
-  --w-bg: #f6f7f9;
-  --w-road: #ffffff;
-  --w-edge: #5b6472;
-  --w-text: #1b1f27;
-  --w-muted: #d5d9e0;
-  --w-accent: #2563eb;
-  --w-ok: #15803d;
-  --w-warn: #b45309;
-  --w-bad: #b91c1c;
+  /* The track canvas's own world palette, by day (task E1; ADR-064: the world follows the page
+     theme, the asphalt stays dark in both). views/environment/scene.ts readTheme reads these. */
+  --w-night: 0;
+  --w-grass: #5c8650;
+  --w-grass-2: #557c4a; /* mowing stripes */
+  --w-verge: #729c62;
+  --w-sand: #c9ba8c;
+  --w-asphalt: #383c43;
+  --w-asphalt-2: #30343a; /* the lip under the road edge */
+  --w-line: #f3f4f1; /* edge lines and the start line's light checks */
+  --w-chequer: #16181c; /* the start line's dark checks */
+  --w-kerb-a: #d8443b;
+  --w-kerb-b: #f3f4f1;
+  --w-marking: rgba(255, 255, 255, 0.3); /* centre dashes, arrows */
+  --w-board: #f3f4f1;
+  --w-board-ink: #1b1f27;
+
+  /* The Datasets view's track map keeps the plain look it had before the redesign (task E1,
+     drawWorld.ts drawMap); task X4 decides its new look. */
+  --map-bg: #f6f7f9;
+  --map-road: #ffffff;
+  --map-edge: #5b6472;
+  --map-text: #1b1f27;
+  --map-muted: #d5d9e0;
 }
 
 :root[data-theme="dark"] {
@@ -176,15 +189,45 @@
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-2: 0 10px 28px rgba(0, 0, 0, 0.55), 0 1px 3px rgba(0, 0, 0, 0.5);
 
-  --w-bg: #12151a;
-  --w-road: #1b1f27;
+  /* The world at night (ADR-064) */
+  --w-night: 1;
+  --w-grass: #1b2a1f;
+  --w-grass-2: #18261c;
+  --w-verge: #243828;
+  --w-sand: #4a4535;
+  --w-asphalt: #25282e;
+  --w-asphalt-2: #1e2126;
+  --w-line: #c9ccc8;
+  --w-chequer: #101215;
+  --w-kerb-a: #a8352f;
+  --w-kerb-b: #c9ccc8;
+  --w-marking: rgba(255, 255, 255, 0.2);
+  --w-board: #c9ccc8;
+  --w-board-ink: #14171c;
+
+  --map-bg: #12151a;
+  --map-road: #1b1f27;
+  --map-edge: #9aa3b2;
+  --map-text: #e8ebf0;
+  --map-muted: #2f3541;
+}
+
+/* Cars, rays, trail and ghosts on the track until task E2 restyles them: their old shapes, in
+   light-on-dark colours that read on the dark asphalt of both themes (task E1). The rank bands are
+   the prototype's car ramp, the lightest the best. */
+:root {
   --w-edge: #9aa3b2;
   --w-text: #e8ebf0;
-  --w-muted: #2f3541;
+  --w-muted: rgba(255, 255, 255, 0.34);
   --w-accent: #6aa0ff;
   --w-ok: #4ade80;
   --w-warn: #fbbf24;
   --w-bad: #f87171;
+  --car-rank-1: #cde2fb;
+  --car-rank-2: #9ec5f4;
+  --car-rank-3: #6da7ec;
+  --car-rank-4: #3987e5;
+  --car-rank-5: #256abf;
 }
 
 /* Names from before the redesign, still used by the view stylesheets, DatasetView.tsx and

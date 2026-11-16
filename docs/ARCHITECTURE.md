@@ -800,8 +800,18 @@ them (`npm run gen:types`), so the two sides cannot drift apart.
 - **Theme (task S1, ADR-063 D4):** a `theme` setting in the layout store, light, dark or follow the
   system (`auto`, the default), remembered per browser. The app always writes the resolved theme
   to `<html data-theme>`; the colour tokens (`styles/tokens.css`) are defined per theme, and the
-  canvases read CSS variables on every draw, so everything follows. Until task E1 the track canvas
-  reads its own `--w-*` tokens, which keep its pre-redesign colours.
+  canvases read CSS variables on every draw, so everything follows. The track canvas reads its own
+  world palette (`--w-*`, task E1, ADR-064): a day version under the light theme and a night
+  version under the dark one, the asphalt dark in both.
+- **The Environment canvas (task E1):** `views/environment/scene.ts` `drawScene(ctx, theme, scene)`
+  draws in layers, bottom to top: the world in metres under one canvas transform built on the
+  caller's (`drawWorld.ts`: grass, verge, sand, asphalt, rubber line, kerbs, white edge lines
+  exactly on the edges the rays and the crash test use, centre dashes, arrows, chequered start),
+  the distance boards in pixels, then the selected car's trail, rays and what-if paths
+  (`drawOverlays.ts`) and the cars (`drawCars.ts`). The decoration (`trackArt.ts`) is worked out
+  once per track from the geometry the server sends (curvature → kerbs and sand outside the edges,
+  arrows, boards every 100 m) and is not data. The still world is kept as a picture per canvas
+  while the camera does not move. The Datasets map draws the old plain road (`drawMap`).
 - The selection store (§8.1) and the live connection belong to the app, not to a page, so they
   survive page changes; the linking rules in §8.2 apply in every layout.
 

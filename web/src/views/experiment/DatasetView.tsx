@@ -2,7 +2,7 @@ import { type CSSProperties, useEffect, useMemo, useRef, useState, type MouseEve
 
 import type { DatasetDetail, DatasetHistogram, DatasetMap, DatasetSummary, TrackGeometry } from "../../api/generated";
 import { fetchDataset, fetchDatasets, fetchTrack } from "../../api/rest";
-import { drawScene, readTheme } from "../environment/draw";
+import { drawMap, readMapTheme } from "../environment/drawWorld";
 import { type Camera, fitCamera, panBy, scaleLimits, type Size, wheelFactor, worldToScreen, zoomAt } from "../environment/geometry";
 import { ChartHover } from "./ChartHover";
 import { formatNumber, linearScale, niceTicks } from "./charts";
@@ -293,20 +293,7 @@ function TrackMap({
     const ctx = el.getContext("2d");
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    drawScene(ctx, readTheme(el), {
-      size,
-      camera: cam,
-      geometry,
-      scenario: null,
-      frame: null,
-      selected: 0,
-      compact: false,
-      highlight: [],
-      raySensitivity: null,
-      ghost: null,
-      trail: null,
-      moment: null,
-    });
+    drawMap(ctx, readMapTheme(el), size, cam, geometry);
     const palette = readPalette(el);
     const r = Math.max(2, Math.min(4, cam.scale * 0.4));
     ctx.lineWidth = 1.5;

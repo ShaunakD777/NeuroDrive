@@ -16,7 +16,7 @@ import {
   worldToScreen,
   zoomAt,
 } from "./geometry";
-import { drawScene, readTheme } from "./draw";
+import { drawScene, readTheme } from "./scene";
 import { Hud } from "./Hud";
 import { Controls } from "./Controls";
 import { useDrivingKeys } from "./useDrivingKeys";
@@ -356,7 +356,7 @@ export function EnvironmentView({
                 GA&apos;s fitness rank (F over all {race.n_starts} starts):{" "}
                 <span className="rank-swatches" aria-hidden="true">
                   {[1, 2, 3, 4, 5].map((k) => (
-                    <span key={k} className="rank-swatch" style={{ background: `var(--rank-${k})` }} />
+                    <span key={k} className="rank-swatch" style={{ background: `var(--car-rank-${k})` }} />
                   ))}
                 </span>{" "}
                 best fifth → worst fifth. Ringed = elite (last generation&apos;s best, unchanged); faded = stopped
