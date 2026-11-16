@@ -58,7 +58,8 @@ test("an unknown address falls back to the Environment page", async ({ page }) =
 
 test("the companion drawer opens and closes", async ({ page }) => {
   await page.goto("/#/environment");
-  const toggle = page.getByTestId("companion-drawer").getByRole("button");
+  // the open/close toggle (the drawer's Network / Standings tabs are buttons too, task E3)
+  const toggle = page.getByTestId("companion-drawer").locator("button[aria-controls]");
 
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByText("Network (compact)")).toBeVisible();

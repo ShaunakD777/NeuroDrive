@@ -788,6 +788,23 @@ them (`npm run gen:types`), so the two sides cannot drift apart.
   linked view (for example a mini network beside the track), so cause and effect stay visible.
   The compact network (task 2.8) is a summary built for a narrow column, not a shrunken diagram:
   input bars, one strip of coloured cells per hidden layer, output bars with words, all clickable.
+  On the Environment page the drawer has two tabs (task E3): that network, and the **standings**,
+  every car in race order (by progress) with its body colour, status and, in a GA race, its F; a
+  row click selects the car. The tab is `drawerTab` in the layout store, remembered per browser.
+- **Environment page (task E3):** the scenario (track, driver, cars, start, the selected car, a
+  race's generation, start and ghost) in the view header; on the stage, floating dark bars for
+  play, step, reset and speed (top left, with the record bar under it for the keyboard driver) and
+  for the camera (top right, with a minimap of the circuit while not showing the whole track); along
+  the bottom, the status banner, the legends and the telemetry strip (`Telemetry.tsx`, the former
+  HUD with the same test ids and text formats); under the stage the look-back strip, the selected
+  car's steer and throttle over the remembered steps with the slider laid over them. The camera
+  glides between targets (`geometry.ts` `easeCamera`, 450 ms, ease-out; none with reduced
+  motion, which the browser tests set), looks ahead of a followed car (`lookAhead`), and keeps
+  Whole track and the followed point in the area the panels leave free (`fitCamera` margins per
+  side, `marginShift`; the bottom margin is the measured height of the bottom panels, and
+  `clampMargins` lets the panels take at most half the stage's height and width, so a followed car
+  stays on a small stage). A narrow view (≤ 600 px, a column of All) makes its stage at least
+  420 px tall and scrolls instead (a container query on the view).
 - **Layout switch:** Page (default), Split (any two views side by side, resizable) and All (the
   three panels). The choice is remembered per browser.
 - **Top bar (task S1):** dark in both themes; the brand mark, the view tabs (links, each with its
@@ -800,8 +817,27 @@ them (`npm run gen:types`), so the two sides cannot drift apart.
 - **Theme (task S1, ADR-063 D4):** a `theme` setting in the layout store, light, dark or follow the
   system (`auto`, the default), remembered per browser. The app always writes the resolved theme
   to `<html data-theme>`; the colour tokens (`styles/tokens.css`) are defined per theme, and the
-  canvases read CSS variables on every draw, so everything follows. Until task E1 the track canvas
-  reads its own `--w-*` tokens, which keep its pre-redesign colours.
+  canvases read CSS variables on every draw, so everything follows. The track canvas reads its own
+  world palette (`--w-*`, task E1, ADR-064): a day version under the light theme and a night
+  version under the dark one, the asphalt dark in both.
+- **The Environment canvas (task E1):** `views/environment/scene.ts` `drawScene(ctx, theme, scene)`
+  draws in layers, bottom to top: the world in metres under one canvas transform built on the
+  caller's (`drawWorld.ts`: grass, verge, sand, asphalt, rubber line, kerbs, white edge lines
+  exactly on the edges the rays and the crash test use, centre dashes, arrows, chequered start),
+  the distance boards in pixels, then the selected car's trail, sensor fan, rays and what-if paths
+  in pixels, each cased in dark (`drawOverlays.ts`), the cars in metres under the same world
+  transform, and last the labels in pixels: elite rings, status badges, the selection reticle and
+  name tags (`drawCars.ts`, task E2). Each car is one sprite drawn in its own frame and placed by
+  `cars.ts` `carTransform` (position, heading, the scenario's car size); below 4.2 px per metre it
+  is a dart never shorter than 10 px. `cars.ts` also decides each car's body (the GA's rank band in
+  a race, otherwise white alone, a livery each up to ten cars, grey in a crowd), whether the cars
+  carry their numbers (2–10 liveried cars at ≥ 3.2 px/m, ADR-065), the drawing order,
+  the badges from `frame.cars.status` and where ray labels go. Everything on the asphalt uses one
+  set of colours in both themes (`--car-*`, `--ray-*`, `--track-*`, `--hud-bg`). The decoration
+  (`trackArt.ts`) is worked out
+  once per track from the geometry the server sends (curvature → kerbs and sand outside the edges,
+  arrows, boards every 100 m) and is not data. The still world is kept as a picture per canvas
+  while the camera does not move. The Datasets map draws the old plain road (`drawMap`).
 - The selection store (§8.1) and the live connection belong to the app, not to a page, so they
   survive page changes; the linking rules in §8.2 apply in every layout.
 
@@ -874,7 +910,7 @@ rank band (`views/environment/population.ts`: q = r/(N − 1), band = min(4, ⌊
 surfaces), rings the elites, fades stopped cars, outlines the selected car, and draws the ghost
 see-through and dashed with a label; a legend explains the colours (clicks pass through it to the
 cars). Its controls add a row for the generation (1 … `last_unit`), the start (1 … S) and the
-ghost's generation (0 = none); cars, random start and track are fixed. The HUD shows the selected
+ghost's generation (0 = none); cars, random start and track are fixed. The HUD (since task E3 the telemetry strip) shows the selected
 car's role (row, rank, elite or child, champion, or the ghost), F with its finished and crashed
 starts, and, after the race, f on this start. Clicking any car selects it and the Network view
 shows its network, as for the random-networks driver.

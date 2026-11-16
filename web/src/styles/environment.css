@@ -1,6 +1,9 @@
-/* The Environment view: stage, canvas, HUD, controls. */
+/* The Environment view (task E3, lifted from the redesign prototype): the scenario bar in the
+   header, the stage with everything that floats on it, the look-back strip under it, and the
+   drawer's standings. Floating layers use the HUD tokens (dark in both themes) because the track
+   under them is dark asphalt in both themes (ADR-064). */
 
-/* ── Environment view ─────────────────────────────────────────── */
+/* ── The view ─────────────────────────────────────────────────── */
 
 .env-view {
   display: flex;
@@ -9,14 +12,109 @@
   overflow: auto;
 }
 
+/* The full view is a container, so the stage can grow taller when it is narrow (see the end of
+   this file). */
+.env-view:not(.view-compact) {
+  container: env-view / inline-size;
+}
+
+/* The column's parts keep their own height; only the stage grows and shrinks. (The header has an
+   explicit min-height in base.css, which would otherwise let it shrink below its contents.) */
+.env-view > .view-header,
+.env-view > .trailstrip,
+.env-view > .env-hint {
+  flex-shrink: 0;
+}
+
+.env-view .view-question {
+  margin-right: auto;
+  color: var(--text-3);
+  font-size: var(--fs-small);
+}
+
+.env-hint {
+  margin-top: var(--sp-2) !important;
+  font-size: var(--fs-small);
+}
+
+.camera-note {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+/* ── Scenario bar (view header) ───────────────────────────────── */
+
+.scenario-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+  flex-basis: 100%;
+}
+
+.scenario-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+}
+
+.control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.control-label {
+  color: var(--text-muted);
+  font-size: var(--fs-small);
+  white-space: nowrap;
+}
+
+.scenario-bar select {
+  max-width: 100%;
+}
+
+.scenario-bar select,
+.scenario-bar .control-number {
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-1);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.control-number {
+  width: 5.5em;
+}
+
+.scenario-bar select:disabled,
+.scenario-bar .control-number:disabled,
+.control-check input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.scenario-bar select:focus-visible,
+.scenario-bar .control-number:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ── The stage ────────────────────────────────────────────────── */
+
 .env-stage {
+  container-type: inline-size; /* the floating bars adapt to the stage's width */
   position: relative;
   flex: 1;
   min-height: 260px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--r-2);
   overflow: hidden;
-  background: var(--bg);
+  background: var(--w-grass);
 }
 
 .env-canvas {
@@ -31,235 +129,1175 @@
   cursor: grabbing;
 }
 
+.stage-top {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  pointer-events: none; /* the box is click-through; the bars in it are not */
+}
+
+.stage-top-left,
+.stage-top-right {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  pointer-events: none;
+}
+
+.stage-top-left {
+  align-items: flex-start;
+}
+
+.stage-top-right {
+  align-items: flex-end;
+}
+
+.stage-top-left > *,
+.stage-top-right > * {
+  pointer-events: auto;
+}
+
+.stage-bottom {
+  container-type: inline-size; /* the telemetry adapts to the stage's width, not the window's */
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  pointer-events: none;
+}
+
+.stage-bottom > * {
+  pointer-events: auto;
+}
+
+/* ── Floating bars: transport, record, camera ─────────────────── */
+
+.hudbar {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--hud-bg);
+  border: 1px solid var(--hud-border);
+  box-shadow: var(--shadow-2);
+  color: var(--hud-text);
+}
+
+.hudbar .btn {
+  height: 28px;
+}
+
+.hudbar .btn-icon {
+  width: 28px;
+}
+
+/* Hints on the stage's bars (Environment gate): the stage clips what leaves it, so a hint hangs
+   from its whole bar, not its button, opens inwards (the left bars' to the right, the right bars'
+   to the left) and wraps at the stage's inner width (100cqw is the stage's width, the nearest
+   size container). */
+.stage-top .hudbar {
+  position: relative;
+}
+
+.stage-top .hudbar .btn,
+.stage-top .hudbar .segmented button {
+  position: static;
+}
+
+.stage-top .hudbar [data-tip]:hover::after {
+  left: 0;
+  transform: none;
+  width: max-content;
+  max-width: min(300px, calc(100cqw - 24px));
+  white-space: normal;
+}
+
+.stage-top-right .hudbar [data-tip]:hover::after {
+  left: auto;
+  right: 0;
+}
+
+.hudbar-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--hud-border);
+}
+
+.hudbar-note {
+  padding: 0 6px;
+  font-family: var(--font-label);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--hud-muted);
+  white-space: nowrap;
+}
+
+/* A menu or text box on a dark bar: the speed, the record tag. */
+.hud-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px 0 6px;
+}
+
+.hud-select-label {
+  font-family: var(--font-label);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--hud-muted);
+}
+
+.hud-select select,
+.hud-input {
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid var(--hud-border);
+  border-radius: 6px;
+  background: var(--hud-ground);
+  color: var(--hud-text);
+  font: inherit;
+  font-size: 12px;
+  color-scheme: dark; /* the open menu's list in dark colours too */
+}
+
+.hud-input {
+  width: 110px;
+}
+
+.hud-input[aria-invalid="true"] {
+  border-color: var(--car-status-crashed);
+}
+
+.hud-select select:focus-visible,
+.hud-input:focus-visible {
+  outline: 2px solid var(--track-select);
+  outline-offset: 1px;
+}
+
+.hud-select select:disabled {
+  opacity: 0.5;
+}
+
+.rec-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px;
+  font: 600 11px var(--font-label);
+  letter-spacing: 0.06em;
+  color: var(--car-status-crashed);
+  white-space: nowrap;
+}
+
+/* ── Minimap ──────────────────────────────────────────────────── */
+
+.minimap {
+  width: 168px;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--hud-bg);
+  border: 1px solid var(--hud-border);
+  box-shadow: var(--shadow-2);
+}
+
+.minimap svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.minimap-road {
+  fill: none;
+  stroke: #4a505b;
+  stroke-linejoin: round;
+}
+
+.minimap-centre {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.25);
+  stroke-width: 1.2;
+  stroke-dasharray: 5 7;
+}
+
+.minimap-car {
+  stroke: #0f1218;
+  stroke-width: 1.5;
+  cursor: pointer;
+}
+
+.minimap-selected {
+  fill: var(--track-select);
+  stroke: #ffffff;
+  stroke-width: 3;
+}
+
+/* ── Chips (status words; the shared Chip of components/ui) ───── */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-family: var(--font-label);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  background: var(--surface-3);
+  color: var(--text-2);
+}
+
+.chip[data-kind="run"],
+.chip[data-kind="ok"] {
+  background: color-mix(in srgb, var(--ok) 15%, transparent);
+  color: var(--ok);
+}
+
+.chip[data-kind="bad"] {
+  background: color-mix(in srgb, var(--bad) 15%, transparent);
+  color: var(--bad);
+}
+
+.chip[data-kind="warn"] {
+  background: color-mix(in srgb, var(--warn) 17%, transparent);
+  color: var(--warn);
+}
+
+.chip[data-kind="accent"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.chip-live {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ok-fill);
+}
+
+/* On the dark stage the chips take the on-track colours of both themes. */
+.telemetry .chip,
+.hud-compact .chip,
+.stage-banner .chip {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--hud-text);
+}
+
+.telemetry .chip[data-kind="run"],
+.telemetry .chip[data-kind="ok"],
+.hud-compact .chip[data-kind="run"],
+.hud-compact .chip[data-kind="ok"],
+.stage-banner .chip[data-kind="ok"] {
+  color: var(--car-status-finished);
+}
+
+.telemetry .chip[data-kind="bad"],
+.hud-compact .chip[data-kind="bad"],
+.stage-banner .chip[data-kind="bad"] {
+  color: #ff8a80;
+}
+
+.telemetry .chip[data-kind="warn"],
+.hud-compact .chip[data-kind="warn"],
+.stage-banner .chip[data-kind="warn"] {
+  color: var(--car-status-stalled);
+}
+
+.hud-chip {
+  display: inline-flex;
+}
+
+/* ── Banners and legends (stage panels) ───────────────────────── */
+
+/* Why the selected car stopped, and the server's error: dark panels on the stage. */
+.stage-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 5px 10px 5px 6px;
+  border-radius: var(--r-2);
+  background: var(--hud-bg);
+  border: 1px solid var(--hud-border);
+  color: var(--hud-text);
+  font-size: 12px;
+}
+
+.stage-banner[data-kind="bad"] {
+  border-color: color-mix(in srgb, var(--car-status-crashed) 55%, transparent);
+}
+
+.stage-banner[data-kind="good"] {
+  border-color: color-mix(in srgb, var(--car-status-finished) 55%, transparent);
+}
+
+.stage-banner[data-kind="warn"] {
+  border-color: color-mix(in srgb, var(--car-status-stalled) 55%, transparent);
+}
+
+.stage-legends {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  max-width: min(720px, 100%);
+  pointer-events: none; /* the box around the legends: clicks reach the track (task 7.6) */
+}
+
+/* The legends float over the track as dark stage panels, the same in both themes (task E2,
+   DESIGN_SPEC §6.6): each swatch has the shape of the mark it explains. */
+.stage-legend {
+  pointer-events: auto;
+  padding: 5px 10px;
+  border: 1px solid var(--hud-border);
+  border-radius: var(--r-2);
+  background: var(--hud-bg);
+  color: var(--hud-muted);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+/* A legend with nothing to click lets clicks through to the cars under it (task 7.6). */
+.stage-legend.stage-legend-passthrough {
+  pointer-events: none;
+}
+
+.stage-legend-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+}
+
+.stage-legend-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 6px;
+}
+
+.stage-legend b {
+  font-family: var(--font-label);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--hud-text);
+}
+
+.rank-ramp {
+  display: inline-flex;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.rank-ramp i {
+  width: 12px;
+  height: 10px;
+}
+
+.stage-legend i[class^="legend-"],
+.standings i[class^="legend-"] {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.legend-ring {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 2px solid var(--car-elite);
+}
+
+.legend-ghost {
+  width: 14px;
+  height: 8px;
+  border-radius: 2px;
+  border: 1.5px dashed #e3e6eb;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.standings .legend-ghost {
+  border-color: var(--text-3);
+}
+
+.legend-faded {
+  width: 14px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--car-rank-3);
+  opacity: 0.42;
+}
+
+.legend-line {
+  width: 16px;
+  height: 3px;
+  border-radius: 2px;
+}
+
+.legend-dash {
+  width: 16px;
+  height: 0;
+  border-top: 2px dashed #e3e6eb;
+}
+
+.ray-legend-pos {
+  color: var(--pos);
+  font-weight: 600;
+}
+
+.ray-legend-neg {
+  color: var(--neg);
+  font-weight: 600;
+}
+
+.stage-legend .ray-legend-pos {
+  color: var(--track-pos);
+}
+
+.stage-legend .ray-legend-neg {
+  color: var(--track-neg);
+}
+
+/* ── Telemetry strip ──────────────────────────────────────────── */
+
+.telemetry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  width: 100%;
+  border-radius: 12px;
+  background: var(--hud-bg);
+  border: 1px solid var(--hud-border);
+  box-shadow: var(--shadow-2);
+  color: var(--hud-text);
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+}
+
+.telemetry.hud-empty {
+  padding: 10px 14px;
+  color: var(--hud-muted);
+  font-size: 12px;
+}
+
+/* Looking back: the whole strip says so with the selection colour. */
+.telemetry[data-past="true"] {
+  border-color: var(--track-select);
+  box-shadow:
+    0 0 0 1px var(--track-select),
+    var(--shadow-2);
+}
+
+.telemetry .eyebrow {
+  color: var(--hud-muted);
+}
+
+.tele-group {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 8px 14px;
+  border-left: 1px solid var(--hud-border);
+  min-width: 0;
+}
+
+.tele-group:first-child {
+  border-left: 0;
+}
+
+.tele-id {
+  min-width: 120px;
+  align-items: flex-start;
+}
+
+.tele-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.tele-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.tele-sub {
+  font-size: 11px;
+  color: var(--hud-muted);
+  white-space: nowrap;
+}
+
+.tele-sub b {
+  font-weight: 500;
+  color: var(--hud-text);
+}
+
+.tele-mid {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.tele-past {
+  color: var(--track-select);
+  font-weight: 600;
+}
+
+.tele-actions {
+  flex: 1;
+  min-width: 232px;
+  gap: 7px;
+}
+
+.tele-row {
+  display: grid;
+  grid-template-columns: 52px minmax(56px, 1fr) 36px 74px;
+  align-items: center;
+  gap: 8px;
+}
+
+.tele-fit .tele-row {
+  display: flex;
+  align-items: baseline;
+}
+
+.tele-val {
+  text-align: right;
+  font-size: 12.5px;
+}
+
+.tele-word {
+  font-size: 11px;
+  color: var(--hud-muted);
+  white-space: nowrap;
+}
+
+.gauge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.gauge-end {
+  font-family: var(--font-label);
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--hud-muted);
+}
+
+.gauge-track {
+  position: relative;
+  flex: 1;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--hud-track);
+}
+
+.gauge-track::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -3px;
+  bottom: -3px;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.gauge-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 2px;
+}
+
+.gauge-pos {
+  background: var(--track-pos);
+}
+
+.gauge-neg {
+  background: var(--track-neg);
+}
+
+.tele-progress {
+  min-width: 128px;
+  gap: 5px;
+}
+
+.lapbar {
+  display: flex;
+  gap: 3px;
+}
+
+.lapbar-lap {
+  flex: 1;
+  height: 6px;
+  border-radius: 2px;
+  background: var(--hud-track);
+  overflow: hidden;
+}
+
+.lapbar-fill {
+  display: block;
+  height: 100%;
+  background: var(--hud-text);
+}
+
+.tele-rays {
+  align-items: center;
+  gap: 0;
+  min-width: 168px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.rayfan {
+  width: 104px;
+  height: 52px;
+}
+
+.rayfan-range {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.14);
+  stroke-width: 1;
+}
+
+.rayfan-ray {
+  stroke-linecap: round;
+}
+
+.rayfan-clear {
+  stroke: var(--ray-clear);
+  fill: var(--ray-clear);
+}
+
+.rayfan-near {
+  stroke: var(--ray-near);
+  fill: var(--ray-near);
+}
+
+.rayfan-danger {
+  stroke: var(--ray-danger);
+  fill: var(--ray-danger);
+}
+
+.rayfan-none {
+  stroke: var(--ray-none);
+  stroke-dasharray: 3 3;
+}
+
+.rayfan-dot {
+  stroke: none;
+}
+
+.rayfan-car {
+  fill: var(--hud-text);
+}
+
+.tele-raynums {
+  display: grid;
+  grid-template-columns: repeat(5, 32px);
+  font-size: 10.5px;
+  text-align: center;
+  color: var(--hud-text);
+}
+
+/* A thin line between two distances, so "13.7 6.3" never reads as one number (Environment gate). */
+.tele-raynums > span + span {
+  border-left: 1px solid var(--hud-border);
+}
+
+.tele-raynums [data-dim="true"] {
+  opacity: 0.35;
+}
+
+.tele-fit {
+  min-width: 160px;
+}
+
+/* On a narrow stage a race's fitness group gives way, so the strip stays one row; the car's rank
+   and role stay in its first group, and the drawer's Standings tab lists every F. */
+@container (max-width: 1100px) {
+  .tele-fit {
+    display: none;
+  }
+}
+
+.tele-clock {
+  min-width: 84px;
+}
+
+/* ── Compact drawer read-out ──────────────────────────────────── */
+
+.hud-compact {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: var(--r-2);
+  background: var(--hud-bg);
+  border: 1px solid var(--hud-border);
+  color: var(--hud-text);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.hud-compact.hud-empty {
+  color: var(--hud-muted);
+}
+
+/* The compact drawer's banner sits above its read-out. */
+.stage-bottom-compact {
+  left: 8px;
+  right: 8px;
+  bottom: 40px;
+}
+
 /* Task 4.10: the drawer's way back to following the car after a mouse pan or zoom. */
 .env-recenter {
   position: absolute;
   top: 8px;
   right: 8px;
-  padding: 2px 10px;
-  border: 1px solid var(--border);
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--hud-border);
   border-radius: 6px;
-  background: var(--surface);
-  color: var(--text);
-  font-size: 0.8rem;
+  background: var(--hud-bg);
+  color: var(--hud-text);
+  font: inherit;
+  font-size: 12px;
   cursor: pointer;
 }
 
-.camera-note {
-  color: var(--text-muted);
-  font-size: 0.82rem;
+/* ── Look-back strip (under the stage) ────────────────────────── */
+
+.trailstrip {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-3);
+  margin-top: var(--sp-2);
+  padding: 8px var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-2);
+  background: var(--surface);
+  flex-shrink: 0;
 }
 
-.env-hint {
-  margin-top: 8px !important;
-  font-size: 0.82rem;
-}
-
-.controls {
+.trailstrip-side {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-bottom: 8px;
+  gap: 1px;
 }
 
-.controls-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
+.trailstrip-end {
+  align-items: flex-end;
 }
 
-.controls button,
-.controls select,
-.controls .control-number,
-.controls .control-text {
-  padding: 4px 12px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
-  font-size: 0.85rem;
-  cursor: pointer;
+.trailstrip-now {
+  font-size: 15px;
+  font-weight: 500;
 }
 
-.control-number {
-  width: 5.5em;
+.trailstrip-now small {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 400;
+  color: var(--text-3);
 }
 
-.control-text {
-  width: 9em;
-  cursor: text;
+.trailstrip-chart {
+  position: relative;
+  padding-bottom: 14px;
 }
 
-.controls .control-text[aria-invalid="true"] {
-  border-color: var(--bad);
+.trailstrip-chart svg {
+  display: block;
+  width: 100%;
+  height: 56px;
+  border-radius: var(--r-1);
+  background: var(--surface-2);
 }
 
-.controls button:disabled,
-.controls select:disabled,
-.controls .control-number:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.trailstrip[data-disabled="true"] .trailstrip-chart svg {
+  opacity: 0.75;
 }
 
-.controls button:focus-visible,
-.controls select:focus-visible,
-.controls .control-number:focus-visible {
+/* The range input lies over the chart: invisible, but it takes the drag, the click and the
+   keyboard (arrow keys step), and it is what the browser tests drive (`trail-slider`). */
+.trailstrip-input {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  width: 100%;
+  height: 56px;
+  margin: 0;
+  opacity: 0;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.trailstrip-input:disabled {
+  cursor: default;
+}
+
+.trailstrip-chart:has(.trailstrip-input:focus-visible) svg {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.control {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+.trailstrip-zero {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
 }
 
-.control-label {
-  color: var(--text-muted);
-  font-size: 0.8rem;
+.trailstrip-area {
+  transition: opacity var(--dur-2) var(--ease);
 }
 
-.hud {
+.trailstrip-area.dim {
+  opacity: 0.25;
+}
+
+.ts-pos {
+  fill: var(--pos);
+}
+
+.ts-neg {
+  fill: var(--neg);
+}
+
+.trailstrip-cursor {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.trailstrip-label {
   position: absolute;
-  top: 8px;
-  left: 8px;
-  min-width: 190px;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  font-size: 0.82rem;
-  font-variant-numeric: tabular-nums;
+  left: 6px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--surface-2) 82%, transparent);
+  font-family: var(--font-label);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-2);
   pointer-events: none;
 }
 
-.view-compact .hud {
-  min-width: 0;
-  padding: 4px 8px;
-}
-
-.hud-empty {
-  color: var(--text-muted);
-}
-
-.hud-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.hud-label {
-  min-width: 64px;
-  color: var(--text-muted);
-}
-
-.hud-muted {
-  color: var(--text-muted);
-}
-
-.hud-rays {
-  margin-top: 4px;
-  padding-top: 4px;
-  border-top: 1px solid var(--border);
-}
-
-.bar {
-  position: relative;
-  flex: 1;
-  min-width: 50px;
-  height: 8px;
-  border-radius: 4px;
-  background: var(--border);
-}
-
-.bar::after {
-  content: "";
+.trailstrip-scale {
   position: absolute;
-  left: 50%;
-  top: -2px;
-  bottom: -2px;
-  width: 1px;
-  background: var(--text-muted);
-}
-
-.bar-fill {
-  position: absolute;
-  top: 0;
+  left: 0;
+  right: 0;
   bottom: 0;
-  border-radius: 4px;
-  background: var(--accent);
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--text-3);
+  pointer-events: none;
 }
 
-.chip {
-  padding: 0 8px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  font-size: 0.78rem;
+.trail-readout,
+.trail-legend {
+  grid-column: 1 / -1;
+  margin: 0 !important;
+  font-size: var(--fs-small);
 }
 
-.chip[data-kind="running"] {
-  color: var(--ok);
-  border-color: var(--ok);
+/* ── Standings (Environment drawer) ───────────────────────────── */
+
+.standings {
+  height: 100%;
+  overflow: auto;
 }
 
-.chip[data-kind="good"] {
-  color: var(--ok);
-  border-color: var(--ok);
+.standings-empty {
+  padding: var(--sp-3);
 }
 
-.chip[data-kind="bad"] {
-  color: var(--bad);
-  border-color: var(--bad);
+.standings-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--border);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-2);
 }
 
-.chip[data-kind="warn"] {
-  color: var(--warn);
-  border-color: var(--warn);
-}
-
-.banner {
-  position: absolute;
-  left: 50%;
-  bottom: 12px;
-  transform: translateX(-50%);
-  max-width: calc(100% - 24px);
-  padding: 6px 14px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
+.standings-summary span {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 10px;
   background: var(--surface);
-  font-size: 0.88rem;
-  text-align: center;
 }
 
-.banner[data-kind="bad"] {
-  border-color: var(--bad);
-  color: var(--bad);
+.standings-summary b {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text);
 }
 
-.banner[data-kind="good"] {
-  border-color: var(--ok);
-  color: var(--ok);
+.standings-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
 }
 
-.banner[data-kind="warn"] {
-  border-color: var(--warn);
+.standings-table th {
+  position: sticky;
+  top: 0;
+  padding: 6px 8px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-label);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: left;
+  color: var(--text-3);
+}
+
+.standings-table .r {
+  text-align: right;
+}
+
+.standings-table tbody tr {
+  cursor: pointer;
+}
+
+.standings-table tbody tr:hover {
+  background: var(--surface-2);
+}
+
+.standings-table tbody tr[data-selected="true"] {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.standings-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.standings-car {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.standings-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+
+.standings-swatch[data-elite="true"] {
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 1.5px var(--surface),
+    0 0 0 3px var(--car-elite);
+}
+
+.standings-role {
+  display: inline-flex;
   color: var(--warn);
 }
 
-@media (max-width: 760px) {
-  .hud {
-    min-width: 0;
-    font-size: 0.75rem;
+.standings-status {
+  display: inline-flex;
+  color: var(--idle);
+}
+
+.standings-status[data-kind="good"] {
+  color: var(--ok);
+}
+
+.standings-status[data-kind="bad"] {
+  color: var(--bad);
+}
+
+.standings-status[data-kind="warn"] {
+  color: var(--warn);
+}
+
+.standings-progress {
+  display: block;
+  width: 74px;
+  height: 5px;
+  border-radius: 2px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.standings-progress span {
+  display: block;
+  height: 100%;
+  background: var(--text-2);
+}
+
+.standings-progress span[data-kind="good"] {
+  background: var(--ok-fill);
+}
+
+.standings-progress span[data-kind="bad"] {
+  background: var(--bad-fill);
+}
+
+.standings-progress span[data-kind="warn"] {
+  background: var(--warn-fill);
+}
+
+/* ── Narrow windows ───────────────────────────────────────────── */
+
+/* The telemetry wraps instead of hiding groups: every number stays on screen. */
+@media (max-width: 860px) {
+  .stage-legend {
+    display: none; /* the track is small; the telemetry and the drawer still say it all */
   }
 
-  .hud-label {
-    min-width: 52px;
-  }
-
-  /* The ray distances are also written next to the rays on the canvas. */
-  .hud-rays {
+  .minimap {
     display: none;
+  }
+
+  .tele-actions {
+    min-width: 100%;
+    order: 5;
+    border-left: 0;
+    border-top: 1px solid var(--hud-border);
+  }
+
+  .tele-row {
+    grid-template-columns: 52px minmax(60px, 1fr) 40px;
+  }
+
+  .tele-word {
+    display: none;
+  }
+
+  .trailstrip {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+
+  .trailstrip-end {
+    grid-column: 1 / -1;
+    align-items: flex-start;
+  }
+
+  .stage-top {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .stage-top-right {
+    align-items: flex-start;
+  }
+}
+
+/* A narrow stage (a phone, or beside the open drawer): the bars show icons only, and the strip
+   keeps what the car is doing now (status, speed, steer, throttle, ray distances); the rest is in
+   the look-back strip and the drawer. Every number stays in the page. */
+@container (max-width: 560px) {
+  .hudbar .btn:not(.btn-icon) {
+    gap: 0;
+    font-size: 0; /* the words go, the icon stays; the word is still the button's name */
+  }
+
+  .hudbar .seg-text,
+  .hud-select-label {
+    display: none;
+  }
+
+  .tele-progress,
+  .tele-clock,
+  .tele-word,
+  .rayfan,
+  .tele-id .tele-sub {
+    display: none;
+  }
+
+  .tele-group {
+    padding: 6px 10px;
+  }
+
+  .tele-id,
+  .tele-speed {
+    min-width: 0;
+  }
+
+  .tele-rays {
+    min-width: 0;
+  }
+
+  /* Each distance as wide as its text, so a 4-character one ("16.6") never runs into the next. */
+  .tele-raynums {
+    grid-template-columns: repeat(5, auto);
+    justify-content: start;
+    font-size: 10px;
+  }
+
+  .tele-raynums > span {
+    padding: 0 3px;
+  }
+
+  .tele-actions {
+    min-width: 100%;
+    order: 5;
+    border-left: 0;
+    border-top: 1px solid var(--hud-border);
+  }
+
+  .tele-row {
+    grid-template-columns: 48px minmax(40px, 1fr) 36px;
+  }
+}
+
+@media (max-width: 860px) {
+  .env-stage {
+    min-height: 420px;
+  }
+}
+
+/* The same for a narrow view in a wide window (a column of the All layout): its panels then leave
+   room for the track, and the view scrolls instead (E3 verification). After `.env-stage`, which
+   it overrides. */
+@container env-view (max-width: 600px) {
+  .env-stage {
+    min-height: 420px;
   }
 }

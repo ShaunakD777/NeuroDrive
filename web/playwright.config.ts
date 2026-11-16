@@ -8,7 +8,9 @@ export default defineConfig({
   testDir: "e2e",
   globalSetup: "./e2e/global-setup.ts",
   reporter: "list",
-  use: { baseURL: "http://127.0.0.1:5173" },
+  // Reduced motion: the Environment camera then jumps instead of gliding (task E3), so a camera
+  // is settled the frame it changes, as the tests expect.
+  use: { baseURL: "http://127.0.0.1:5173", reducedMotion: "reduce" },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: [
     {
