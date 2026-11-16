@@ -1,7 +1,10 @@
 import { type ReactNode, useState } from "react";
 
-import type { AncestryStep, Evolution, ExamCard, RunData } from "../../mock/types";
-import { num, useApp } from "../../state/store";
+import type { Ancestry, AncestryStepView, GenerationStarts } from "@prod/api/generated";
+
+import type { Evolution, ExamCard } from "../../mock/types";
+import type { Loadable } from "../../source/runs";
+import { num } from "../../state/store";
 import { Button, Chip, Field, LegendItem, Select, Stat, Swatch } from "../../ui/controls";
 import { type Box, Figure, linear, linePath, bandPath, niceTicks, Plot, Tip, TipRow, type TipState, XAxis, YAxis } from "./charts";
 
@@ -36,6 +39,19 @@ function topOf(view: Evolution): number {
 function genScale(view: Evolution, box: Box) {
   const n = view.unit.length;
   return { x: linear(0.5, n + 0.5, box.left, box.right), column: (box.right - box.left) / n };
+}
+
+/**
+ * Generation ticks at least 34 px apart: every 5th, 10th, 20th, 25th, 50th or 100th generation,
+ * the smallest step that fits the chart's width, plus generation 1 when it has room. A 30-generation
+ * run gets every 5th; a 117-generation run in a narrow panel every 20th.
+ */
+function genTicks(view: Evolution, box: Box): number[] {
+  const n = view.unit.length;
+  const column = (box.right - box.left) / Math.max(1, n);
+  const step = [5, 10, 20, 25, 50, 100].find((s) => s * column >= 34) ?? 200;
+  const ticks = view.unit.filter((u) => u % step === 0);
+  return (ticks[0] ?? n) * column - column >= 28 ? [1, ...ticks] : ticks;
 }
 
 /** The selected generation as a column across a chart, and a strip that picks one on click or drag. */
@@ -83,7 +99,7 @@ function FitnessChart({ view, generation, checkpoints, onPick }: { view: Evoluti
           return (
             <>
               <YAxis box={box} scale={y} ticks={niceTicks(0, top, 5)} label="fitness F" />
-              <XAxis box={box} scale={x} ticks={view.unit.filter((u) => u === 1 || u % 5 === 0)} />
+              <XAxis box={box} scale={x} ticks={genTicks(view, box)} />
               <path d={bandPath(xs, view.q1.map(y), view.q3.map(y))} className="band" style={{ fill: "var(--series-2)" }} />
               {SERIES.map((s) => (
                 <path key={s.key} d={linePath(xs, view[s.key].map(y))} className="line" style={{ stroke: s.color }} data-testid={`evolution-line-${s.key}`} />
@@ -152,7 +168,7 @@ function DistributionChart({ view, generation, onPick }: { view: Evolution; gene
           return (
             <>
               <YAxis box={box} scale={y} ticks={niceTicks(0, top, 5)} label="fitness F" />
-              <XAxis box={box} scale={x} ticks={view.unit.filter((u) => u === 1 || u % 5 === 0)} label="generation" />
+              <XAxis box={box} scale={x} ticks={genTicks(view, box)} label="generation" />
               {view.unit.map((u, g) =>
                 view.counts[g].slice(0, bands).map((count, k) =>
                   count === 0 ? null : (
@@ -273,7 +289,7 @@ function DiversityChart({ view, generation, onPick }: { view: Evolution; generat
           return (
             <>
               <YAxis box={box} scale={y} ticks={niceTicks(0, top, 4)} label="distance D" />
-              <XAxis box={box} scale={x} ticks={view.unit.filter((u) => u === 1 || u % 5 === 0)} label="generation" />
+              <XAxis box={box} scale={x} ticks={genTicks(view, box)} label="generation" />
               <path d={linePath(view.unit.map(x), view.diversity.map(y))} className="line" style={{ stroke: "var(--text-2)" }} />
               <circle cx={x(generation)} cy={y(view.diversity[generation - 1])} r={4.5} className="marker" />
               <GenerationCursor
@@ -320,7 +336,7 @@ function StartsMap({ view, generation, raced, onPick }: { view: Evolution; gener
               <text x={12} y={(box.top + box.bottom) / 2} textAnchor="middle" transform={`rotate(-90 12 ${(box.top + box.bottom) / 2})`} className="axis-label">
                 start
               </text>
-              <XAxis box={box} scale={x} ticks={view.unit.filter((u) => u === 1 || u % 5 === 0)} label="generation" />
+              <XAxis box={box} scale={x} ticks={genTicks(view, box)} label="generation" />
               {view.unit.map((u, g) =>
                 view.start_finish_share[g].map((share, k) => (
                   <rect
@@ -362,11 +378,8 @@ function StartsMap({ view, generation, raced, onPick }: { view: Evolution; gener
 }
 
 /** How every network of one generation drove from every start. A cell selects that car. */
-function OutcomeGrid({ run }: { run: RunData }) {
+function OutcomeGrid({ grid, raced, car, onCell }: { grid: GenerationStarts; raced: number; car: number | null; onCell: (row: number, start: number) => void }) {
   const [tip, setTip] = useState<TipState | null>(null);
-  const car = useApp((s) => s.car);
-  const selectCar = useApp((s) => s.selectCar);
-  const grid = run.starts;
   const S = grid.n_starts;
   const rowH = 15;
   const height = 14 + S * rowH + 34;
@@ -377,12 +390,12 @@ function OutcomeGrid({ run }: { run: RunData }) {
           const n = grid.population;
           const column = (box.right - box.left) / n;
           const x = (r: number) => box.left + r * column;
-          const selectedRank = grid.order.indexOf(car);
+          const selectedRank = car === null ? -1 : grid.order.indexOf(car);
           return (
             <>
               {Array.from({ length: S }, (_, k) => (
-                <text key={k} x={box.left - 8} y={box.top + k * rowH + 11} textAnchor="end" className={k === run.start ? "tick tick-strong" : "tick"}>
-                  {k === run.start ? "▸ " : ""}
+                <text key={k} x={box.left - 8} y={box.top + k * rowH + 11} textAnchor="end" className={k === raced ? "tick tick-strong" : "tick"}>
+                  {k === raced ? "▸ " : ""}
                   {k + 1}
                 </text>
               ))}
@@ -390,7 +403,7 @@ function OutcomeGrid({ run }: { run: RunData }) {
                 start
               </text>
               <line x1={box.left} x2={box.right} y1={box.bottom} y2={box.bottom} className="baseline" />
-              {[1, 10, 20, 30, 40, 50].map((r) => (
+              {[1, 10, 20, 30, 40, 50, 75, 100].filter((r) => r <= n).map((r) => (
                 <text key={r} x={x(r - 0.5)} y={box.bottom + 15} textAnchor="middle" className="tick">
                   {r}
                 </text>
@@ -410,7 +423,7 @@ function OutcomeGrid({ run }: { run: RunData }) {
                     style={{ fill: OUTCOMES.find((o) => o.key === status)?.color ?? "var(--idle-fill)" }}
                     className="cell"
                     data-testid="evolution-outcome-cell"
-                    onClick={() => selectCar(row)}
+                    onClick={() => onCell(row, k)}
                     onMouseMove={(e) =>
                       setTip({
                         x: e.clientX,
@@ -421,7 +434,7 @@ function OutcomeGrid({ run }: { run: RunData }) {
                               Car {row + 1} · rank {r + 1} · start {k + 1}
                             </h5>
                             <TipRow label="ended" value={OUTCOMES.find((o) => o.key === status)?.label ?? status} />
-                            <TipRow label="progress" value={`${(100 * grid.progress[row][k]).toFixed(0)} % of 2 laps`} />
+                            <TipRow label="progress" value={`${(100 * grid.progress[row][k]).toFixed(0)} % of the race`} />
                             <TipRow label="f on this start" value={num(grid.start_fitness[row][k], 3)} />
                             <TipRow label="F over all starts" value={num(grid.fitness[row], 3)} />
                           </>
@@ -432,7 +445,7 @@ function OutcomeGrid({ run }: { run: RunData }) {
                   />
                 )),
               )}
-              <rect x={box.left} y={box.top + run.start * rowH} width={box.right - box.left} height={rowH} className="cursor-outline cursor-outline-soft" />
+              <rect x={box.left} y={box.top + raced * rowH} width={box.right - box.left} height={rowH} className="cursor-outline cursor-outline-soft" />
               {selectedRank >= 0 && <rect x={x(selectedRank)} y={box.top - 3} width={column} height={S * rowH + 6} className="cursor-outline" />}
             </>
           );
@@ -444,7 +457,8 @@ function OutcomeGrid({ run }: { run: RunData }) {
 }
 
 type Mark = "random" | "elite" | "child" | "crossed";
-const markOf = (s: AncestryStep): Mark => (s.origin === "child" && s.crossed ? "crossed" : s.origin);
+/** A run trained before task 7.8 does not know a step's origin ("unknown"): drawn as a child. */
+const markOf = (s: AncestryStepView): Mark => (s.origin === "child" && s.crossed ? "crossed" : s.origin === "unknown" ? "child" : s.origin);
 const MARKS: { key: Mark; label: string }[] = [
   { key: "random", label: "random network of generation 1" },
   { key: "elite", label: "elite: an exact copy" },
@@ -460,9 +474,9 @@ function Marker({ mark, x, y }: { mark: Mark; x: number; y: number }) {
 }
 
 /** The line of descent of one network back to generation 1, over each generation's best. */
-function AncestryChart({ run, view }: { run: RunData; view: Evolution }) {
+function AncestryChart({ ancestry, view }: { ancestry: Ancestry; view: Evolution }) {
   const [tip, setTip] = useState<TipState | null>(null);
-  const steps = [...run.ancestry.steps].sort((a, b) => a.unit - b.unit);
+  const steps = [...ancestry.steps].sort((a, b) => a.unit - b.unit);
   const top = topOf(view);
   return (
     <>
@@ -473,7 +487,7 @@ function AncestryChart({ run, view }: { run: RunData; view: Evolution }) {
           return (
             <>
               <YAxis box={box} scale={y} ticks={niceTicks(0, top, 5)} label="fitness F" />
-              <XAxis box={box} scale={x} ticks={view.unit.filter((u) => u === 1 || u % 5 === 0)} label="generation" />
+              <XAxis box={box} scale={x} ticks={genTicks(view, box)} label="generation" />
               <path d={linePath(view.unit.map(x), view.best.map(y))} className="line line-ref" />
               <path d={linePath(steps.map((s) => x(s.unit)), steps.map((s) => y(s.fitness)))} className="line" style={{ stroke: "var(--accent)" }} />
               {steps.map((s) => (
@@ -492,8 +506,8 @@ function AncestryChart({ run, view }: { run: RunData; view: Evolution }) {
                           <TipRow label="fitness F" value={num(s.fitness, 3)} />
                           <TipRow label="rank" value={`${s.rank + 1} of ${view.population}`} />
                           <TipRow label="origin" value={MARKS.find((m) => m.key === markOf(s))?.label.split(":")[0] ?? s.origin} />
-                          {s.origin === "child" && <TipRow label="genes mutated" value={s.mutated} />}
-                          {s.origin === "child" && s.crossed && <TipRow label="from 2nd parent" value={s.from_other} />}
+                          {s.origin === "child" && <TipRow label="genes mutated" value={s.mutated ?? "–"} />}
+                          {s.origin === "child" && s.crossed && <TipRow label="from 2nd parent" value={s.from_other ?? "–"} />}
                         </>
                       ),
                     })
@@ -516,7 +530,7 @@ function AncestryChart({ run, view }: { run: RunData; view: Evolution }) {
 const pct = (v: number) => `${(100 * v).toFixed(0)} %`;
 
 /** The Driving Exam of one checkpoint: the only numbers that compare with other methods. */
-function ExamPanel({ card, unit }: { card: ExamCard; unit: number }) {
+export function ExamPanel({ card, subject }: { card: ExamCard; subject: string }) {
   return (
     <div className="exam" data-testid="exam-card">
       <div className="exam-split">
@@ -576,71 +590,91 @@ function ExamPanel({ card, unit }: { card: ExamCard; unit: number }) {
         </tbody>
       </table>
       <p className="figure-foot">
-        Champion of generation {unit}, {card.env_steps.toLocaleString("en")} exam steps. Fitness says how well it drives the starts it
-        was bred on; the exam says how well it drives.
+        {subject}, {card.env_steps.toLocaleString("en")} exam steps. A method&apos;s own score says how well it does what it was trained
+        on; the exam says how well it drives.
       </p>
     </div>
   );
 }
 
-function OnlyRecorded({ generation, recorded, children }: { generation: number; recorded: number; children: ReactNode }) {
-  const set = useApp((s) => s.set);
-  if (generation === recorded) return <>{children}</>;
+
+/** A panel whose content may still be on its way, or not exist: a skeleton, or the reason in words. */
+export function Slot<T>({ value, height = 190, action, children }: { value: Loadable<T>; height?: number; action?: { label: string; onClick: () => void }; children: (v: T) => ReactNode }) {
+  if (value.state === "ready") return <>{children(value.value)}</>;
+  if (value.state === "loading") return <div className="skeleton" style={{ height }} aria-busy="true" />;
   return (
-    <div className="empty" style={{ minHeight: 190 }}>
-      <span className="empty-title">Recorded for generation {recorded} only</span>
-      <span>In the app this panel follows the chosen generation. The prototype recorded one.</span>
-      <Button onClick={() => set({ generation: recorded })}>Back to generation {recorded}</Button>
+    <div className="empty" style={{ minHeight: height }} data-testid="panel-missing">
+      <span>{value.why}</span>
+      {action && <Button onClick={action.onClick}>{action.label}</Button>}
     </div>
   );
 }
 
+/** Everything the GA dashboard draws, from either source. */
+export interface GaModel {
+  /** The run picker, its chips and its settings line. */
+  head: ReactNode;
+  all: Evolution;
+  /** The fitness charts' data: on all starts, or on `evoStart` alone. */
+  view: Evolution;
+  evoStart: number | null;
+  /** The starts that can be chosen for "Fitness on". */
+  startChoices: number[];
+  setEvoStart: (start: number | null) => void;
+  /** The start marked ▸ (raced) in the starts map and the outcome grid. */
+  raced: number;
+  checkpoints: number[];
+  generation: number;
+  pick: (g: number) => void;
+  starts: Loadable<GenerationStarts>;
+  ancestry: Loadable<Ancestry>;
+  exam: Loadable<{ unit: number; card: ExamCard }>;
+  /** Shown with a missing panel (recorded: back to the recorded generation). */
+  missingAction?: { label: string; onClick: () => void };
+  /** Shown when there is no exam card: go to a generation that has one. */
+  examAction?: { label: string; onClick: () => void };
+  /** The car outlined in the outcome grid (the selected car when this generation is racing). */
+  car: number | null;
+  onCell: (row: number, start: number) => void;
+  onRace: () => void;
+  /** Replay the newest checkpoint at or before the generation; null when there is none. */
+  onReplay: (() => void) | null;
+}
+
+const finite = (v: number | undefined): v is number => v !== undefined && Number.isFinite(v);
+
 /**
  * The Timeline tool for a GA run, as a dashboard. Reading order: the run and its headline
- * numbers; fitness over the generations with the generation cursor; the Driving Exam of the
- * chosen checkpoint; then the generation in detail (distribution, starts, outcomes, ancestry).
- * One generation is chosen for the whole page, here or on any chart.
+ * numbers; fitness over the generations with the generation cursor; the Driving Exam; then the
+ * generation in detail (distribution, starts, outcomes, ancestry). One generation is chosen for
+ * the whole page, here or on any chart.
  */
-export function RunTimeline() {
-  const data = useApp((s) => s.data);
-  const generation = useApp((s) => s.generation);
-  const evoStart = useApp((s) => s.evoStart);
-  const set = useApp((s) => s.set);
-  if (data === null) return <div className="skeleton" style={{ height: 400, margin: 16 }} />;
-  const run = data.run;
-  const view = evoStart === null ? run.evolution : run.evolutionStart;
-  const all = run.evolution;
-  const g = generation;
-  const pick = (u: number) => set({ generation: u });
-  const steps = run.ancestry.steps;
+export function GaDashboard({ model }: { model: GaModel }) {
+  const { all, view, generation: g, pick } = model;
+  const last = all.unit.length - 1;
+  const ancestry = model.ancestry.state === "ready" ? model.ancestry.value : null;
+  const steps = ancestry?.steps ?? [];
   const elites = steps.filter((s) => s.origin === "elite").length;
   const children = steps.filter((s) => s.origin === "child");
-  const lastBest = all.best_so_far[all.best_so_far.length - 1];
-  const go = () => {
-    window.location.hash = "#/environment";
-  };
+  const examUnit = model.exam.state === "ready" ? model.exam.value.unit : null;
 
   return (
     <div className="dash" data-testid="timeline">
       <section className="dash-head span-12">
-        <div className="dash-run">
-          <Field label="Run">
-            <Select value={run.run_id} options={[{ value: run.run_id, label: `${run.run_id.replace(/^\d{8}-\d{6}-/, "")} · 26 checkpoints` }]} onChange={() => {}} disabled />
-          </Field>
-          <Chip kind="plain" icon="dna">
-            genetic algorithm
-          </Chip>
-          <Chip kind="ok">completed</Chip>
-          <span className="muted">
-            seed {run.config.seed} · {run.config.network.layer_sizes.join(" → ")} · tournament of {run.config.selection.tournament_size} · crossover{" "}
-            {run.config.variation.crossover_rate} · mutation {run.config.variation.mutation_rate} × σ {run.config.variation.mutation_strength}
-          </span>
-        </div>
+        {model.head}
         <div className="dash-stats">
           <Stat label="Generations" value={all.unit.length} note={`${all.population} networks, ${all.elite} elites`} />
-          <Stat label="Best fitness so far" value={lastBest.toFixed(3)} note={`from ${all.best[0].toFixed(3)} in generation 1`} />
-          <Stat label="Finish every start" value={`${all.finishers[all.finishers.length - 1]} of ${all.population}`} note="in the last generation" />
-          <Stat label="Diversity D" value={all.diversity[all.diversity.length - 1].toFixed(2)} note={`from ${all.diversity[0].toFixed(2)}`} />
+          <Stat label="Best fitness so far" value={all.best_so_far[last].toFixed(3)} note={`from ${all.best[0].toFixed(3)} in generation 1`} />
+          <Stat
+            label="Finish every start"
+            value={finite(all.finishers[last]) ? `${all.finishers[last]} of ${all.population}` : "–"}
+            note={finite(all.finishers[last]) ? "in the last generation" : "not recorded by this run"}
+          />
+          <Stat
+            label="Diversity D"
+            value={finite(all.diversity[last]) ? all.diversity[last].toFixed(2) : "–"}
+            note={finite(all.diversity[0]) ? `from ${all.diversity[0].toFixed(2)}` : undefined}
+          />
         </div>
       </section>
 
@@ -648,35 +682,32 @@ export function RunTimeline() {
         <div className="dash-gen">
           <span className="eyebrow">Generation</span>
           <span className="dash-gen-value num">{g}</span>
-          <input
-            type="range"
-            min={1}
-            max={all.unit.length}
-            value={g}
-            onChange={(e) => pick(Number(e.target.value))}
-            aria-label="Generation"
-            data-testid="timeline-slider"
-          />
+          <input type="range" min={1} max={all.unit.length} value={g} onChange={(e) => pick(Number(e.target.value))} aria-label="Generation" data-testid="timeline-slider" />
           <span className="muted">
-            best <b className="num">{num(all.best[g - 1], 3)}</b> · median <b className="num">{num(all.median[g - 1], 3)}</b> ·{" "}
-            <b className="num">{all.finishers[g - 1]}</b> of {all.population} finish every start
+            best <b className="num">{num(all.best[g - 1], 3)}</b> · median <b className="num">{num(all.median[g - 1], 3)}</b>
+            {finite(all.finishers[g - 1]) && (
+              <>
+                {" "}
+                · <b className="num">{all.finishers[g - 1]}</b> of {all.population} finish every start
+              </>
+            )}
           </span>
         </div>
         <div className="dash-actions">
           <Field label="Fitness on">
             <Select
-              value={evoStart === null ? "all" : "one"}
+              value={model.evoStart === null ? -1 : model.evoStart}
               options={[
-                { value: "all", label: "all 10 starts (mean F)" },
-                { value: "one", label: `start ${run.start + 1} alone (f)` },
+                { value: -1, label: `all ${all.n_starts > 0 ? all.n_starts : ""} starts (mean F)` },
+                ...model.startChoices.map((k) => ({ value: k, label: `start ${k + 1} alone (f)` })),
               ]}
-              onChange={(v) => set({ evoStart: v === "all" ? null : run.start })}
+              onChange={(v) => model.setEvoStart(v === -1 ? null : v)}
             />
           </Field>
-          <Button onClick={go} title="Drive this generation's champion from the exam's 10 starts">
+          <Button onClick={() => model.onReplay?.()} disabled={model.onReplay === null} title="Drive the newest champion up to this generation from the Driving Exam's 10 starts">
             Replay champion
           </Button>
-          <Button variant="primary" icon="play" onClick={go} testId="timeline-race">
+          <Button variant="primary" icon="play" onClick={model.onRace} testId="timeline-race">
             Race generation {g}
           </Button>
         </div>
@@ -685,16 +716,16 @@ export function RunTimeline() {
       <div className="panel span-7">
         <div className="panel-body">
           <Figure
-            title={evoStart === null ? "Fitness F of each generation's networks" : `Fitness f on start ${evoStart + 1} alone`}
+            title={model.evoStart === null ? "Fitness F of each generation's networks" : `Fitness f on start ${model.evoStart + 1} alone`}
             note="Lines: best, median, mean, worst. Band: the middle half. Rings: saved checkpoints. Click or drag to choose a generation."
             objective="fitness"
             testId="fitness-figure"
           >
-            <FitnessChart view={view} generation={g} checkpoints={run.checkpoints} onPick={pick} />
+            <FitnessChart view={view} generation={g} checkpoints={model.checkpoints} onPick={pick} />
           </Figure>
           <Figure
             title="Where the whole generation sits"
-            note="Each column is one generation; each cell a fitness band of 0.05, shaded by the share of the generation in it."
+            note={`Each column is one generation; each cell a fitness band of ${view.band_width}, shaded by the share of the generation in it.`}
             footer={
               <div className="legend">
                 <span>share of the generation:</span>
@@ -713,10 +744,19 @@ export function RunTimeline() {
 
       <div className="panel span-5">
         <div className="panel-body">
-          <Figure title={`Driving Exam · checkpoint ${run.generation}`} note="The champion of this generation on all five exam tracks." objective="exam" testId="exam-figure">
-            <OnlyRecorded generation={g} recorded={run.generation}>
-              <ExamPanel card={run.exam} unit={run.generation} />
-            </OnlyRecorded>
+          <Figure
+            title={examUnit === null ? "Driving Exam" : `Driving Exam · checkpoint ${examUnit}`}
+            note={
+              examUnit !== null && examUnit !== g
+                ? `The newest champion examined up to generation ${g}: generation ${examUnit}'s.`
+                : "This generation's champion on every exam track."
+            }
+            objective="exam"
+            testId="exam-figure"
+          >
+            <Slot value={model.exam} height={260} action={model.examAction ?? model.missingAction}>
+              {(e) => <ExamPanel card={e.card} subject={`Champion of generation ${e.unit}`} />}
+            </Slot>
           </Figure>
         </div>
       </div>
@@ -732,7 +772,11 @@ export function RunTimeline() {
       <div className="panel span-4">
         <div className="panel-body">
           <Figure title="Diversity: how different the networks are" objective="diversity" note="Mean distance between two networks' weights.">
-            <DiversityChart view={all} generation={g} onPick={pick} />
+            {all.diversity.some(Number.isFinite) ? (
+              <DiversityChart view={all} generation={g} onPick={pick} />
+            ) : (
+              <Slot value={{ state: "missing", why: "This run did not record diversity." }}>{() => null}</Slot>
+            )}
           </Figure>
         </div>
       </div>
@@ -741,7 +785,7 @@ export function RunTimeline() {
         <div className="panel-body">
           <Figure
             title="Which starts each generation finishes"
-            note="Rows: the 10 evaluation starts (▸ = the one raced). Shade: share of the generation that finished."
+            note={`Rows: the ${all.n_starts} evaluation starts (▸ = the one raced). Shade: share of the generation that finished.`}
             footer={
               <div className="legend">
                 {["none", "up to 20 %", "40 %", "60 %", "80 %", "more"].map((label, k) => (
@@ -752,7 +796,11 @@ export function RunTimeline() {
               </div>
             }
           >
-            <StartsMap view={all} generation={g} raced={run.start} onPick={pick} />
+            {all.start_finish_share.length > 0 ? (
+              <StartsMap view={all} generation={g} raced={model.raced} onPick={pick} />
+            ) : (
+              <Slot value={{ state: "missing", why: "This run was trained before per-start results were kept (task 7.7)." }}>{() => null}</Slot>
+            )}
           </Figure>
         </div>
       </div>
@@ -760,8 +808,8 @@ export function RunTimeline() {
       <div className="panel span-7">
         <div className="panel-body">
           <Figure
-            title={`Generation ${run.generation}: how each network drove from each start`}
-            note="Click a cell to select that car in every view. Dashed outline: the start that is raced (▸). Solid: the selected car."
+            title={`Generation ${g}: how each network drove from each start`}
+            note="Click a cell to race that start with that car selected. Dashed outline: the start marked ▸. Solid: the selected car."
             footer={
               <div className="legend">
                 {OUTCOMES.map((o) => (
@@ -773,9 +821,9 @@ export function RunTimeline() {
             }
             testId="outcomes-figure"
           >
-            <OnlyRecorded generation={g} recorded={run.generation}>
-              <OutcomeGrid run={run} />
-            </OnlyRecorded>
+            <Slot value={model.starts} height={200} action={model.missingAction}>
+              {(grid) => <OutcomeGrid grid={grid} raced={model.raced} car={model.car} onCell={model.onCell} />}
+            </Slot>
           </Figure>
         </div>
       </div>
@@ -783,9 +831,13 @@ export function RunTimeline() {
       <div className="panel span-5">
         <div className="panel-body">
           <Figure
-            title={`Ancestry of generation ${run.generation}'s champion`}
+            title={`Ancestry of generation ${g}'s champion`}
             objective="fitness"
-            note={`Row ${run.ancestry.row} goes back ${steps.length - 1} generations: ${elites} elite copies, ${children.length} children (${children.filter((s) => s.crossed).length} crossed), ${children.reduce((n, s) => n + s.mutated, 0)} genes mutated along the line.`}
+            note={
+              ancestry === null
+                ? "Its line of descent back to generation 1."
+                : `Row ${ancestry.row} goes back ${steps.length - 1} generations: ${elites} elite copies, ${children.length} children (${children.filter((s) => s.crossed).length} crossed), ${children.reduce((n, s) => n + (s.mutated ?? 0), 0)} genes mutated along the line.`
+            }
             footer={
               <div className="legend">
                 {MARKS.map((m) => (
@@ -805,12 +857,93 @@ export function RunTimeline() {
             }
             testId="ancestry-figure"
           >
-            <OnlyRecorded generation={g} recorded={run.generation}>
-              <AncestryChart run={run} view={all} />
-            </OnlyRecorded>
+            <Slot value={model.ancestry} height={220} action={model.missingAction}>
+              {(a) => <AncestryChart ancestry={a} view={all} />}
+            </Slot>
           </Figure>
         </div>
       </div>
     </div>
+  );
+}
+
+/** Ticks for whole units: nice values, never a fraction of a unit. */
+function unitTicks(first: number, last: number): number[] {
+  const ticks = niceTicks(first, last, 6).filter(Number.isInteger);
+  return ticks.length >= 2 ? ticks : [first, last];
+}
+
+/** One metric of a run's metrics lines, with its checkpoints ringed and the chosen one marked. */
+export function MetricChart({
+  unit,
+  value,
+  checkpoints,
+  chosen,
+  onPick,
+  label,
+}: {
+  unit: number[];
+  value: number[];
+  checkpoints: number[];
+  chosen: number | null;
+  onPick: (u: number) => void;
+  label: string;
+}) {
+  const [tip, setTip] = useState<TipState | null>(null);
+  if (unit.length === 0) return <Slot value={{ state: "missing", why: "No metrics lines yet." }}>{() => null}</Slot>;
+  const lo = Math.min(0, ...value);
+  const hi = Math.max(...value);
+  const pad = (hi - lo) * 0.08 || 1;
+  const first = unit[0];
+  const lastUnit = Math.max(unit[unit.length - 1], first + 1);
+  const nearest = (u: number) => unit.reduce((best, v, i) => (Math.abs(v - u) < Math.abs(unit[best] - u) ? i : best), 0);
+  const unitAt = (e: React.MouseEvent) => {
+    const rect = (e.currentTarget as SVGRectElement).getBoundingClientRect();
+    return first + ((e.clientX - rect.left) / rect.width) * (lastUnit - first);
+  };
+  return (
+    <>
+      <Plot height={260} margin={{ top: 14, right: 20, bottom: 36, left: 54 }} label={label} testId="metric-chart">
+        {(box) => {
+          const x = linear(first, lastUnit, box.left, box.right);
+          const y = linear(lo, hi + pad, box.bottom, box.top);
+          return (
+            <>
+              <YAxis box={box} scale={y} ticks={niceTicks(lo, hi + pad, 5)} label={label.replace(/_/g, " ")} />
+              <XAxis box={box} scale={x} ticks={unitTicks(first, lastUnit)} label="unit" />
+              <path d={linePath(unit.map(x), value.map(y))} className="line" style={{ stroke: "var(--series-1)" }} />
+              {checkpoints.map((u) => {
+                const i = nearest(u);
+                return unit[i] === u ? <circle key={u} cx={x(u)} cy={y(value[i])} r={4} className="checkpoint" /> : null;
+              })}
+              {chosen !== null && <line x1={x(chosen)} x2={x(chosen)} y1={box.top} y2={box.bottom} className="crosshair" />}
+              <rect
+                x={box.left}
+                y={box.top}
+                width={box.right - box.left}
+                height={box.bottom - box.top}
+                className="hit"
+                onClick={(e) => onPick(unitAt(e))}
+                onMouseMove={(e) => {
+                  const i = nearest(unitAt(e));
+                  setTip({
+                    x: e.clientX,
+                    y: e.clientY,
+                    content: (
+                      <>
+                        <h5>Unit {unit[i]}</h5>
+                        <TipRow label={label} value={num(value[i], 4)} />
+                      </>
+                    ),
+                  });
+                }}
+                onMouseLeave={() => setTip(null)}
+              />
+            </>
+          );
+        }}
+      </Plot>
+      <Tip tip={tip} />
+    </>
   );
 }

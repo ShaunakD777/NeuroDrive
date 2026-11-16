@@ -26,6 +26,8 @@ const errors = [];
 const failures = [];
 page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
 page.on("pageerror", (e) => errors.push(String(e)));
+// A failed request is logged by the browser as a console error without its address: keep the address.
+page.on("response", (r) => r.status() >= 400 && errors.push(`${r.status()} ${new URL(r.url()).pathname}${new URL(r.url()).search}`));
 
 const world = () => page.evaluate(() => window.__ndWorld());
 const live = (fn) => page.evaluate(fn);
@@ -212,6 +214,76 @@ if (gaRun === null) {
   await page.evaluate(() => window.__nd.setState({ cameraMode: "follow", drawerTab: "network" }));
   await go("environment");
 }
+
+// ── The Experiment view on the server's run folders ─────────────────────────────────────
+console.log("Experiment: Timeline of a GA run");
+const runList = await page.evaluate(async () => (await (await fetch("/api/runs")).json()).runs);
+const ga = runList.find((r) => r.method === "ga" && r.checkpoints > 0);
+const other = runList.find((r) => !r.method.startsWith("toy_") && r.method !== "ga" && r.checkpoints > 0);
+await page.evaluate(() => window.__nd.setState({ theme: "light", experimentTab: "timeline", drawerOpen: true }));
+await go("experiment");
+if (ga === undefined) {
+  check(true, "no GA run in runs/: Timeline GA checks skipped");
+} else {
+  await page.evaluate((id) => window.__nd.setState({ runId: id }), ga.run_id);
+  const drawn = await until(() => document.querySelector('[data-testid="evolution-fitness"] path.line') !== null, "the GA run's fitness chart", 20000);
+  if (drawn) check(true, `fitness chart of ${ga.run_id.replace(/^\d{8}-\d{6}-/, "")}`);
+  await page.evaluate(() => window.__nd.setState({ generation: 5 }));
+  await until(
+    () => document.querySelector('[data-testid="evolution-outcome-cell"]') !== null || document.querySelector('[data-testid="outcomes-figure"] [data-testid="panel-missing"]') !== null,
+    "generation 5's outcome grid (or its reason)",
+    20000,
+  );
+  await until(
+    () => document.querySelector('[data-testid="ancestry-chart"]') !== null || document.querySelector('[data-testid="ancestry-figure"] [data-testid="panel-missing"]') !== null,
+    "generation 5's ancestry (or its reason)",
+    20000,
+  );
+  await until(
+    () => document.querySelector('[data-testid="exam-card"]') !== null || document.querySelector('[data-testid="exam-figure"] [data-testid="panel-missing"]') !== null,
+    "the exam panel (a card or its reason)",
+    20000,
+  );
+  check((await page.locator('[data-testid="dash-gen-value"], .dash-gen-value').first().textContent()) === "5", "the generation cursor reads 5");
+  await shot("live-experiment-timeline-ga-light");
+  if ((await page.locator('[data-testid="evolution-outcome-cell"]').count()) > 0) {
+    await page.locator('[data-testid="evolution-outcome-cell"]').nth(4).click();
+    await until(() => window.__ndWorld()?.scenario.population?.unit === 5, "the click to race generation 5", 20000);
+    check(true, "an outcome cell raced its generation");
+  }
+  await page.evaluate(() => window.__nd.setState({ theme: "dark" }));
+  await settle(300);
+  await shot("live-experiment-timeline-ga-dark");
+}
+
+if (other !== undefined) {
+  console.log(`Experiment: Timeline of a ${other.method} run`);
+  await page.evaluate((id) => window.__nd.setState({ runId: id, theme: "light" }), other.run_id);
+  const ok = await until(() => document.querySelector('[data-testid="metric-chart"] path.line') !== null, "its metric chart", 20000);
+  if (ok) check(true, `metric chart of ${other.run_id.replace(/^\d{8}-\d{6}-/, "")}`);
+  await shot("live-experiment-timeline-other-light");
+}
+
+console.log("Experiment: Compare runs");
+await page.evaluate(() => window.__nd.setState({ experimentTab: "compare", theme: "light" }));
+const compared = await until(
+  () =>
+    document.querySelector('[data-testid="compare-median"]') !== null ||
+    (document.querySelector('[data-testid="runlist"]') !== null && document.querySelectorAll('[data-testid="runlist"] input').length === 0),
+  "the newest sweep's comparison",
+  30000,
+);
+if (compared) check((await page.locator('[data-testid="compare-median"]').count()) > 0 || (await page.locator('[data-testid="runlist"] input').count()) === 0, "median curves from GET runs/compare (or no run with a loss)");
+await shot("live-experiment-compare-light");
+
+console.log("Experiment: Training");
+await page.evaluate(() => window.__nd.setState({ experimentTab: "training" }));
+// /ws/runs reports runs that are running or were launched by this server, not every old folder.
+const listed = await until(() => document.querySelector('[data-testid="training-runs"]')?.previousElementSibling?.textContent === "Runs", "the /ws/runs socket", 20000);
+if (listed) check(true, `the run list from /ws/runs (${await page.locator('[data-testid="training-runs"] .runlist-row').count()} rows)`);
+await until(() => document.querySelector('[data-testid="live-chart"]') !== null || document.querySelector('[data-testid="live-waiting"]') !== null, "the watched run's chart");
+await shot("live-experiment-training-light");
+await page.evaluate(() => window.__nd.setState({ experimentTab: "timeline" }));
 
 // ── Production untouched: the live store is production's ───────────────────────────────
 const sameStore = await page.evaluate(() => typeof window.__ndProd.useLive.getState().loadScenario === "function");

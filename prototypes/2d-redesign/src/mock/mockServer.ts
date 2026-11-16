@@ -10,7 +10,8 @@
 //   - rolls a held action forward for 2 s to draw the what-if ghost (physics v1 equations);
 //   - measures ray lengths for cars whose sensor readings were not recorded;
 //   - computes weight × value for every connection (the proposed "Flow" mode);
-//   - samples the activation functions for the activation plot.
+//   - samples the activation functions for the activation plot;
+//   - takes the quartiles of the recorded exam cards for the exam strip.
 
 import type { CarFrame, CarRecord, Network, Race, Recorded, Track } from "./types";
 
@@ -238,4 +239,18 @@ export function rollout(
  */
 export function contributionsOf(network: Network, activations: number[][]): number[][][] {
   return network.weights.map((matrix, layer) => matrix.map((row) => row.map((w, i) => w * (activations[layer]?.[i] ?? 0))));
+}
+
+// ── Quartiles of the recorded exam cards (the exam strip) ───────────────────────────────
+
+/**
+ * Quartiles by linear interpolation (the rule of experiment/stats.py). The recording gathered the
+ * exam card of every seed of seven methods; production must get these from Python (`POST compare`,
+ * roadmap task 8.1), never compute them in the browser.
+ */
+export function quantile(sorted: number[], q: number): number {
+  const pos = (sorted.length - 1) * q;
+  const lo = Math.floor(pos);
+  const hi = Math.ceil(pos);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
 }

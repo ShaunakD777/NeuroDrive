@@ -1,8 +1,14 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
+import type { RunSummary } from "@prod/api/generated";
+import { fetchCompare } from "@prod/api/rest";
+
+import { quantile } from "../../mock/mockServer";
 import type { CompareResponse, ExamGroup } from "../../mock/types";
-import { useApp } from "../../state/store";
+import { methodLabel, useAnswer, useRunList } from "../../source/runs";
+import { shortRun, useApp } from "../../state/store";
 import { Planned, Segmented } from "../../ui/controls";
+import { SourceWaiting } from "../../ui/SourceWaiting";
 import { bandPath, Figure, formatPower, linear, linePath, logScale, logTicks, niceTicks, Plot, Tip, TipRow, type TipState, XAxis, YAxis } from "./charts";
 
 const NAMES: [RegExp, string][] = [
@@ -16,14 +22,6 @@ const NAMES: [RegExp, string][] = [
 ];
 const nameOf = (id: string) => NAMES.find(([re]) => re.test(id))?.[1] ?? id.replace(/^\d{8}-\d{6}-/, "");
 const series = (k: number) => `var(--series-${k + 1})`;
-
-/** Quartiles by linear interpolation (the same rule as experiment/stats.py). */
-function quantile(sorted: number[], q: number): number {
-  const pos = (sorted.length - 1) * q;
-  const lo = Math.floor(pos);
-  const hi = Math.ceil(pos);
-  return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
-}
 
 /**
  * The Driving Exam of every method, one row each: a dot per seed, the median as a tick and the
@@ -216,12 +214,52 @@ function BandChart({ answer, hidden, showRuns, logX }: { answer: CompareResponse
   );
 }
 
+/** The chart, its legend and its table: the same for both sources. */
+function LossPanel({ answer, title, hidden, showRuns, logX, foot }: { answer: CompareResponse; title: string; hidden: Set<string>; showRuns: boolean; logX: boolean; foot?: string }) {
+  return (
+    <div className="panel span-9">
+      <div className="panel-body">
+        <Figure title={title} note="Line = median of the seeds. Band = their middle half (first to third quartile)." objective="loss" testId="loss-figure">
+          <BandChart answer={answer} hidden={hidden} showRuns={showRuns} logX={logX} />
+        </Figure>
+        <table className="table compare-table" data-testid="compare-table">
+          <thead>
+            <tr>
+              <th>Group</th>
+              <th className="r">Seeds</th>
+              <th className="r">Final loss, median</th>
+              <th className="r">Middle half</th>
+              <th className="r">Diverged</th>
+            </tr>
+          </thead>
+          <tbody>
+            {answer.groups.map((g, k) => (
+              <tr key={g.group_id} style={{ opacity: hidden.has(g.group_id) ? 0.4 : 1 }}>
+                <td>
+                  <span className="grouplist-cell">
+                    <i className="grouplist-key" style={{ background: series(k) }} />
+                    {nameOf(g.group_id)}
+                  </span>
+                </td>
+                <td className="r num">{g.run_ids.length}</td>
+                <td className="r num">{g.final_median === null ? "–" : g.final_median.toExponential(2)}</td>
+                <td className="r num">{g.final_q1 === null || g.final_q3 === null ? "–" : `${g.final_q1.toExponential(2)} to ${g.final_q3.toExponential(2)}`}</td>
+                <td className="r num">{g.n_diverged}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {foot && <p className="figure-foot">{foot}</p>}
+      </div>
+    </div>
+  );
+}
+
 /**
- * Compare runs. Two rules shape the page:
- *   1. one objective per chart: a loss chart holds only losses of one task;
- *   2. methods meet only in the Driving Exam, at the top.
+ * Compare runs, recorded: two comparisons recorded from `GET runs/compare` (studies S3 and S5c),
+ * and the exam of every method, which the recording gathered card by card.
  */
-export function Compare() {
+function RecordedCompare() {
   const data = useApp((s) => s.data);
   const [which, setWhich] = useState<"optimizers" | "imitation">("optimizers");
   const [hidden, setHidden] = useState<Set<string>>(new Set());
@@ -295,47 +333,207 @@ export function Compare() {
         </div>
       </div>
 
-      <div className="panel span-9">
-        <div className="panel-body">
-          <Figure
-            title={which === "optimizers" ? "Toy sine: loss after each epoch" : "Imitation: validation loss after each epoch"}
-            note="Line = median of the seeds. Band = their middle half (first to third quartile)."
-            objective="loss"
-            testId="loss-figure"
-          >
-            <BandChart answer={answer} hidden={hidden} showRuns={showRuns} logX={which === "optimizers"} />
-          </Figure>
-          <table className="table compare-table" data-testid="compare-table">
-            <thead>
-              <tr>
-                <th>Group</th>
-                <th className="r">Seeds</th>
-                <th className="r">Final loss, median</th>
-                <th className="r">Middle half</th>
-                <th className="r">Diverged</th>
-              </tr>
-            </thead>
-            <tbody>
-              {answer.groups.map((g, k) => (
-                <tr key={g.group_id} style={{ opacity: hidden.has(g.group_id) ? 0.4 : 1 }}>
-                  <td>
-                    <span className="grouplist-cell">
-                      <i className="grouplist-key" style={{ background: series(k) }} />
-                      {nameOf(g.group_id)}
-                    </span>
-                  </td>
-                  <td className="r num">{g.run_ids.length}</td>
-                  <td className="r num">{g.final_median === null ? "–" : g.final_median.toExponential(2)}</td>
-                  <td className="r num">
-                    {g.final_q1 === null || g.final_q3 === null ? "–" : `${g.final_q1.toExponential(2)} to ${g.final_q3.toExponential(2)}`}
-                  </td>
-                  <td className="r num">{g.n_diverged}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <LossPanel
+        answer={answer}
+        title={which === "optimizers" ? "Toy sine: loss after each epoch" : "Imitation: validation loss after each epoch"}
+        hidden={hidden}
+        showRuns={showRuns}
+        logX={which === "optimizers"}
+      />
     </div>
   );
+}
+
+/** Methods whose runs write a loss after each epoch (`GET runs/compare` accepts only these). */
+const hasLoss = (method: string) => method.startsWith("toy_") || method === "imitation" || method === "dagger";
+
+interface ListGroup {
+  /** The sweep id, or the run id of a run outside any sweep. */
+  key: string;
+  label: string;
+  runs: RunSummary[];
+}
+
+/** The runs of one method, as sweeps (with their seeds) and single runs, newest first. */
+function groupBySweep(runs: RunSummary[]): ListGroup[] {
+  const groups = new Map<string, ListGroup>();
+  for (const r of runs) {
+    const key = r.sweep ?? r.run_id;
+    const group = groups.get(key) ?? { key, label: r.sweep ? r.tag.replace(/-s\d+$/, "") : shortRun(r.run_id), runs: [] };
+    group.runs.push(r);
+    groups.set(key, group);
+  }
+  return [...groups.values()];
+}
+
+/**
+ * Compare runs, live: the server's run folders grouped by method and sweep, with a search box. One
+ * task at a time: ticking a run of another task starts a new comparison, because a loss chart
+ * holds only losses of one task. The medians and quartiles are Python's (`GET runs/compare`).
+ */
+function LiveCompare() {
+  const { runs, error } = useRunList();
+  const [chosen, setChosen] = useState<Set<string>>(new Set());
+  const [query, setQuery] = useState("");
+  const [metric, setMetric] = useState<"loss" | "val_loss">("loss");
+  const [showRuns, setShowRuns] = useState(false);
+  const [logX, setLogX] = useState(true);
+  const lossRuns = useMemo(() => (runs ?? []).filter((r) => hasLoss(r.method)), [runs]);
+  const methods = useMemo(() => [...new Set(lossRuns.map((r) => r.method))], [lossRuns]);
+  const others = (runs ?? []).filter((r) => !hasLoss(r.method)).length;
+
+  // Open on the newest sweep, so the page starts with a comparison rather than an empty chart.
+  useEffect(() => {
+    if (chosen.size > 0 || lossRuns.length === 0) return;
+    const sweep = lossRuns.find((r) => r.sweep !== null)?.sweep;
+    if (sweep) setChosen(new Set(lossRuns.filter((r) => r.sweep === sweep).map((r) => r.run_id)));
+  }, [lossRuns, chosen.size]);
+
+  const chosenRuns = lossRuns.filter((r) => chosen.has(r.run_id));
+  const task = chosenRuns[0]?.method ?? null;
+  const canVal = task === "imitation" || task === "dagger";
+  const shownMetric = canVal ? metric : "loss";
+  const ids = chosenRuns.map((r) => r.run_id).sort();
+  const answer = useAnswer(ids.length === 0 ? null : `compare/${shownMetric}/${ids.join(",")}`, () => fetchCompare(ids, shownMetric));
+
+  /** Tick or untick a group; a group of another task replaces the selection. */
+  const toggle = (group: ListGroup) => {
+    const groupIds = group.runs.map((r) => r.run_id);
+    const on = groupIds.every((id) => chosen.has(id));
+    const otherTask = task !== null && group.runs[0].method !== task;
+    setChosen((old) => {
+      const next = otherTask ? new Set<string>() : new Set(old);
+      for (const id of groupIds) {
+        if (on && !otherTask) next.delete(id);
+        else next.add(id);
+      }
+      return next;
+    });
+  };
+
+  if (error !== null)
+    return (
+      <div className="empty" style={{ minHeight: 300 }}>
+        <span className="empty-title">The run list could not be loaded</span>
+        <span>{error}</span>
+      </div>
+    );
+  if (runs === null) return <SourceWaiting what="the run folders" height={400} />;
+  const q = query.trim().toLowerCase();
+
+  return (
+    <div className="dash" data-testid="compare">
+      <div className="panel span-12">
+        <div className="panel-body">
+          <Figure title="Every method on the Driving Exam" objective="exam" actions={<Planned>roadmap task 8.1</Planned>} testId="exam-figure">
+            <div className="empty spec-only" style={{ minHeight: 120 }}>
+              <span>
+                Comparing methods needs every seed&apos;s exam gathered and summarised by Python: <code>POST compare</code>, planned in{" "}
+                <code>ARCHITECTURE.md</code> §7 and built with roadmap task 8.1. The browser does not compute those medians. The recorded source shows
+                the intended chart.
+              </span>
+            </div>
+          </Figure>
+        </div>
+      </div>
+
+      <div className="panel span-3">
+        <div className="panel-body">
+          <div className="figure-head">
+            <div className="figure-titles">
+              <span className="figure-title">Runs to compare</span>
+              <span className="figure-note">One task and one objective at a time.</span>
+            </div>
+          </div>
+          <input className="input search" placeholder="Search runs" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search runs" data-testid="run-search" />
+          {canVal && (
+            <Segmented
+              label="Loss"
+              value={metric}
+              onChange={setMetric}
+              options={[
+                { id: "loss", label: "Training" },
+                { id: "val_loss", label: "Validation" },
+              ]}
+            />
+          )}
+          <div className="grouplist-scroll" data-testid="runlist">
+            {methods.map((method) => {
+              const groups = groupBySweep(lossRuns.filter((r) => r.method === method && (q === "" || r.run_id.toLowerCase().includes(q))));
+              if (groups.length === 0) return null;
+              return (
+                <div key={method} className="grouplist-method" data-other={task !== null && task !== method}>
+                  <span className="eyebrow">{methodLabel(method)}</span>
+                  <ul className="grouplist">
+                    {groups.map((g) => {
+                      const on = g.runs.every((r) => chosen.has(r.run_id));
+                      const some = !on && g.runs.some((r) => chosen.has(r.run_id));
+                      const k = answer.state === "ready" ? answer.value.groups.findIndex((x) => x.run_ids.some((id) => g.runs.some((r) => r.run_id === id))) : -1;
+                      return (
+                        <li key={g.key}>
+                          <label className="grouplist-row" title={g.runs.map((r) => r.run_id).join("\n")}>
+                            <input type="checkbox" checked={on} ref={(el) => {
+                                if (el) el.indeterminate = some;
+                              }} onChange={() => toggle(g)} />
+                            <i className="grouplist-key" style={{ background: on && k >= 0 ? series(k) : "transparent" }} />
+                            <span className="grouplist-name">{g.label}</span>
+                            <span className="grouplist-meta num">{g.runs.length === 1 ? g.runs[0].status : `${g.runs.length} seeds`}</span>
+                          </label>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              );
+            })}
+          </div>
+          <label className="check">
+            <input type="checkbox" checked={showRuns} onChange={(e) => setShowRuns(e.target.checked)} /> Draw every seed&apos;s own curve
+          </label>
+          <label className="check">
+            <input type="checkbox" checked={logX} onChange={(e) => setLogX(e.target.checked)} /> Epochs on a log scale
+          </label>
+          {others > 0 && (
+            <p className="figure-foot">
+              {others} runs of methods without a loss (random search, GA, baselines) are not listed: they meet the others on the Driving Exam.
+            </p>
+          )}
+        </div>
+      </div>
+
+      {answer.state === "ready" ? (
+        <LossPanel
+          answer={answer.value}
+          title={`${task === null ? "" : methodLabel(task)}: ${shownMetric === "val_loss" ? "validation" : "training"} loss after each epoch`}
+          hidden={new Set()}
+          showRuns={showRuns}
+          logX={logX}
+          foot={answer.value.groups.some((g) => g.n_diverged > 0) ? "A diverged run has no finite loss: it counts in the table, not in the band." : undefined}
+        />
+      ) : (
+        <div className="panel span-9">
+          <div className="panel-body">
+            {answer.state === "loading" ? (
+              <div className="skeleton" style={{ height: 380 }} />
+            ) : (
+              <div className="empty" style={{ minHeight: 380 }}>
+                <span className="empty-title">{ids.length === 0 ? "Nothing ticked" : "No comparison"}</span>
+                <span>{ids.length === 0 ? "Tick a sweep or a run in the list." : answer.why}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Compare runs. Two rules shape the page:
+ *   1. one objective per chart: a loss chart holds only losses of one task;
+ *   2. methods meet only in the Driving Exam, at the top.
+ */
+export function Compare() {
+  const source = useApp((s) => s.source);
+  return source === "live" ? <LiveCompare /> : <RecordedCompare />;
 }

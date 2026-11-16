@@ -748,3 +748,41 @@
     overflow-x: auto;
   }
 }
+
+/* ── Live sources: the run list of Compare, errors of Training ─────────────────────────── */
+
+.input.search {
+  width: 100%;
+  margin: var(--sp-2) 0;
+  text-align: left;
+}
+
+.grouplist-scroll {
+  max-height: 300px;
+  overflow-y: auto;
+  margin: var(--sp-2) 0;
+  padding-right: 4px;
+}
+
+.grouplist-method + .grouplist-method {
+  margin-top: var(--sp-3);
+}
+
+/* Another task than the ticked one: still clickable (it starts a new comparison), but quieter. */
+.grouplist-method[data-other="true"] {
+  opacity: 0.6;
+}
+
+.grouplist-scroll .grouplist-meta,
+.grouplist-scroll .grouplist-name {
+  white-space: nowrap;
+}
+
+.grouplist-scroll .grouplist-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.launch-error {
+  color: var(--bad);
+}

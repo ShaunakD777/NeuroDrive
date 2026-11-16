@@ -1,7 +1,7 @@
 import { useApp, type ExperimentTab } from "../../state/store";
 import { Segmented } from "../../ui/controls";
 import { Compare } from "./Compare";
-import { RunTimeline } from "./RunTimeline";
+import { RunTimeline } from "./Timeline";
 import { Training } from "./Training";
 
 const SPEC_ONLY: Record<"toylab" | "datasets", { title: string; body: string; parts: string[] }> = {
