@@ -2,7 +2,8 @@
 // (production: web/src/views/network/networkLayout.ts and diff.ts hold the same kind of helper).
 
 import type { OutputReceipt } from "@prod/api/generated";
-import { changeStroke } from "@prod/views/network/diff";
+import { changeStroke, mutationStroke as prodMutationStroke } from "@prod/views/network/diff";
+import { edgeOpacity, edgeWidth } from "@prod/views/network/networkLayout";
 
 import type { Diff, Mutation, Network } from "../../source/model";
 import type { LineMode } from "../../state/store";
@@ -50,12 +51,13 @@ export interface Stroke {
   opacity: number;
 }
 
-/** Weights at or beyond this size are drawn at full thickness (as production: WEIGHT_FULL). */
-const WEIGHT_FULL = 1;
-
+/**
+ * A weight: production's own `edgeWidth` and `edgeOpacity` (0.3 + 4·|w| px, capped at |w| = 1),
+ * so the stroke-width that network.spec.ts compares with the weight stays the same after the
+ * migration.
+ */
 export function weightStroke(w: number): Stroke {
-  const size = Math.min(1, Math.abs(w) / WEIGHT_FULL);
-  return { tone: w < 0 ? "neg" : "pos", width: 0.35 + 3.4 * size, opacity: 0.1 + 0.75 * size };
+  return { tone: w < 0 ? "neg" : "pos", width: edgeWidth(w), opacity: edgeOpacity(w) };
 }
 
 /** Flow: what the connection carries now (weight × source value), relative to its layer's largest. */
@@ -64,11 +66,15 @@ export function flowStroke(c: number, layerMax: number): Stroke {
   return { tone: c < 0 ? "neg" : "pos", width: 0.3 + 4.4 * size ** 1.3, opacity: 0.04 + 0.92 * size ** 1.5 };
 }
 
-/** A mutation: the nudge of a mutated weight, grey for genes of the second parent (task 7.8). */
+/**
+ * A mutation (task 7.8): production's own `mutationStroke` for a mutated weight and for a gene of
+ * the second parent. One deliberate difference: an unchanged weight stays as a faint line (production
+ * leaves it out), so the network keeps its shape while the few mutated lines stand out.
+ */
 export function mutationStroke(change: number, mutated: boolean, fromOther: boolean): Stroke {
-  if (mutated) return { tone: change < 0 ? "neg" : "pos", width: 1.2 + 3.6 * Math.min(1, Math.abs(change)), opacity: 1 };
-  if (fromOther) return { tone: "other", width: 0.8, opacity: 0.5 };
-  return { tone: "none", width: 0.5, opacity: 0.05 };
+  const s = prodMutationStroke(change, mutated, fromOther);
+  if (s.kind === null) return { tone: "none", width: 0.5, opacity: 0.05 };
+  return { tone: s.kind, width: s.width, opacity: s.opacity };
 }
 
 /**

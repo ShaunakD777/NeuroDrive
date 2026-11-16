@@ -91,7 +91,9 @@ export function Telemetry() {
           {carName(scenario, car)}
         </span>
         <span className="tele-sub">{sub}</span>
-        <Chip kind={status.kind}>{status.label}</Chip>
+        <span data-testid="hud-status" data-status={status.key}>
+          <Chip kind={status.kind}>{status.label}</Chip>
+        </span>
       </div>
 
       <div className="tele-group tele-speed">

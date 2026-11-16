@@ -2,12 +2,13 @@
 
 Where each part of the prototype's design would go in the real NeuroDrive app, which existing
 files are involved, and how much work each part is. It is written for whoever implements an
-approved design later. File paths are real paths in this repository as of commit `13f6b61`
+approved design later. File paths are real paths in this repository as of commit `13f6b61`; checked
+again at `1e27c85` (no file under `web/` changed in between)
 (task 7.8). Nothing in this document has been done; it is a map.
 
 Contents: 1 Categories · 2 Every recommendation, classified · 3 File by file · 4 Shared state ·
 5 New and reusable components · 6 What touches Python or a contract · 7 What must be preserved ·
-8 Refactoring the frontend needs first · 9 Risks
+8 Refactoring the frontend needs first · 9 Risks · 10 Since the live source
 
 ---
 
@@ -81,10 +82,10 @@ A recommendation's category is that of its hardest part. Where a recommendation 
 | N8 | Output cards at the top of the rail | 1 | Replaces `inspector-tabs` (keep the test ids `inspect-steer`, `inspect-throttle`). |
 | N9 | Activation curve with the neuron's point on it | 1 | `useLive(s => s.activations)` already holds Python's curves (`GET activations`); `NeuronView.tsx` draws one today and `curve.ts` has the helpers. |
 | N10 | Inspector rows light the neuron they name | 2 | A transient "pointed at" value shared between `OutputInspector.tsx` and `NetworkDiagram.tsx`: a new field in `selection.ts` (the prototype's `peek`) or a small context. |
-| N11 | "Lines show" as one switch (Weights / Mutation / Change) | 2 | Replaces two module-level booleans in `NetworkView.tsx` (`showChangeChoice`, `showMutationChoice`) and two checkboxes in banners with one value. Which options are enabled depends on the driver, as today. Keep `show-change` and `show-mutation` as test ids on the options. |
+| N11 | "Lines show" as one switch (Weights / Mutation / Change) | 2 | Replaces two module-level booleans in `NetworkView.tsx` (`showChangeChoice`, `showMutationChoice`) and two checkboxes in banners with one value. Which options are enabled depends on the driver, as today. Keep `show-change` and `show-mutation` as test ids on the options. The prototype's live source now has all three, Change from `GET .../diff` in a checkpoint replay, with production's own `changeStroke` and `mutationStroke`. |
 | N12 | Lineage sentence with parents' ranks and gene counts | 1 | `diff.ts` `originText`; `MutationView` already has `parents_rank`, `n_from_other`, `n_mutated`. |
 | N13 | Strongest contributors into a selected output stay lit (one layer back) | 1 | `explain.receipts[m].contributions` is in every frame. |
-| N14 | Strongest *routes* back to the inputs (all layers), and the **Flow** line mode | 3 | Needs weight × value for every connection of every layer. Python computes it (`src/neurodrive/explain/contributions.py`) but the server sends receipts for the two outputs only. See §6.1. |
+| N14 | Strongest *routes* back to the inputs (all layers), and the **Flow** line mode | 3 | Needs weight × value for every connection of every layer. Python computes it (`src/neurodrive/explain/contributions.py`) but the server sends receipts for the two outputs only. See §6.1. With the live source the prototype disables Flow and lights the routes one layer back from the receipts (N13); only its recorded stand-in has every layer. |
 | N15 | What-if: locked states say why and offer the fix | 1 | `WhatIfPanel.tsx` already has both hints; add the button. |
 | N16 | Narrow view: the compact summary instead of the diagram | 2 | With G9. `NetworkCompact.tsx` is reused as it is. |
 | N17 | Neuron driver view (`NeuronView.tsx`) on the new components | 1 | Not in the prototype. Same content: sliders become the shared slider rows, the curve is N9's plot. |
@@ -182,7 +183,10 @@ A recommendation's category is that of its hardest part. Where a recommendation 
 
 ## 4. Shared state
 
-The prototype uses one store (`src/state/store.ts`) for brevity. Production keeps its four.
+The prototype keeps one store of its own (`src/state/store.ts`) for layout, view options and the
+recorded clock. With the live source its selection and clock are production's own `useSelection`,
+`usePlayback` and `useLive`, through a bridge in `src/source/live.ts`; the table maps the
+prototype's fields to them. Production keeps its four stores.
 
 | Prototype field | Production home today | Change proposed |
 |---|---|---|
@@ -232,7 +236,8 @@ change.
 `evolutionCharts.ts` · `ancestryChart.ts` · `datasetMap.ts` · `ChartHover.tsx` ·
 `NetworkCompact.tsx` · `IntField` · `CarStepper` · `useCheckpointChange` · `useMutation`.
 
-**Do not port:** `src/mock/mockServer.ts`, `src/mock/types.ts`, `src/state/store.ts`,
+**Do not port:** `src/source/recorded.ts`, `startLive` in `src/source/live.ts` (the bridge that lets
+one component run on two sources), `src/mock/mockServer.ts`, `src/mock/types.ts`, `src/state/store.ts`,
 `src/ui/Notes.tsx`, `scripts/`. They exist so the prototype can run alone.
 
 ---
@@ -381,3 +386,13 @@ of bugs (the stretched read-outs of tasks 4.7b and 5.8).
 | 6 | **Fonts change text widths** and can wrap labels that fit today. | All views | Land fonts with the token stage, review every view at 1280 px and 390 px. |
 | 7 | **Scope creep into behaviour.** A visual stage quietly changing what a control does. | All | One stage per branch; each stage's verification includes the unchanged Vitest and Playwright suites. |
 | 8 | **Roadmap collision.** Phase 8's comparison page (task 8.1) and this design's exam strip are the same screen. | `docs/ROADMAP.md` | Treat `DESIGN_SPEC.md` §8.5 and X14 as the visual brief for task 8.1 when it is reached; do not build it earlier as a visual stage. |
+
+---
+
+## 10. Since the live source (task VP, 2026-11-16)
+
+The prototype now runs on the real server through production's own client code. What that settled
+is in `MIGRATION_AUDIT.md`: what it reuses (§2), what must not move (§3), the duplicates and how
+each is resolved (§4), what was proved on live data (§5), the test hooks it keeps (§6), the three
+production refactors the migration needs first (§7) and the findings in production code (§8).
+`IMPLEMENTATION_ROADMAP.md` is the step-by-step plan built on both documents.

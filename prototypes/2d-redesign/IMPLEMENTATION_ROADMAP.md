@@ -1,261 +1,289 @@
-# Visual implementation roadmap
+# Migration plan: from the prototype into the app
 
-A staged plan for bringing the design in this folder into the real NeuroDrive app, **if and when
-it is approved**. Nothing here has been started.
+How the redesign moves into `web/`, one view at a time, so each view can be tested and released on
+its own. **Nothing here has been started.** It is separate from `docs/ROADMAP.md`: it adds no
+learning algorithm, changes no contract of `ARCHITECTURE.md` §6 and does not reorder the phases.
 
-This plan is separate from `docs/ROADMAP.md`. It adds no learning algorithm, changes no contract
-and does not reorder the project's phases. It can be taken up between phases, or one stage at a
-time beside them; §4 says how it fits the project's working rules.
-
-Recommendation numbers (G1, E5, N7, X4 …) refer to `PRODUCTION_MAPPING.md` §2.
+It rests on two documents: `MIGRATION_AUDIT.md` (what was measured: reuse, duplicates, test hooks,
+findings) and `PRODUCTION_MAPPING.md` (where each recommendation G1…X18 goes, file by file).
 
 ---
 
-## 1. Order, and why
+## 0. Decisions before the first step
 
-Stages are ordered by three things: what later stages stand on, how much the eye gains, and how
-much can go wrong.
+These are the user's to make; each needs an ADR in `docs/DECISIONS.md` once made
+(CLAUDE.md §3.6).
 
-| Stage | Name | Stands on | Visual gain | Difficulty | Category of work |
-|---|---|---|---|---|---|
-| V0 | Groundwork: tokens and stylesheet split | — | none (on purpose) | medium | 2 |
-| V1 | Identity: palette, type, shell | V0 | high, everywhere | medium | 2 |
-| V2 | The track | V0 (V1 for final colours) | **highest** | medium to high | 1 + 2 |
-| V3 | Cars and what is drawn on the track | V2 | high | medium | 1 |
-| V4 | The stage: telemetry, controls, minimap, look-back, camera | V1, V3 | high | high | 1 + 2 |
-| V5 | Network diagram | V1 | high | medium | 1 |
-| V6 | Network inspector rail | V5 | medium | medium | 2 |
-| V7 | Chart kit | V1 | medium, on every chart | medium to high | 2 |
-| V8 | Timeline dashboard | V7 | high | medium | 2 |
-| V9 | Compare, Training, Toy lab, Datasets | V7 | medium | medium | 1 + 2 |
-| V10 | Small windows and the All layout | V4, V6, V8 | medium | low to medium | 2 |
-| F1 | Flow mode and routes to the inputs | V5, a server change | medium | medium | 3 |
-| F2 | Every method on the Driving Exam | V7, roadmap task 8.1 | high | — (belongs to Phase 8) | 3 |
-
-The Environment view is first after the groundwork (V2 to V4) because it is the weakest screen
-today and the one that defines the app's character. V5 and V7 do not depend on it and can be done
-in parallel or swapped in if a break from canvas work is wanted. Do not start two stages that
-touch the same files at once: V2, V3 and V4 share `draw.ts` and `EnvironmentView.tsx`.
-
-**The smallest worthwhile slice** is V0 + V1 + V2 + V3: the app has its identity and the track
-looks like the prototype's, with every panel still where it is today.
+| # | Question | Options | Recommendation |
+|---|---|---|---|
+| D1 | How do old and new coexist during the migration? | **(a) In place:** each step replaces the old look in the same files, and the app's tests must pass after every step. **(b) Side by side:** new views in new folders behind a switch (`?ui=2`) until all are done, then the old ones are deleted. | **(a).** It fits the project's one-task-one-commit rule, leaves no dead code, and the 80 browser tests guard every step. Undoing a step is reverting one commit. (b) makes comparison easy but doubles views and tests for weeks, and the suite can only test one of the two. |
+| D2 | Should production get the prototype's world selector (`buildLive` → `web/src/state/world.ts`)? | **Yes:** one pure selector answers "the selected car at the shown moment" and "the what-if answer for this car and step". **No:** components keep reading the three stores directly. | **Yes, in step S2.** Production makes that choice in four places today (`Hud.tsx`, `EnvironmentView.tsx`, `NetworkView.tsx`, `WhatIfPanel.tsx`), and the prototype's components already read it. It adds a state module, so `ARCHITECTURE.md` §8.1 is updated in the same step. |
+| D3 | Bundle the IBM Plex fonts (three npm packages, SIL OFL)? | Yes / keep the system font | Yes: the identity rests on them, and nothing is fetched at runtime. |
+| D4 | Add a theme setting (light, dark, follow the system) to the layout store? | Yes / keep "follow the system" only | Yes: `UI_AUDIT.md` A4. |
+| D5 | Branches | One branch per step / one per view group | **One per view group**: `visual-shell`, `visual-environment`, `visual-network`, `visual-experiment`, `visual-small`; one commit per step; merged into `main` at the group's gate. A view group is the unit that can be released. |
 
 ---
 
-## 2. The stages
+## 1. Order
 
-Every stage ends with the same four checks, called **the standing checks** below:
+```
+ S0 Groundwork ──► S1 Identity ──► S2 World selector ─┬─► E1 ► E2 ► E3        Environment ▸ gate
+ (no visual change)  (shell)        (no visual change) ├─► N1 ► N2 ► N3        Network     ▸ gate
+                                                       └─► X1 ► X2 ► X3 ► X4   Experiment  ▸ gate
+                                                                       R1 Small windows and All layout
+ Future, not visual stages:  F1 Flow and routes to the inputs (API addition)  ·  F2 exam strip (task 8.1)
+```
+
+| Step | Name | Visual gain | Difficulty | Category (mapping §1) |
+|---|---|---|---|---|
+| S0 | Groundwork: stylesheet split, shared controls with test ids, extracted hooks, one `/ws/runs` hook | none, on purpose | medium | 2 |
+| S1 | Identity: palette, type, top bar, breadcrumb, theme switch, drawer | high, everywhere | medium | 2 |
+| S2 | World selector (D2) | none, on purpose | low | 2 |
+| E1 | The track | the highest | medium to high | 1 + 2 |
+| E2 | Cars, rays, trail, overlays | high | medium | 1 |
+| E3 | The stage: telemetry, bars, minimap, standings, look-back strip, camera | high | high | 1 + 2 |
+| N1 | The diagram | high | medium | 1 |
+| N2 | The inspector rail | medium, large in use | medium | 2 |
+| N3 | Compact network and the neuron driver | medium | low | 1 |
+| X1 | Chart kit | medium, on every chart | medium to high | 2 |
+| X2 | Timeline dashboard | high | medium | 2 |
+| X3 | Compare and Training | medium | medium | 1 + 2 |
+| X4 | Toy lab and Datasets | medium | medium | 1 + 2 |
+| R1 | Small windows, the All layout | medium | low to medium | 2 |
+
+Why this order:
+
+- **S0 to S2 first** because every view stands on them, and because they change nothing visible:
+  their test is that every screenshot stays the same. A later visual step then changes one thing.
+- **Environment first** among the views: it is the weakest screen today (`UI_AUDIT.md` §2.2) and
+  sets the app's character. Its steps share `draw.ts` and `EnvironmentView.tsx`, so they run one
+  after another.
+- **Network and Experiment do not depend on the Environment** and can run in either order after
+  S2, but not at the same time as a step that touches the same files.
+- **The smallest worthwhile release** is S0 + S1 + E1 + E2: the app has its identity and the track
+  looks like the prototype's, with every panel where it is today.
+
+---
+
+## 2. How every step is checked
+
+**The standing checks**, after every step:
 
 1. `cd web && npm run build` (type-check and build) passes.
 2. `cd web && npm run test` passes with no test removed.
-3. `cd web && npm run e2e` passes with no test removed or weakened. A test may change only where
-   this plan says the tested number changes, and then test and code change together.
-4. Light and dark screenshots at 1440 × 900 and 390 × 844 of every screen the stage touched,
-   looked at, with no console errors.
+3. The browser specs of the step's view, listed per step, pass with no test removed or weakened.
+   A test changes only where the step's table says its hook changes, in the same commit as the
+   code (`MIGRATION_AUDIT.md` §6, "deliberate departures").
+4. Screenshots of every screen the step touched, light and dark, 1440 × 900 and 390 × 844, with no
+   console errors, compared side by side with the prototype's (`screenshots/` and
+   `screenshots/live/`). Every difference is either listed in the step's report as intended, or a
+   bug.
+5. The step's hand checks, done with `nd serve` running: the scenarios of
+   `scripts/live-check.mjs` that touch the step's view, by hand, in the app.
 
-Python is not touched in V0 to V10, so `uv run pytest` is run once at the end of each stage only
-to confirm that (it must pass unchanged).
+**The view gate**, after a view's last step, before its branch is merged into `main`:
 
-### V0 · Groundwork: tokens and stylesheet split
+1. The full browser suite: `cd web && npm run e2e`.
+2. `uv run pytest` (Python is not touched by any visual step; it must pass unchanged).
+3. Every function of the view listed in `UI_AUDIT.md` §4 exercised once by hand, ticked off.
+4. The user looks at the view and accepts it.
 
-| | |
-|---|---|
-| **Objective** | Make the styles ready to change, without changing how anything looks. |
-| **Components** | The stylesheet only. |
-| **Files** | `web/src/styles.css` → `web/src/styles/tokens.css`, `base.css`, `environment.css`, `network.css`, `experiment.css`; `web/src/main.tsx` (imports). |
-| **Work** | Split by the twelve existing section comments. Introduce the spacing, radius, type-size and duration tokens with *today's* values. Add `--pos` / `--neg` (aliases of today's `--chart-pos` / `--chart-neg`), `--w-*`, `--car-*`, `--ray-*`, `--track-*` tokens set to today's canvas colours. Move dark values under `:root[data-theme="dark"]` and keep a `prefers-color-scheme` block that sets the same values. |
-| **Depends on** | Nothing. |
-| **Visual improvement** | None. That is the test. |
-| **Difficulty** | Medium: large but mechanical. |
-| **Risks** | A rule lost or reordered in the split changes a detail somewhere. |
-| **Verification** | The standing checks, plus: screenshots of every view, tool and layout taken before and after (light and dark) are pixel-identical, or differ only by anti-aliasing. |
-
-### V1 · Identity: palette, type, shell
-
-| | |
-|---|---|
-| **Objective** | The app gets its colours, its typeface and its frame. |
-| **Recommendations** | G1 to G8, G10 (first set of shared controls), G11, G12. |
-| **Files** | `web/src/styles/tokens.css`, `base.css`; `web/package.json` (three font packages); `web/src/main.tsx`; `web/src/components/TopBar.tsx`, `ConnectionBadge.tsx`, `CompanionDrawer.tsx`; new `web/src/components/Breadcrumb.tsx`, `web/src/components/ui/*`; `web/src/nav/views.ts`; `web/src/state/layout.ts` (+ `layout.test.ts`); `web/src/App.tsx`. |
-| **Work** | Token values from `DESIGN_SPEC.md` §2 to §4. Reassign every use of `--accent`: selection stays, sign moves to `--pos`, status to its tokens. Fonts. Top bar, breadcrumb, theme switch (`theme` in the layout store, `data-theme` on `<html>`), drawer header. Buttons, segmented controls, chips and fields move to shared components view by view. |
-| **Depends on** | V0. An ADR for the font dependency and for the theme setting, before starting. |
-| **Visual improvement** | High: every screen changes character at once. |
-| **Difficulty** | Medium. |
-| **Risks** | Wider or narrower text wraps labels (risk 6 of the mapping). The canvas still reads page tokens until V2, so the track looks odd for one stage if `--surface` changes under it: give the `--w-*` tokens their V0 values until V2. |
-| **Verification** | The standing checks. The palette run through the dataviz validator on the new surfaces (series, sign pair, status fills, both themes) with the output kept in the task report. Theme switch: all three positions, remembered after reload. Contrast of text tokens checked against `DESIGN_SPEC.md` §2.2. |
-
-### V2 · The track
-
-| | |
-|---|---|
-| **Objective** | The road becomes a place: asphalt, kerbs, sand, verge, grass, markings. |
-| **Recommendations** | E1 to E4, E10. |
-| **Files** | `web/src/views/environment/draw.ts` → `scene.ts`, `drawWorld.ts` (cars and overlays still in their old functions, moved to `drawCars.ts`, `drawOverlays.ts`); new `trackArt.ts` + `trackArt.test.ts`; `web/src/styles/tokens.css` (`--w-*` values); `web/src/views/experiment/DatasetView.tsx` only if its map is to share the surface (optional, can wait for V9). |
-| **Work** | The world theme (`readTheme` reads `--w-*`). World drawn under a metres transform, in the layer order of `DESIGN_SPEC.md` §7.1. `trackArt` computes curvature, kerb runs, sand polygons, arrows, boards and the start line once per geometry. |
-| **Depends on** | V0. |
-| **Visual improvement** | The highest of any stage. |
-| **Difficulty** | Medium to high: a rewrite of the drawing approach, not of its inputs. |
-| **Risks** | Frame time (mapping risk 4). Kerbs or sand that fold over themselves on a track shape the prototype never saw: it was only run on `train_loop_01`. |
-| **Verification** | The standing checks. `trackArt` unit tests: on a circle, constant curvature of 1 / radius within 1 %, an inside kerb all the way round and none outside; on every track in `tracks/`, no kerb or sand point lies inside the road (distance to the centreline at least half the width). Screenshots of **all six tracks** in both themes at whole-track and at follow zoom. Frame time of `drawScene` measured with 1, 20 and 100 cars before and after, on a performance and an efficiency core; the live view must stay inside 33 ms. Rays still end exactly on the white lines (zoom in and look). |
-
-### V3 · Cars and what is drawn on the track
-
-| | |
-|---|---|
-| **Objective** | Cars look like cars and say how they are doing; rays and trails are readable on any ground. |
-| **Recommendations** | E5 to E9, E17. |
-| **Files** | `web/src/views/environment/drawCars.ts`, `drawOverlays.ts`, `scene.ts`; `EnvironmentView.tsx` (legend markup only); `web/src/styles/tokens.css`. |
-| **Work** | Sprite and dart, shadow, brake lights, night headlights; rank bodies, gold elite ring, dashed ghost; stopped cars faded with a badge per status; selection reticle and name tag; liveries for other drivers; ray fan, casing, pills; cased trail; what-if paths and ghost; look-back car. |
-| **Depends on** | V2 (the metres transform). |
-| **Visual improvement** | High. |
-| **Difficulty** | Medium. |
-| **Risks** | The enlarged dart at overview zoom hides a neighbour in a tight pack; name tags and ray labels overlapping. The rank ramp on asphalt must be re-validated. |
-| **Verification** | The standing checks. Screenshots of every driver: keyboard, constant, neuron, random networks (20 and 100 cars), expert, checkpoint replay, GA generation; and of every car state: running, crashed, finished, stalled, out of time, selected, elite, ghost, look-back, what-if ghost. `population.spec.ts`, `ghost.spec.ts`, `trail.spec.ts`, `linking.spec.ts` unchanged and passing (they click cars and trail points by their reported positions). |
-
-### V4 · The stage
-
-| | |
-|---|---|
-| **Objective** | Nothing covers the track that does not have to; the controls used most are the easiest to reach. |
-| **Recommendations** | E11 to E16, E18, G8 (Standings tab). |
-| **Files** | `web/src/views/environment/Hud.tsx` (→ telemetry), `Controls.tsx` (→ `ScenarioBar.tsx`, `Transport.tsx`, `CameraBar.tsx`), `Trail.tsx`, `EnvironmentView.tsx`, `geometry.ts` (+ tests); new `Minimap.tsx`, `Standings.tsx`; `web/src/components/CompanionDrawer.tsx`; `web/src/state/layout.ts`; `web/src/styles/environment.css`. |
-| **Work** | In this order, each of which can ship alone: (a) telemetry strip; (b) controls split and placed; (c) look-back strip; (d) minimap; (e) Standings; (f) camera easing, look-ahead and fit margins. |
-| **Depends on** | V1 (shared controls), V3. |
-| **Visual improvement** | High. |
-| **Difficulty** | High: the most interactive code in the app, and the most tested. |
-| **Risks** | Mapping risks 1 and 3. The record controls and the car picker lose their place if not planned (the mapping §3.2 gives each one). `hud-step` is read 48 times by tests: the strip must expose the same ids with the same text formats. |
-| **Verification** | The standing checks; for (f), `environment-camera.spec.ts` and the click-a-car tests run 20 times in a row with no failure, and the camera tests' expected numbers changed in the same commit as the code. By hand: drive a lap with the keyboard; record, save and discard a demonstration; race a GA generation and change generation, start and ghost; look back by slider and by clicking the trail; what-if with the ghost. In Whole track view no floating panel overlaps the road on any of the six tracks. |
-
-### V5 · Network diagram
-
-| | |
-|---|---|
-| **Objective** | The diagram can be read: curves instead of a mesh, values without hovering, clear focus. |
-| **Recommendations** | N1 to N6, N12, N13. |
-| **Files** | `web/src/views/network/NetworkDiagram.tsx`, `networkLayout.ts` (+ `networkLayout.test.ts`), `diff.ts` (+ `diff.test.ts`), `web/src/styles/network.css`; `web/src/views/experiment/ChartHover.tsx` (reused for the read-out card). |
-| **Depends on** | V1. |
-| **Visual improvement** | High. |
-| **Difficulty** | Medium. |
-| **Risks** | Mapping risk 2 (`stroke-width` and sign classes are read by a test). Layout tests pin today's coordinates: thirteen expectations change with `layoutNodes`. |
-| **Verification** | The standing checks. Screenshots for the layer sizes the project uses: [7, 2], [7, 8, 2], [7, 16, 16, 2], [7, 64, 64, 2] and four hidden layers (study S2a's shapes), in both themes, with nothing selected, a hidden neuron selected, an output selected, a connection selected, checkpoint change on, mutation on. Tooltip numbers equal the read-out line and equal `data-weight` / `data-activation`. |
-
-### V6 · Network inspector rail
-
-| | |
-|---|---|
-| **Objective** | The explanation sits beside the decision. |
-| **Recommendations** | N7 to N11, N15, N17. |
-| **Files** | `web/src/views/network/NetworkView.tsx`, `OutputInspector.tsx`, `WhatIfPanel.tsx`, `NeuronView.tsx`, `ParamSlider.tsx`, `NetworkCompact.tsx`; new `ActivationPlot.tsx`, `OutputCards.tsx`; `web/src/state/selection.ts` (+ tests) for the pointed-at neuron; `web/src/styles/network.css`. |
-| **Depends on** | V5. |
-| **Visual improvement** | Medium, with a large gain in use: no scrolling to see why. |
-| **Difficulty** | Medium. |
-| **Risks** | The rail's own scrolling hides the what-if panel on short screens; the neuron driver's view has a different shape and must not be forgotten. |
-| **Verification** | The standing checks; `inspector.spec.ts`, `neuron.spec.ts` (11 tests), `ghost.spec.ts`, `lineage.spec.ts`, `timeline.spec.ts` unchanged. The activation plot's point equals the receipt's z and value for ten random frames (read from `data-*`). At 1280 × 720 the output cards, the receipt and the sum are visible without scrolling. |
-
-### V7 · Chart kit
-
-| | |
-|---|---|
-| **Objective** | Every chart is drawn sharp at its real size, with one anatomy and an objective badge. |
-| **Recommendations** | X1 to X3. |
-| **Files** | New `web/src/views/experiment/Plot.tsx`; `ChartHover.tsx`; then, one at a time: `LossChart.tsx`, `LiveChart.tsx`, `CompareChart.tsx`, `PredictionPlot.tsx`, `Evolution.tsx` (`GenerationFrame` and the seven charts in it), `Ancestry.tsx`, `DatasetView.tsx`, `ToyNetwork.tsx`; `web/src/styles/experiment.css`. `charts.ts` and its tests do not change. |
-| **Depends on** | V1. |
-| **Visual improvement** | Medium on each chart, on all of them. |
-| **Difficulty** | Medium to high: many charts, each with hover maths in viewBox units to convert. |
-| **Risks** | Hover positions off by the margin after the unit change; tests that hover at a fraction of a chart's box (`training.spec.ts`, `compare.spec.ts`, `evolution.spec.ts`, `toylab.spec.ts`). |
-| **Verification** | The standing checks. Each converted chart at 400, 800 and 1600 px wide: tick text the same pixel size at all three; hovering the left edge, the middle and the right edge reads the first, middle and last unit. Converted one chart per commit, so a failing test names its chart. |
-
-### V8 · Timeline dashboard
-
-| | |
-|---|---|
-| **Objective** | A run reads top to bottom: what it is, how it went, how it does on the exam, then the detail. |
-| **Recommendations** | X4 to X11. |
-| **Files** | `web/src/views/experiment/Timeline.tsx`; `Evolution.tsx` split into `FitnessChart.tsx`, `DistributionChart.tsx`, `Histogram.tsx`, `DiversityChart.tsx`, `StartsMap.tsx`, `OutcomeGrid.tsx`; `Ancestry.tsx`; `evolutionCharts.ts`; new `ExamCard.tsx`; `web/src/styles/experiment.css`. |
-| **Depends on** | V7. |
-| **Visual improvement** | High. |
-| **Difficulty** | Medium. |
-| **Risks** | A run that is not a GA run (random search, imitation, DAgger) must still get a sensible page: summary, its own curve, the exam card, the per-car rows. Runs trained before tasks 7.6 to 7.8 lack generations, per-start results or lineage and must keep their "train again" messages. |
-| **Verification** | The standing checks; `timeline.spec.ts`, `evolution.spec.ts`, `lineage.spec.ts`, `population.spec.ts` unchanged. Opened by hand: a GA run, a GA run trained before 7.7, a random-search run, an imitation run, a DAgger run, a baseline run with one card, a run still training. The status fills re-validated for colour-blind separation. |
-
-### V9 · Compare, Training, Toy lab, Datasets
-
-| | |
-|---|---|
-| **Objective** | The other four tools join the system. |
-| **Recommendations** | X12 (grouping by method and sweep), X13, X16, X17, N18 (optional). |
-| **Files** | `web/src/views/experiment/CompareRuns.tsx`, `RunList.tsx`, `CompareChart.tsx`, `TrainingRuns.tsx`, `LiveChart.tsx`, `ToyLab.tsx`, `LossChart.tsx`, `PredictionPlot.tsx`, `ToyNetwork.tsx`, `DatasetView.tsx`, `ExperimentView.tsx`. |
-| **Depends on** | V7. |
-| **Visual improvement** | Medium. |
-| **Difficulty** | Medium. |
-| **Risks** | The run list with about 270 runs must stay fast and findable; a filter must never hide a ticked run without saying so. |
-| **Verification** | The standing checks; `compare.spec.ts`, `training.spec.ts`, `toylab.spec.ts`, `datasets.spec.ts` unchanged. A run launched, watched and stopped from the Training tool. A diverged run's chart shows no clipped label (audit X4). |
-
-### V10 · Small windows and the All layout
-
-| | |
-|---|---|
-| **Objective** | Each view is usable in whatever width it is given. |
-| **Recommendations** | G9, N16, `DESIGN_SPEC.md` §12. |
-| **Files** | `web/src/styles/*.css` (container queries), `web/src/views/network/NetworkView.tsx`, `web/src/views/environment/EnvironmentView.tsx`, `web/src/App.tsx` (the All layout's minimum panel sizes). |
-| **Depends on** | V4, V6, V8. |
-| **Visual improvement** | Medium; fixes audit R1 to R3. |
-| **Difficulty** | Low to medium. |
-| **Risks** | The `compact` prop and the width rule disagreeing in a drawer. |
-| **Verification** | The standing checks. Every view at 390, 560, 768, 940, 1120, 1440 and 1920 px, in Page, Split and All: no horizontal scrolling of the page, no control cut off, the track always visible on the Environment page. |
-
-### F1 · Flow mode and routes to the inputs (future)
-
-| | |
-|---|---|
-| **Objective** | See what each connection carries now, and trace a decision back to the sensors through every layer. |
-| **Recommendations** | N14. |
-| **Files** | `src/neurodrive/server/schemas.py` (`Explanation`), `src/neurodrive/server/live.py`, `src/neurodrive/explain/contributions.py` (already computes them), `tests/server/test_live.py`, `tests/explain/`; `web/src/api/generated.ts` (regenerated); `docs/ARCHITECTURE.md` §7 and §8.2; `docs/DECISIONS.md` (ADR); then `NetworkDiagram.tsx`, `networkLayout.ts`. |
-| **Depends on** | V5, and a decision by the user: this is an API change (v1.25 → v1.26), so it follows the project's rule: options, recommendation, ADR, then the task. |
-| **Difficulty** | Medium. |
-| **Risks** | Message size and frame rate with large networks ([7, 64, 64, 2] has 4,672 connections); mapping risk 5. |
-| **Verification** | Python: for 200 random networks, each row of the sent contributions sums to z − b for its neuron to 1e-12 (the check task 2.9 already makes). Browser: a line's width follows the sent number; the routes lit for an output are the largest by the sent numbers. |
-
-### F2 · Every method on the Driving Exam (future)
-
-Belongs to **roadmap task 8.1** ("Comparison page"). When that task is reached, use
-`DESIGN_SPEC.md` §8.5 (exam strip) and §8.3 (the filled badge) as its visual brief, and
-`PRODUCTION_MAPPING.md` §6.2 for the data it needs. It is not a visual stage and should not be
-built before Phase 8 decides the comparison's rules (budgets, seeds, which checkpoint counts).
+**Undo:** each step is one commit on its group's branch; `git revert` of that commit restores the
+previous step. A group not yet merged can be abandoned without touching `main`.
 
 ---
 
-## 3. What to verify at the very end
+## 3. The steps
 
-After the last stage taken:
+In each step, "Lift" means the prototype file is the starting point and is adapted to production's
+stores; "Keep" means production code that must survive unchanged in behaviour. Nothing under
+`src/mock/` or `src/source/recorded.ts` is lifted (`MIGRATION_AUDIT.md` §3).
 
-1. The full standing checks, and `uv run pytest` unchanged.
-2. Every function in `UI_AUDIT.md` §4 exercised once by hand, ticked off in a list.
-3. One recorded run replayed before and after the whole redesign gives identical frames
-   (the redesign must not have touched what is simulated or sent): compare two recordings of the
-   same scenario and seed, as `tests/env/test_episode.py` does.
-4. The screenshots in this folder's `screenshots/` compared side by side with the same screens of
-   the app. Differences are either intended (listed in the stage's report) or bugs.
-5. `docs/ARCHITECTURE.md` §8 updated to describe the shell, the breadcrumb, the theme setting and
-   the drawer tabs as built.
+### S0 · Groundwork (no visual change)
+
+| | |
+|---|---|
+| **Objective** | Make the frontend ready to change, without changing how anything looks or behaves. |
+| **Work** | (a) Split `web/src/styles.css` into `web/src/styles/tokens.css`, `base.css` and one file per view, introducing today's values as tokens (`PRODUCTION_MAPPING.md` §8.1). (b) Shared controls in `web/src/components/ui/` with test-id props: `Button`, `Segmented` (a test id per option), `Select` (`testId`), `Field`, `Chip`, `Panel`, `Stat`, `ValueBar`, `Icon`; not yet used. (c) Move `useMutation` and `useCheckpointChange` out of `NetworkView.tsx` into `web/src/views/network/hooks.ts` (audit §7.1). (d) One `useRunsSocket(watched)` in `web/src/state/` with the stale-history guard, used by `Timeline.tsx` and `TrainingRuns.tsx` (audit §7.2, §8.1). |
+| **Lift** | `src/ui/controls.tsx`, `src/ui/Icon.tsx` (components only; styles stay today's); `useRunsSocket` from `src/source/runs.ts`. |
+| **Keep** | Every component's output and every test hook. |
+| **Tests** | All Vitest; the full browser suite (the stylesheet touches every view). New unit test: `useRunsSocket` never returns another run's history. |
+| **Hand checks** | Switch runs in the Timeline: no 404 in the server log. |
+| **Done when** | Screenshots of every view, tool and layout before and after are identical (anti-aliasing aside). |
+
+### S1 · Identity
+
+| | |
+|---|---|
+| **Objective** | Colours, type and frame. |
+| **Recommendations** | G1 to G8, G10 to G12. |
+| **Files** | `web/src/styles/tokens.css`, `base.css`; `web/package.json` (fonts, D3); `web/src/main.tsx`; `TopBar.tsx`, `ConnectionBadge.tsx` (keep `connection-badge`, `data-status`), `CompanionDrawer.tsx` (keep `companion-drawer`); new `Breadcrumb.tsx`; `web/src/nav/views.ts`; `web/src/state/layout.ts` + `layout.test.ts` (`theme`, `drawerTab`, D4); `App.tsx`. |
+| **Lift** | `src/theme/tokens.css`, `base.css`; `TopBar`, `Crumbs`, `Drawer` from `src/App.tsx` (without the source switch). |
+| **Specs** | `smoke`, then the full suite (the shell touches every page). |
+| **Hand checks** | Theme switch in all three positions, remembered after reload; breadcrumb for each driver (keyboard, random networks, checkpoint replay, GA race). |
+| **Note** | The canvas still reads page tokens until E1: give the `--w-*` tokens today's canvas colours here, so the track does not change in this step. |
+
+### S2 · World selector (D2; no visual change)
+
+| | |
+|---|---|
+| **Objective** | One answer to "what is on screen for the selected car right now". |
+| **Files** | New `web/src/state/world.ts` (+ `world.test.ts`); `docs/ARCHITECTURE.md` §8.1; ADR. Components are not changed yet: later steps switch to it as they are rebuilt. |
+| **Lift** | `buildLive` and the `World` shape from `src/source/live.ts` and `src/source/model.ts`. Not `startLive` (the bridge exists only for the prototype). |
+| **Tests** | Unit tests: the moment wins over the frame only for the same car and step (the cases of `playback.test.ts`); a what-if answer for another car or step is dropped (the cases of `live.test.ts`). |
+
+### E1 · The track
+
+| | |
+|---|---|
+| **Recommendations** | E1 to E4, E10. |
+| **Files** | `web/src/views/environment/draw.ts` → `scene.ts`, `drawWorld.ts` (cars and overlays still drawn the old way, moved to `drawCars.ts`, `drawOverlays.ts`); new `trackArt.ts` + `trackArt.test.ts`; `tokens.css` (`--w-*`). |
+| **Lift** | `src/views/environment/scene.ts` (the world layers and textures), `trackArt.ts`. |
+| **Keep** | The `Scene` inputs; every `data-*` on `environment-canvas`. |
+| **Specs** | `environment-camera`, `linking`, `trail`, `ghost`, `population`. |
+| **Measure** | `drawScene` frame time with 1, 20 and 100 cars before and after; the live view must stay within 33 ms per frame (`ARCHITECTURE.md` §9). If not: draw the static world to an offscreen canvas, redrawn only when the camera moves. |
+| **Hand checks** | All six tracks, Whole track and close up, day and night (the probe in `MIGRATION_AUDIT.md` §5 did Whole track only). Rays still end exactly on the white lines. |
+
+### E2 · Cars, rays, trail, overlays
+
+| | |
+|---|---|
+| **Recommendations** | E5 to E9, E17; liveries (DESIGN_SPEC §7.2). |
+| **Files** | `drawCars.ts`, `drawOverlays.ts`, `scene.ts`; new `cars.ts` next to `population.ts` (liveries, draw order, name tags); `EnvironmentView.tsx` (legend markup only); `tokens.css` (`--car-*`, `--ray-*`, `--track-*`). |
+| **Lift** | The car, ray, label-placement, trail, what-if and look-back layers of `scene.ts`; `src/views/environment/cars.ts`. |
+| **Specs** | `population`, `ghost`, `trail`, `linking`, `expert`, `record`. |
+| **Hand checks** | Every driver: keyboard, constant, neuron, random networks (1, 8, 20, 100 cars), expert, checkpoint replay, GA generation with ghost; every car state: running, crashed, finished, stalled, out of time, selected, elite, ghost, look-back, what-if ghost. The rank ramp and liveries re-run through the dataviz validator on both asphalts. |
+
+### E3 · The stage
+
+| | |
+|---|---|
+| **Recommendations** | E11 to E16, E18, G8 (Standings tab). |
+| **Files** | `Hud.tsx` → `Telemetry.tsx`; `Controls.tsx` → `ScenarioBar.tsx`, `Transport.tsx`, `CameraBar.tsx`, `RecordBar.tsx` (audit §7.3); `Trail.tsx` → the look-back strip; new `Minimap.tsx`, `Standings.tsx`; `geometry.ts` (+ tests: `easeCamera`, `lookAhead`, margins per side); `EnvironmentView.tsx`; `CompanionDrawer.tsx`; `environment.css`; `web/playwright.config.ts` (`reducedMotion: "reduce"`). |
+| **Lift** | `Telemetry.tsx`, `Extras.tsx` (minimap, legend, look-back strip, standings), the bars in `EnvironmentView.tsx` (including `CarSelect` and `RecordBar`), `camera.ts`. |
+| **Keep** | `IntField`, `ghostAfterMove`, `useDrivingKeys`, `status.ts`, `trailLayout.ts`, the click and drag rules of task 4.10; every `hud-*` id with the same text formats (`hud-step` is read 48 times). |
+| **Tests that change** | `select-speed` (segmented); `trail-slider`, `trail-readout`, `trail-live` (the strip); `hud-race`, `hud-race-role`, `hud-past` (telemetry groups); camera expectations where look-ahead moves the centre. Each changed in the same commit as its code. |
+| **Specs** | `environment-camera`, `expert`, `ghost`, `linking`, `population`, `record`, `trail`, `smoke`; the click-a-car specs run 20 times in a row without a failure. |
+| **Hand checks** | Drive a lap with the keyboard; record, save and discard a demonstration; race a GA generation and change generation, start and ghost; look back by the strip and by clicking the trail; what-if with the ghost; Whole track on all six tracks with no floating panel over the road. |
+| **Environment gate** | §2. |
+
+### N1 · The diagram
+
+| | |
+|---|---|
+| **Recommendations** | N1 to N6, N11, N12, N13. |
+| **Files** | `NetworkDiagram.tsx`, `networkLayout.ts` (+ `networkLayout.test.ts`: 13 expectations change with `layoutNodes`), `diff.ts` (`originText` gains ranks and counts), `NetworkView.tsx` ("Lines show" replaces the two module-level booleans; `show-change` and `show-mutation` become the options' ids), `network.css`. |
+| **Lift** | `src/views/network/Diagram.tsx`, `encode.ts` (`layoutNodes`, `edgePath`, `receiptPaths`); the strokes are already production's (`edgeWidth`, `changeStroke`, `mutationStroke`). Not `strongPaths` over all layers: it needs F1. |
+| **Specs** | `network`, `inspector`, `lineage`, `ghost`, `timeline`, `linking`. |
+| **Hand checks** | Layer sizes [7, 2], [7, 8, 2], [7, 16, 16, 2], [7, 64, 64, 2] and four hidden layers; nothing selected, a hidden neuron, an output, a connection; Change in a checkpoint replay; Mutation for a child; tooltip numbers equal `data-weight` / `data-activation`. |
+
+### N2 · The inspector rail
+
+| | |
+|---|---|
+| **Recommendations** | N7 to N10, N15. |
+| **Files** | `NetworkView.tsx` (two columns), `OutputInspector.tsx` (output cards, receipt, activation plot from `GET activations`), `WhatIfPanel.tsx` (locked states with their action), new `ActivationPlot.tsx`, `OutputCards.tsx`; `selection.ts` (+ tests) for the transient `peek`; `network.css`. |
+| **Lift** | `src/views/network/Inspector.tsx` (it already uses `rankedReceipt`, `topAndRest`, `sliderRange` and the curve helpers). |
+| **Specs** | `inspector` (the prototype already carries all 22 of its hooks), `ghost`, `neuron`, `timeline`, `lineage`. |
+| **Hand checks** | At 1280 × 720 the output cards, the receipt and the sum are visible without scrolling; the activation plot's point equals the receipt's z and value for ten random frames. |
+
+### N3 · Compact network and the neuron driver
+
+| | |
+|---|---|
+| **Recommendations** | N16, N17. |
+| **Files** | `NetworkCompact.tsx` (restyle; ids stay), `NeuronView.tsx`, `ParamSlider.tsx`, `curve.ts` (unchanged). |
+| **Lift** | `src/views/network/NeuronPanel.tsx` for the layout; production's `NeuronView` keeps its input diagram, dial and its 35 tested hooks. |
+| **Specs** | `neuron`, `network`, `linking`. |
+| **Network gate** | §2. |
+
+### X1 · Chart kit
+
+| | |
+|---|---|
+| **Recommendations** | X1 to X3. |
+| **Files** | New `web/src/views/experiment/Plot.tsx`; `ChartHover.tsx`; then one chart per commit: `LossChart`, `LiveChart`, `CompareChart`, `PredictionPlot`, the charts in `Evolution.tsx`, `Ancestry.tsx`, `DatasetView.tsx`, `ToyNetwork.tsx`. `charts.ts` and its tests stay. |
+| **Lift** | The components of `src/views/experiment/charts.tsx` (`Plot`, `YAxis`, `XAxis`, `Figure`, `Objective`, `Tip`), and `genTicks` (ticks from the chart's width). |
+| **Specs** | Per converted chart: the spec that hovers it (`training`, `compare`, `evolution`, `toylab`, `lineage`, `datasets`). |
+| **Hand checks** | Each chart at 400, 800 and 1600 px: tick text the same size; hovering the left edge, middle and right edge reads the first, middle and last unit. |
+
+### X2 · Timeline dashboard
+
+| | |
+|---|---|
+| **Recommendations** | X4 to X11. |
+| **Files** | `Timeline.tsx`; `Evolution.tsx` split into `FitnessChart`, `DistributionChart`, `Histogram`, `DiversityChart`, `StartsMap`, `OutcomeGrid`; `Ancestry.tsx`; new `ExamCard.tsx`; `evolutionCharts.ts`; `experiment.css`. |
+| **Lift** | `GaDashboard`, `ExamPanel`, `Slot` and the charts of `src/views/experiment/RunTimeline.tsx`; `LiveGaTimeline` and `LiveRunTimeline` of `Timeline.tsx` (they already use production's REST helpers, `defaultGhost` and the runs-watch helpers). |
+| **Keep** | Start shift and "Watch the expert"; the run and track pickers; the per-car rows of the exam card and clicking one to select the car; the "train again" messages of runs trained before tasks 7.6 to 7.8. |
+| **Specs** | `timeline`, `evolution`, `lineage`, `population`. |
+| **Hand checks** | A GA run, a GA run trained before 7.7, a random-search run, an imitation run, a DAgger run, a baseline, a run still training; the generation panels follow the cursor; an exam panel where the first exam is late (S6 runs); colour-blind check of the outcome fills. |
+
+### X3 · Compare and Training
+
+| | |
+|---|---|
+| **Recommendations** | X12 (method and sweep; study grouping needs one API field, mapping §6.3), X13, X16. |
+| **Files** | `CompareRuns.tsx`, `RunList.tsx`, `CompareChart.tsx`, `TrainingRuns.tsx`, `LiveChart.tsx`, `ExperimentView.tsx`. |
+| **Lift** | `LiveCompare` (run list grouped by method and sweep, search, one task per chart, the cached run list) and `LiveTraining` of the prototype. |
+| **Specs** | `compare`, `training`. |
+| **Hand checks** | Launch, watch and stop a run from the Training tool (not done during the audit); a diverged run's chart shows no clipped label; about 330 runs stay fast to find. |
+
+### X4 · Toy lab and Datasets
+
+| | |
+|---|---|
+| **Recommendations** | X17, N18 (optional). |
+| **Work** | First prototype them (they are specified in `DESIGN_SPEC.md` §8.7 but not built), on the live source like the other tools; then migrate. |
+| **Specs** | `toylab`, `datasets`, `record`. |
+| **Experiment gate** | §2. |
+
+### R1 · Small windows and the All layout
+
+| | |
+|---|---|
+| **Recommendations** | G9, N16, `DESIGN_SPEC.md` §12. |
+| **Files** | `web/src/styles/*.css` (container queries), `NetworkView.tsx`, `EnvironmentView.tsx`, `App.tsx` (the All layout's minimum panel sizes). |
+| **Hand checks** | Every view at 390, 560, 768, 940, 1120, 1440 and 1920 px in Page, Split and All: no horizontal page scroll, no control cut off, the track always visible on the Environment page. |
+
+### F1 · Flow and routes to the inputs (future, an API addition)
+
+Every layer's weight × value for the selected car, sent by Python (`PRODUCTION_MAPPING.md` §6.1):
+`Explanation` gains the contributions, API `v1.25` → `v1.26`, ADR, `npm run gen:types`, server
+tests (each row sums to z − b to 1e-12, the check of task 2.9). Then "Flow" and `strongPaths` over
+all layers come out of the prototype's recorded-only corner.
+
+### F2 · Every method on the Driving Exam (roadmap task 8.1)
+
+The exam strip (`DESIGN_SPEC.md` §8.5) is task 8.1's visual brief. It needs `POST compare`
+(`ARCHITECTURE.md` §7, planned): medians and quartiles over seeds are Python's. It is not a visual
+stage and is not built before Phase 8 sets the comparison's rules.
 
 ---
 
 ## 4. How this fits the project's rules
 
-- **One task at a time.** Each stage (and each lettered part of V4) is a task with a Brief and a
-  Report in `task-notes/`, like any roadmap task. They would be numbered apart from the phases
-  (for example `V2`, `V4c`) so `docs/CHECKLIST.md` can list them without disturbing phase
-  numbers. Adding those rows is itself a change to the project's documents: the user decides
+- **One task at a time.** Each step is a task with a Brief and a Report in `task-notes/`, numbered
+  apart from the phases (`S0`, `E3`, …) so `docs/CHECKLIST.md` can list them without disturbing
+  phase numbers. Adding those rows is a change to the project's documents: the user decides
   whether and when.
-- **Branches.** A visual stage is developed on its own branch from an up-to-date `main` (for
-  example `visual-2-track`), not on a phase branch, so a phase's history stays about its phase.
-- **Decisions first.** Three choices need an ADR before the work: the font dependency (V1), the
-  theme setting in the layout store (V1), and the API addition (F1). The design itself, once
-  approved, can be recorded as one ADR pointing at `DESIGN_SPEC.md`.
-- **Contracts.** V0 to V10 change no contract of `ARCHITECTURE.md` §6 and no API. F1 changes the
-  API by an addition. Nothing changes simulation, physics, learning or run folders.
-- **The prototype stays a reference.** Its code is read, not copied wholesale: `mockServer.ts`,
-  `store.ts`, `types.ts` and `Notes.tsx` must not be ported
-  (`PRODUCTION_MAPPING.md` §5). The drawing code (`scene.ts`, `trackArt.ts`), the encodings
-  (`encode.ts`), the chart kit (`charts.tsx`) and the stylesheets are the parts worth lifting.
+- **Contracts.** No step changes `ARCHITECTURE.md` §6 or the API. S2 adds a state module (§8.1,
+  with an ADR). F1 changes the API by an addition.
+- **Python stays the source of truth.** No lifted component computes a network output, a rollout,
+  a statistic or an explanation; the prototype's live branch, which is what is lifted, computes
+  none (`MIGRATION_AUDIT.md` §1).
+- **Tests are the safety net.** No test is removed; a test changes only with the hook it reads, in
+  the same commit, and the step's report lists it.
+
+---
+
+## 5. When the whole migration is done
+
+1. The full standing checks, the full browser suite and `uv run pytest`, all unchanged in count.
+2. Every function in `UI_AUDIT.md` §4 exercised once by hand.
+3. The same scenario and seed recorded before and after: identical frames (the redesign must not
+   have changed what is simulated or sent; compare as `tests/env/test_episode.py` does).
+4. The prototype's screenshots and the app's, side by side; every difference intended.
+5. `docs/ARCHITECTURE.md` §8 describes the shell, the breadcrumb, the theme setting, the drawer
+   tabs and the world selector as built.
+6. The prototype is kept as the design reference, or removed with an ADR; its recorded source no
+   longer has a job once the app has every screen.

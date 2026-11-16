@@ -49,7 +49,8 @@ export function Segmented<T extends string>({
   label,
   variant = "default",
 }: {
-  options: { id: T; label: string; icon?: IconName; hint?: string; disabled?: boolean }[];
+  /** `testId` names an option the way production's tests do (default `seg-<id>`). */
+  options: { id: T; label: string; icon?: IconName; hint?: string; disabled?: boolean; testId?: string }[];
   value: T;
   onChange: (id: T) => void;
   label: string;
@@ -65,7 +66,7 @@ export function Segmented<T extends string>({
           disabled={o.disabled}
           data-tip={o.hint}
           onClick={() => onChange(o.id)}
-          data-testid={`seg-${o.id}`}
+          data-testid={o.testId ?? `seg-${o.id}`}
         >
           {o.icon && <Icon name={o.icon} size={14} />}
           {o.label && <span className="seg-text">{o.label}</span>}
@@ -141,12 +142,14 @@ export function Select<T extends string | number>({
   onChange,
   disabled,
   label,
+  testId,
 }: {
   value: T;
   options: { value: T; label: string }[];
   onChange: (value: T) => void;
   disabled?: boolean;
   label?: string;
+  testId?: string;
 }) {
   return (
     <span className="select">
@@ -154,6 +157,7 @@ export function Select<T extends string | number>({
         value={value}
         disabled={disabled}
         aria-label={label}
+        data-testid={testId}
         onChange={(e) => {
           const raw = e.target.value;
           onChange((typeof value === "number" ? Number(raw) : raw) as T);

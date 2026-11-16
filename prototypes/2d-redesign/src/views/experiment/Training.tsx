@@ -282,7 +282,7 @@ function LiveTraining() {
           </div>
           <form className="launch" onSubmit={onLaunch} data-testid="launch-form">
             <Field label="Config">
-              <Select value={configName} options={(configs ?? []).map((c) => ({ value: c.name, label: c.name }))} onChange={setConfigName} disabled={!configs?.length} label="Config" />
+              <Select value={configName} options={(configs ?? []).map((c) => ({ value: c.name, label: c.name }))} onChange={setConfigName} disabled={!configs?.length} label="Config" testId="launch-config" />
             </Field>
             <Field label="Seed">
               <input className="input" placeholder={config ? String(config.seed) : ""} value={seed} onChange={(e) => setSeed(e.target.value)} data-testid="launch-seed" />

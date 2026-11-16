@@ -67,8 +67,8 @@ function CameraBar() {
         value={mode === "free" ? "none" : mode}
         onChange={(id) => set({ cameraMode: id as "follow" | "fit" })}
         options={[
-          { id: "follow", label: "Follow", icon: "follow", hint: "Follow the selected car (double-click the track)" },
-          { id: "fit", label: "Whole track", icon: "fit", hint: "Show the whole track" },
+          { id: "follow", label: "Follow", icon: "follow", hint: "Follow the selected car (double-click the track)", testId: "camera-follow" },
+          { id: "fit", label: "Whole track", icon: "fit", hint: "Show the whole track", testId: "camera-fit" },
         ]}
       />
       {mode === "free" && <span className="hudbar-note">Free view</span>}
@@ -111,6 +111,25 @@ function IntField({ value, min, max, onCommit, disabled, testId, wide }: { value
   );
 }
 
+/**
+ * The selected car, by name: with 100 cars a click on the track is not the only way to find one
+ * (production: `select-car`). In a GA race the cars are listed best rank first.
+ */
+function CarSelect({ world }: { world: World }) {
+  const selectCar = useApp((s) => s.selectCar);
+  if (world.cars.length <= 1) return null;
+  const info = world.scenario.population;
+  const order = world.cars.map((_, i) => i);
+  if (info !== null) order.sort((a, b) => (info.ranks[a] ?? info.size) - (info.ranks[b] ?? info.size));
+  const label = (i: number) =>
+    info === null ? `Car ${i + 1}` : i === info.ghost_car ? `Ghost · gen ${info.ghost_unit}` : `Car ${i + 1} · rank ${info.ranks[i] + 1}${info.elite.includes(i) ? " · elite" : ""}`;
+  return (
+    <Field label="Car">
+      <Select value={world.selected} options={order.map((i) => ({ value: i, label: label(i) }))} onChange={selectCar} label="Selected car" testId="select-car" />
+    </Field>
+  );
+}
+
 /** The scenario of the recorded race: shown, but fixed (one recorded generation). */
 function RecordedScenarioBar({ world }: { world: World }) {
   const info = world.scenario.population;
@@ -135,6 +154,7 @@ function RecordedScenarioBar({ world }: { world: World }) {
       <Field label="Ghost gen" hint={fixed}>
         <input className="input" value={info.ghost_unit ?? 0} readOnly disabled />
       </Field>
+      <CarSelect world={world} />
     </div>
   );
 }
@@ -200,11 +220,13 @@ function LiveScenarioBar({ world }: { world: World }) {
           onChange={(name) => loadScenario({ track: name })}
           disabled={race !== null || recording}
           label="Track"
+          testId="select-track"
         />
       </Field>
       <Field label="Driver">
-        <Select value={policy} options={policies} onChange={choosePolicy} disabled={recording} label="Driver" />
+        <Select value={policy} options={policies} onChange={choosePolicy} disabled={recording} label="Driver" testId="select-policy" />
       </Field>
+      <CarSelect world={world} />
 
       {race !== null ? (
         <>

@@ -66,11 +66,11 @@ export function ExperimentView() {
           value={tab}
           onChange={(id) => set({ experimentTab: id })}
           options={[
-            { id: "timeline", label: "Timeline", icon: "chart", hint: "One run: its checkpoints, generations and exams" },
-            { id: "compare", label: "Compare runs", icon: "compare", hint: "Several runs or sweeps on one objective, and every method on the exam" },
-            { id: "training", label: "Training", icon: "rocket", hint: "Start, watch and stop training runs" },
-            { id: "toylab", label: "Toy lab", icon: "flask", hint: "Backpropagation on toy tasks" },
-            { id: "datasets", label: "Datasets", icon: "data", hint: "Demonstration datasets" },
+            { id: "timeline", testId: "experiment-tab-timeline", label: "Timeline", icon: "chart", hint: "One run: its checkpoints, generations and exams" },
+            { id: "compare", testId: "experiment-tab-compare", label: "Compare runs", icon: "compare", hint: "Several runs or sweeps on one objective, and every method on the exam" },
+            { id: "training", testId: "experiment-tab-training", label: "Training", icon: "rocket", hint: "Start, watch and stop training runs" },
+            { id: "toylab", testId: "experiment-tab-toylab", label: "Toy lab", icon: "flask", hint: "Backpropagation on toy tasks" },
+            { id: "datasets", testId: "experiment-tab-datasets", label: "Datasets", icon: "data", hint: "Demonstration datasets" },
           ]}
         />
       </header>

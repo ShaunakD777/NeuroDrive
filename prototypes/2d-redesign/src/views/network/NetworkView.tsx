@@ -36,7 +36,7 @@ function CarPicker({ world }: { world: World }) {
   return (
     <div className="carpicker">
       <Button variant="ghost" icon="left" onClick={() => move(-1)} title="Previous car" testId="car-prev" />
-      <Select value={car} options={options} onChange={selectCar} label="Car" />
+      <Select value={car} options={options} onChange={selectCar} label="Car" testId="car-pick" />
       <Button variant="ghost" icon="right" onClick={() => move(1)} title="Next car" testId="car-next" />
     </div>
   );

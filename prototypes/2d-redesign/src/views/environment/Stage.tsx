@@ -283,7 +283,7 @@ export function Stage({ compact }: { compact: boolean }) {
       <canvas
         ref={canvasRef}
         className="stage-canvas"
-        data-testid={compact ? "stage-compact" : "stage"}
+        data-testid={compact ? "stage-compact" : "environment-canvas"}
         data-dragging={dragging ? "true" : undefined}
         style={{ width: size.w, height: size.h }}
         onPointerDown={onPointerDown}
