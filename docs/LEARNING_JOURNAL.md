@@ -1905,3 +1905,23 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
 - What we observed: removing the car check from either rule failed exactly one test, the one named after that case; 234 web tests passed.
 - Surprise or difficulty: the prototype's world also carried the network's origin, fetched by REST inside the source; keeping it out was needed for the selector to stay pure, and production already fetches it in `views/network/hooks.ts`.
 - Open question: when the four components switch over, should their old per-component checks (`activeGhost`, the what-if check in `WhatIfPanel.tsx`) be deleted in the same step, or kept as thin wrappers over the world until the whole view group is done?
+
+### 2026-11-16 — Redesign shell group complete (tag `phase-visual-shell`)
+- What was built: the 2D redesign prototype, run on the real server through production's own
+  client code, with its migration audit and plan, and the decisions D1–D5 (ADR-063); S0, the
+  groundwork with no visual change (the stylesheet split into tokens, base and one file per view,
+  the shared controls, the Network view's REST hooks, one `/ws/runs` hook with a stale-read
+  guard); S1, the identity (IBM Plex bundled, the redesign's palette with one colour per meaning,
+  a dark top bar with icons and a breadcrumb of the shared selection, a light / dark / system theme
+  setting remembered per browser, the drawer with a header and a rail, the track kept in its old
+  colours on its own tokens); S2, the world selector, one tested answer to "what is on screen for
+  the selected car". At the gate 2,113 Python tests (one skipped without PyTorch), 234 web unit
+  tests and all 81 browser tests passed, and so did every pre-commit hook.
+- What was learned: a refactor of a user interface is proved by tests and pictures together, and
+  a picture comparison needs an honest noise floor (unchanged code differs from itself by up to
+  ~100 anti-aliased edge pixels), checked by planting a small change it must catch. Colour carries
+  meaning only if each colour means one thing. Rules that several screens apply (which moment is
+  shown, whether a what-if answer applies) belong in one pure selector with its own tests.
+- Open questions: when E1 restyles the track, should the canvas follow the page theme or keep
+  one look? Should the golden-image check become a stored per-step baseline? When the views switch
+  to the world selector, are their old per-component checks deleted in the same step?
