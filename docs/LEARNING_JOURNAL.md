@@ -1847,3 +1847,37 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
 - What we observed: every one of the 60 chosen networks laps all 10 training starts, random search included (34,340 networks per run at 40 M steps; S4's 4.5 M had never been enough), so G1 (T(GA) > T(RS)) and G2 failed; the GA only laps 2.1 s faster [0.4, 3.6]. Diversity rises with p and σ (M1), but strong mutation (σ 0.2) gave the *best* fitness and laps and σ 0.02 the worst (M2 reversed). Without the time bonus laps are 6.9 s slower (F1). Finish-bonus and progress-only runs chose the identical network in every seed: all three formulas are f = p until a car first finishes, so with the same seed the populations are identical until generations 10–19, and both alternatives freeze at the first full finisher. No racing line: most networks keep one side of the road all lap, and the left (inside of the anticlockwise loop) side is fastest because progress is measured along the centreline (22 networks, median lap 31.3 s, against 34.1 s on the right): the documented fitness exploit. 41 of 60 networks finish no held-out drive at all; the first checkpoint that laps every training start generalises better than the faster chosen one (+0.046 held-out progress).
 - Surprise or difficulty: the scripted expert, believed to follow the centreline, cuts every apex by about 0.6 m: pure pursuit aims at a point on the centreline ahead and so drives the chord. The test found it before any run, and R1 was restated. And random search, the null model, is not weak at all once given 40 M steps.
 - Open question: would fresh random evaluation starts each generation (ADR-055 D2B) or a fitness measured in metres actually driven remove the inside-line trick and the overfitting, and which GA checkpoint should Phase 8 compare with imitation, the first that laps or the fastest?
+
+### 2026-11-16 — Phase 7 complete (tag `phase-7`)
+- What was built: a performance check of one GA-sized generation and per-direction wall lists that
+  made the ray sensors fast enough for a population (7.0, 7.0b); the genome as one flat vector with
+  a named address for every gene (7.1); the population evaluation, which scores every network with
+  random search's fitness on the exam's 10 starts (7.2); tournament and rank selection, Gaussian
+  mutation and uniform crossover, each tested against its exact probabilities (7.3, 7.4); the
+  generation loop with elitism, elites scored again so that elite drift must be 0, resumable (7.5);
+  population mode, which races a whole generation coloured by rank with an earlier champion as a
+  ghost (7.6); evolution charts with the fitness distribution, the diversity and per-start results
+  (7.7); exact lineage, the champion's line of descent and a mutation diff in the Network view
+  (7.8); and Study S6 with a configurable fitness formula and a racing-line measure (7.9). At the
+  closing check 2,113 Python tests (one skipped without PyTorch), 195 web unit tests and all 79
+  browser tests passed, and so did every pre-commit hook.
+- What was learned: the GA masters the training loop in 10 of 10 seeds, but at an equal budget of
+  40 M environment steps so does random search, so completion cannot separate them; the GA's
+  clear edge is speed (a lap 2.1 s faster). Stronger mutation (σ = 0.2) helped, contrary to the
+  prediction, and population size made no clear difference. Without the time bonus evolution stops
+  at the first network that finishes, so the time pressure is what makes cars fast. The fastest
+  networks keep to the inside of the anticlockwise loop all lap, because progress is measured along
+  the centreline: a documented fitness exploit. Most evolved networks fail the held-out tracks, and
+  the first checkpoint that laps every start generalises better than the faster one chosen later.
+- Decisions: ADR-053 to ADR-062 (sensor wall lists; the gene map; fitness v2 shared with random
+  search; the GA learner; saved generations and the population driver; evolution charts in Python;
+  per-start results; lineage; parallel tests in tiers; the fitness formula and Study S6).
+- Fixed along the way: tests whose small runs could not see a mistake (a tournament tie rule, the
+  outcomes stored one start over) were rebuilt with data in which the mistake shows; the test suite
+  was made parallel (about 3 min instead of 12 min 44 s); a stale database mirror of older DAgger runs
+  was repaired with `nd db rebuild`.
+- Open questions: does a fitness that measures progress along the car's own path, or fresh random
+  starts each generation, remove the inside-line exploit and improve held-out driving? Which GA
+  checkpoint and which budget should Phase 8 use when it compares evolution with imitation, given
+  that `best_unit` favours training-loop speed over generality? Would the GA's advantage over
+  random search appear at a smaller budget, before random search saturates?
