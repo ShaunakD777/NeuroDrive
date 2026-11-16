@@ -88,6 +88,7 @@ def test_worked_example_three_plus_five_frames():
     assert rows["x"].tolist() == rows["observation"][:, 0].tolist()
 
 
+@pytest.mark.slow
 def test_frames_equal_the_steps_of_an_independent_expert_drive(loop_demo):
     track = load("train_loop_01")
     world = World(track, WorldConfig.for_track(track))
@@ -132,6 +133,7 @@ def test_shapes_and_ranges(loop_demo):
     assert len(loop_demo.meta["episodes"]) == 12
 
 
+@pytest.mark.slow
 def test_replaying_the_labels_from_each_start_reproduces_the_drive(loop_demo):
     """One episode at a time, alone in a fresh world: the stored labels drive the car through
     the stored observations (bit for bit), a fresh expert asked at each state gives the stored
@@ -173,6 +175,7 @@ def test_exam_like_starts_are_the_exams_starts():
 # ── files ───────────────────────────────────────────────────────────────────────────────────
 
 
+@pytest.mark.slow
 def test_save_and_load_give_the_same_dataset(tmp_path):
     dataset = record_expert(
         circle(), start_fractions=(0.0, 0.5), lateral_offsets=(0.0,), random_starts=1, seed=3
@@ -226,6 +229,7 @@ def test_held_out_tracks_are_refused():
         record_expert(circle(), start_fractions=(), lateral_offsets=(0.0,), random_starts=0, seed=0)
 
 
+@pytest.mark.slow
 def test_recording_is_deterministic_and_the_seed_picks_the_random_starts():
     args = {"start_fractions": (0.0,), "lateral_offsets": (0.0,), "random_starts": 3}
     a = record_expert(circle(), **args, seed=5)

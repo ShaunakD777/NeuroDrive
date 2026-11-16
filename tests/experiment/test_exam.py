@@ -109,6 +109,7 @@ def card_metrics(part) -> list[dict]:
     ],
     ids=["expert-hairpins", "random-network-loop"],
 )
+@pytest.mark.slow
 def test_the_exam_of_a_recorded_policy_matches_its_recording(name, policy_for, tmp_path):
     track = load(name)
     recording = record_by_hand(track, policy_for, tmp_path)
@@ -122,6 +123,7 @@ def test_the_exam_of_a_recorded_policy_matches_its_recording(name, policy_for, t
 # ── determinism and the first cards ─────────────────────────────────────────────────────────
 
 
+@pytest.mark.slow
 def test_the_same_policy_gets_the_same_card_twice():
     first = run_exam(s1_neuron, {"kind": "s1_neuron"})
     second = run_exam(s1_neuron, {"kind": "s1_neuron"})
@@ -132,6 +134,7 @@ def test_the_same_policy_gets_the_same_card_twice():
     assert per_track["hairpins_01"] == 0.0 and per_track["sweeper_01"] == 0.0
 
 
+@pytest.mark.slow
 def test_the_expert_completes_every_episode_of_the_exam(expert_card):
     assert [p.track for p in expert_card.tracks] == list(EXAM_V1.tracks)
     for part in expert_card.tracks:
@@ -143,6 +146,7 @@ def test_the_expert_completes_every_episode_of_the_exam(expert_card):
     assert expert_card.env_steps > 0
 
 
+@pytest.mark.slow
 def test_heldout_lap_times_are_given_per_track_not_pooled(expert_card):
     # Lap times compare only within a track (ADR-022, ADR-036): no pooled median best lap.
     assert "median_best_lap_s" not in expert_card.heldout
@@ -156,6 +160,7 @@ def test_heldout_lap_times_are_given_per_track_not_pooled(expert_card):
     assert "per track" in format_card(expert_card)
 
 
+@pytest.mark.slow
 def test_a_card_survives_json_and_prints(expert_card, tmp_path):
     path = expert_card.save(tmp_path / "exams" / "unit_0.json")
     assert ExamResult.load(path).to_dict() == expert_card.to_dict()

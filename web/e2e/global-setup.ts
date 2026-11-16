@@ -60,6 +60,26 @@ function hasCompletedSearch(): boolean {
     });
 }
 
+// A 2-generation GA run of the shipped config for population mode (task 7.6): its generations are
+// saved (extra/generations/), so generation 2 can race with generation 1's champion as the ghost.
+export const E2E_GA_TAG = "e2e";
+
+function hasCompletedGA(): boolean {
+  if (!existsSync(runsDir)) return false;
+  return readdirSync(runsDir)
+    .filter((name) => name.endsWith(`-ga-${E2E_GA_TAG}`))
+    .some((name) => {
+      const meta = join(runsDir, name, "meta.json");
+      const saved = join(runsDir, name, "extra", "generations", "unit_2.npz");
+      // since the 7.7 follow-up (ADR-059) each generation also holds every drive from every start
+      // (an .npz is an uncompressed zip, so its array names are plain text in the file)
+      const perStart = existsSync(saved) && readFileSync(saved).includes("start_fitness.npy");
+      // since task 7.8 (ADR-060) every generation's lineage too
+      const lineage = existsSync(join(runsDir, name, "extra", "lineage.jsonl"));
+      return existsSync(meta) && perStart && lineage && JSON.parse(readFileSync(meta, "utf8")).status === "completed";
+    });
+}
+
 // An expert demonstration dataset for the dataset inspector (task 6.2): the exam's 10 starts on
 // the training loop, no random starts (tag "e2e"), recorded into data/demos/ (git-ignored) with
 // `nd demo-record` unless one is there. The expert is deterministic, so it is always the same.
@@ -90,6 +110,13 @@ export default function globalSetup(): void {
     execFileSync(
       "uv",
       ["run", "python", "-m", "neurodrive", "train", "--config", "configs/random_search.yaml", "--units", "3", "--tag", E2E_SEARCH_TAG],
+      { cwd: repoRoot, stdio: "inherit" },
+    );
+  }
+  if (!hasCompletedGA()) {
+    execFileSync(
+      "uv",
+      ["run", "python", "-m", "neurodrive", "train", "--config", "configs/ga.yaml", "--units", "2", "--tag", E2E_GA_TAG],
       { cwd: repoRoot, stdio: "inherit" },
     );
   }

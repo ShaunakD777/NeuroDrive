@@ -3,6 +3,7 @@
 
 import type { FrameMessage, GhostPaths, ScenarioMessage, TrackGeometry } from "../../api/generated";
 import { maxAbs, rayWidth } from "../network/inspect";
+import { carRole } from "./population";
 import { trailStyle } from "./trailLayout";
 import {
   type Camera,
@@ -22,7 +23,11 @@ export interface Theme {
   ok: string;
   warn: string;
   bad: string;
+  /** The GA rank bands, best fifth first (task 7.6). */
+  rank: string[];
 }
+
+const RANK_FALLBACK = ["#0d366b", "#184f95", "#256abf", "#3987e5", "#6da7ec"];
 
 /** Read the colours from the CSS variables in effect on `el`. */
 export function readTheme(el: Element): Theme {
@@ -38,6 +43,7 @@ export function readTheme(el: Element): Theme {
     ok: get("--ok", "#15803d"),
     warn: get("--warn", "#b45309"),
     bad: get("--bad", "#b91c1c"),
+    rank: RANK_FALLBACK.map((fallback, k) => get(`--rank-${k + 1}`, fallback)),
   };
 }
 
@@ -182,6 +188,7 @@ function drawRays(ctx: CanvasRenderingContext2D, theme: Theme, scene: Scene): vo
 function drawCars(ctx: CanvasRenderingContext2D, theme: Theme, scene: Scene): void {
   const { frame, scenario } = scene;
   if (frame === null || scenario === null) return;
+  if (scenario.population) return drawRace(ctx, theme, scene);
   const length = scenario.wheelbase + CAR_LENGTH_EXTRA;
   const width = 2 * scenario.car_half_width;
   const { x, y, psi, alive } = frame.cars;
@@ -203,6 +210,73 @@ function drawCars(ctx: CanvasRenderingContext2D, theme: Theme, scene: Scene): vo
     ctx.moveTo(corners[0][0], corners[0][1]);
     ctx.lineTo(corners[1][0], corners[1][1]);
     ctx.stroke();
+  }
+}
+
+/**
+ * A raced GA generation (task 7.6): every network's car filled with its rank band (the GA's own
+ * ranking, best fifth strongest), elites ringed, stopped cars faded, the selected car outlined
+ * heavily (its fill carries the rank). Worse cars are drawn first so the best end up on top. The
+ * ghost is drawn later, over the cars (`drawRaceGhost`).
+ */
+function drawRace(ctx: CanvasRenderingContext2D, theme: Theme, scene: Scene): void {
+  const { frame, scenario } = scene;
+  const info = scenario?.population;
+  if (frame === null || !info) return;
+  const { x, y, psi, alive } = frame.cars;
+  const order = Array.from({ length: info.size }, (_, i) => i).sort((a, b) => info.ranks[b] - info.ranks[a]);
+  for (const i of order) {
+    const role = carRole(info, i);
+    if (role === null || i >= x.length) continue;
+    carPath(ctx, scene, x[i], y[i], psi[i]);
+    ctx.globalAlpha = alive[i] ? 1 : 0.35;
+    ctx.fillStyle = theme.rank[role.band ?? 0];
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = theme.text;
+    ctx.stroke();
+    if (role.elite) {
+      const [px, py] = worldToScreen(scene.camera, scene.size, x[i], y[i]);
+      const r = Math.max(6, ((scenario.wheelbase + CAR_LENGTH_EXTRA) / 2) * scene.camera.scale + 3);
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(px, py, r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+  const s = scene.selected;
+  if (s < info.size && s < x.length) {
+    carPath(ctx, scene, x[s], y[s], psi[s]);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = theme.accent;
+    ctx.stroke();
+  }
+}
+
+/** The ghost of a race: see-through, dashed, labelled, over the cars (it may sit on car 1). */
+function drawRaceGhost(ctx: CanvasRenderingContext2D, theme: Theme, scene: Scene): void {
+  const { frame, scenario } = scene;
+  const info = scenario?.population;
+  const g = info?.ghost_car;
+  if (frame === null || !info || g === null || g === undefined || g >= frame.cars.x.length) return;
+  const { x, y, psi } = frame.cars;
+  carPath(ctx, scene, x[g], y[g], psi[g]);
+  ctx.globalAlpha = 0.3;
+  ctx.fillStyle = theme.edge;
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.setLineDash([3, 3]);
+  ctx.lineWidth = scene.selected === g ? 3 : 1.5;
+  ctx.strokeStyle = scene.selected === g ? theme.accent : theme.text;
+  ctx.stroke();
+  ctx.setLineDash([]);
+  if (!scene.compact) {
+    const [px, py] = worldToScreen(scene.camera, scene.size, x[g], y[g]);
+    ctx.font = "600 11px system-ui, sans-serif";
+    ctx.textBaseline = "top";
+    ctx.fillStyle = theme.text;
+    ctx.fillText(`gen ${info.ghost_unit} best`, px + 8, py + 8);
   }
 }
 
@@ -332,6 +406,7 @@ export function drawScene(ctx: CanvasRenderingContext2D, theme: Theme, scene: Sc
   drawRays(ctx, theme, scene);
   drawGhostPaths(ctx, theme, scene);
   drawCars(ctx, theme, scene);
+  drawRaceGhost(ctx, theme, scene);
   drawMoment(ctx, theme, scene);
   drawGhostCar(ctx, theme, scene);
 }

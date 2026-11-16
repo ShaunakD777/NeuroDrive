@@ -1,6 +1,8 @@
 """Tests for random search (task 5.7, ADR-040): the fitness formula, the batched evaluation (checked
 against the Driving Exam's independent scoring), keep-the-best, determinism and save/restore."""
 
+from dataclasses import replace
+
 import numpy as np
 import pytest
 
@@ -15,6 +17,7 @@ from neurodrive.experiment.baselines import hand_neuron_network, load_hand_neuro
 from neurodrive.experiment.exam import DEFAULT_TRACKS_DIR, EXAM_V1, exam_starts, exam_track
 from neurodrive.learn.base import Resumable
 from neurodrive.learn.evolution.random_search import (
+    FITNESS_FORMULAS,
     RandomSearchLearner,
     RandomSearchSettings,
     evaluate,
@@ -37,6 +40,65 @@ def test_fitness_worked_example():
 def test_fitness_edges():
     f = start_fitness([-0.2, 1.4, 1.0, 0.5], [False, False, True, False], [0, 0, 92.0, 0], 92.0)
     assert f.tolist() == [0.0, 1.0, 1.0, 0.5]  # backwards = 0, capped at 1, finish at T: no bonus
+
+
+# ── fitness formulas (task 7.9, ADR-062) ───────────────────────────────────────────────────
+
+
+def test_the_three_formulas_on_the_briefs_example():
+    # A finishes at 69 s, B at 90 s (T = 92 s): only the time bonus tells them apart
+    p, c = [1.0, 1.0], [True, True]
+    t = [69.0, 90.0]
+    assert start_fitness(p, c, t, 92.0, "time_bonus") == pytest.approx([1.25, 1.0217], abs=5e-5)
+    assert start_fitness(p, c, t, 92.0, "finish_bonus").tolist() == [2.0, 2.0]
+    assert start_fitness(p, c, t, 92.0, "progress").tolist() == [1.0, 1.0]
+    # a near miss (99 %, out of time) against a finish at 90 s
+    near = ([0.99, 1.0], [False, True], [np.nan, 90.0])
+    assert start_fitness(*near, 92.0, "progress").tolist() == [0.99, 1.0]
+    assert start_fitness(*near, 92.0, "finish_bonus").tolist() == [0.99, 2.0]
+    # a crash at 30 % scores 0.30 under every formula
+    for formula in FITNESS_FORMULAS:
+        assert start_fitness([0.3], [False], [np.nan], 92.0, formula).tolist() == [0.3]
+
+
+def test_the_default_formula_is_fitness_v2_bit_for_bit():
+    rng = make_rng(3)
+    p = rng.uniform(-0.2, 1.2, 200)
+    c = rng.uniform(0, 1, 200) < 0.5
+    t = np.where(c, rng.uniform(30, 92, 200), np.nan)
+    v2 = np.clip(p, 0, 1) + c * (1.0 - np.where(c, t, 92.0) / 92.0)
+    assert np.array_equal(start_fitness(p, c, t, 92.0), v2)
+    assert np.array_equal(start_fitness(p, c, t, 92.0, "time_bonus"), v2)
+    assert np.array_equal(start_fitness(p, c, t, 92.0, "finish_bonus"), np.clip(p, 0, 1) + c)
+
+
+def test_an_unknown_formula_is_refused():
+    with pytest.raises(ValueError, match="unknown fitness formula 'speed'"):
+        start_fitness([0.5], [False], [np.nan], 92.0, "speed")
+    with pytest.raises(ValueError, match="unknown fitness formula"):
+        RandomSearchSettings(fitness_formula="speed")
+    assert RandomSearchSettings().fitness_formula == "time_bonus"
+
+
+@pytest.mark.slow
+def test_the_evaluation_uses_the_settings_formula():
+    neuron = hand_neuron_network(load_hand_neuron())  # laps the training loop
+    settings = RandomSearchSettings(
+        spec=neuron.spec, start_fractions=(0.0, 0.5), lateral_offsets=(0.0,), target_laps=2
+    )
+    base = evaluate([neuron], TRACK, settings)
+    assert (base.status == Status.FINISHED).all()
+    for formula in FITNESS_FORMULAS:
+        ev = evaluate([neuron], TRACK, replace(settings, fitness_formula=formula))
+        expected = start_fitness(
+            base.progress_frac, base.status == Status.FINISHED, base.finish_time, 92.0, formula
+        )
+        assert np.array_equal(ev.per_start, expected)
+        assert np.array_equal(ev.status, base.status) and ev.env_steps == base.env_steps
+    assert (
+        evaluate([neuron], TRACK, replace(settings, fitness_formula="finish_bonus")).fitness[0]
+        == 2.0
+    )
 
 
 def test_the_starts_are_the_exam_layout():
@@ -75,6 +137,7 @@ def test_rays_of_running_cars_only_equal_the_full_rays():
     assert checked > 0  # some cars had stopped while others ran
 
 
+@pytest.mark.slow
 def test_evaluation_agrees_with_the_exams_scoring_of_the_hand_neuron():
     """The neuron's network on the exam's 10 training-track starts: the learner's fitness equals
     the formula applied to the exam's own episode metrics (written independently in 5.2)."""

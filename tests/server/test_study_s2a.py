@@ -55,6 +55,7 @@ def test_the_studys_cars_are_the_apps_cars_step_for_step(study, track):
         assert frame.cars.action == np.round(action, 3).tolist()
 
 
+@pytest.mark.slow
 def test_the_cases_the_report_explains_still_behave_as_described(study, track):
     rec, population, dt = study.drive(track, 1)
     standstill = study.describe_car(rec, population, dt, 1, 0)
@@ -80,6 +81,7 @@ def test_a_full_lock_circle_is_wider_than_the_space_beside_a_centred_car(study, 
     assert circle["diameter_measured"] > track.width / 2
 
 
+@pytest.mark.slow
 def test_the_monza_finisher_still_finishes(study):
     track = study.load_track("monza_cw")
     rec, population, dt = study.drive(track, 51)

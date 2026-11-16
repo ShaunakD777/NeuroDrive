@@ -466,6 +466,9 @@ fitness exploit is documented.
 
 **7.0 Performance check:** profile one generation (50 cars × 60 s). If it exceeds the target in
 ARCHITECTURE §9, propose optimisations (⚑ if Numba is needed).
+**7.0b Per-direction wall lists (follow-up to 7.0, ADR-053):** `env/sensors.py`: one wall list per
+(cell, ray-direction bin), conservative so every reading is bit-for-bit the full search's.
+Verify: identity tests on every track; the worst-case generation within the 5 s target.
 **7.1 Genome ↔ network:** uses `core/nn/network.py` flatten/unflatten; tests.
 **7.2 Fitness v1 and evaluation:** `learn/evolution/ga.py` (evaluate a population in one batched
 World). Verify: fitness ranking matches episode summaries.

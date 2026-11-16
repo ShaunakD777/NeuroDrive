@@ -13,6 +13,64 @@ export interface ActivationCurves {
 }
 
 /**
+ * Answer to ``GET /api/runs/{id}/generations/{g}/ancestry?row=r`` (api v1.25, task 7.8,
+ * ADR-060): the line of descent of row ``row`` of generation ``unit`` (default its champion),
+ * through each network's main parent (the parent that gave more genes, a on a tie) back to
+ * generation 1. ``steps`` run from generation ``unit`` backwards. Numbers keep 6 significant
+ * digits.
+ */
+export interface Ancestry {
+  n_genes: number;
+  row: number;
+  run_id: string;
+  steps: AncestryStepView[];
+  unit: number;
+}
+/**
+ * One network on a line of descent (api v1.25, task 7.8, ADR-060): generation ``unit``,
+ * ``row``, its fitness F and ``rank`` (0 = best), ``origin`` ("random", "elite", "child" or
+ * "unknown"), ``parents`` (rows of the previous generation), ``crossed`` (children only),
+ * ``main_parent`` (the next step's row; null at the end), the genes taken from the main and the
+ * other parent, the number of mutated genes, and ``distance`` from the main parent's genome.
+ */
+export interface AncestryStepView {
+  crossed: boolean | null;
+  distance: number | null;
+  fitness: number;
+  from_main: number | null;
+  from_other: number | null;
+  main_parent: number | null;
+  mutated: number | null;
+  origin: "random" | "elite" | "child" | "unknown";
+  parents: number[];
+  rank: number;
+  row: number;
+  unit: number;
+}
+
+/**
+ * One network on a line of descent (api v1.25, task 7.8, ADR-060): generation ``unit``,
+ * ``row``, its fitness F and ``rank`` (0 = best), ``origin`` ("random", "elite", "child" or
+ * "unknown"), ``parents`` (rows of the previous generation), ``crossed`` (children only),
+ * ``main_parent`` (the next step's row; null at the end), the genes taken from the main and the
+ * other parent, the number of mutated genes, and ``distance`` from the main parent's genome.
+ */
+export interface AncestryStepView {
+  crossed: boolean | null;
+  distance: number | null;
+  fitness: number;
+  from_main: number | null;
+  from_other: number | null;
+  main_parent: number | null;
+  mutated: number | null;
+  origin: "random" | "elite" | "child" | "unknown";
+  parents: number[];
+  rank: number;
+  row: number;
+  unit: number;
+}
+
+/**
  * The state of every car as one array per quantity (entry i belongs to car i).
  *
  * ``status``: 0 running, 1 crashed, 2 finished, 3 stalled, 4 timeout. ``action`` holds the last
@@ -191,15 +249,16 @@ export interface CompareRun {
  * accepts.
  *
  * ``length_field`` names what the run's length counts (``epochs`` for toy and imitation
- * configs, ``units`` for random search and for DAgger, whose units are rounds) and ``length``
- * is the file's value (null when a random-search budget has no unit limit). ``task`` is the toy
- * task (null for the others). ``imitation`` was added in api v1.17 (task 6.3), ``dagger`` in
- * api v1.19 (task 6.6).
+ * configs, ``units`` for random search, for DAgger, whose units are rounds, and for the GA,
+ * whose units are generations) and ``length`` is the file's value (null when a random-search
+ * or GA budget has no unit limit). ``task`` is the toy task (null for the others).
+ * ``imitation`` was added in api v1.17 (task 6.3), ``dagger`` in api v1.19 (task 6.6), ``ga``
+ * in api v1.21 (task 7.5).
  */
 export interface ConfigInfo {
   length: number | null;
   length_field: "epochs" | "units";
-  method: "toy" | "random_search" | "imitation" | "dagger";
+  method: "toy" | "random_search" | "imitation" | "dagger" | "ga";
   name: string;
   seed: number;
   tag: string;
@@ -217,15 +276,16 @@ export interface ConfigListResponse {
  * accepts.
  *
  * ``length_field`` names what the run's length counts (``epochs`` for toy and imitation
- * configs, ``units`` for random search and for DAgger, whose units are rounds) and ``length``
- * is the file's value (null when a random-search budget has no unit limit). ``task`` is the toy
- * task (null for the others). ``imitation`` was added in api v1.17 (task 6.3), ``dagger`` in
- * api v1.19 (task 6.6).
+ * configs, ``units`` for random search, for DAgger, whose units are rounds, and for the GA,
+ * whose units are generations) and ``length`` is the file's value (null when a random-search
+ * or GA budget has no unit limit). ``task`` is the toy task (null for the others).
+ * ``imitation`` was added in api v1.17 (task 6.3), ``dagger`` in api v1.19 (task 6.6), ``ga``
+ * in api v1.21 (task 7.5).
  */
 export interface ConfigInfo {
   length: number | null;
   length_field: "epochs" | "units";
-  method: "toy" | "random_search" | "imitation" | "dagger";
+  method: "toy" | "random_search" | "imitation" | "dagger" | "ga";
   name: string;
   seed: number;
   tag: string;
@@ -373,9 +433,13 @@ export interface DatasetSummary {
 /**
  * Sent once when every car has stopped; the session then pauses.
  *
- * ``status`` has one name per car: crashed, finished, stalled or timeout.
+ * ``status`` has one name per car: crashed, finished, stalled or timeout. ``fitness`` (api v1.22,
+ * population driver only, else null) is each car's fitness on this start, f = p + c (1 - t / T)
+ * (the GA's ``start_fitness``: p the progress as a share of the target laps, c 1 for a finish,
+ * t its time, T the time limit), exactly the per-start fitness the GA scored.
  */
 export interface EpisodeEndMessage {
+  fitness: number[] | null;
   laps: number[];
   progress: number[];
   status: string[];
@@ -390,6 +454,54 @@ export interface EpisodeEndMessage {
 export interface ErrorMessage {
   message: string;
   type: "error";
+}
+
+/**
+ * Answer to ``GET /api/runs/{id}/evolution`` (api v1.23, task 7.7, ADR-058): a GA run's
+ * evolution charts, computed by ``experiment/evolution_view.py``. Entry g of every list is
+ * generation ``unit[g]``; numbers keep 6 significant digits.
+ *
+ * ``population`` is N and ``elite`` E (from the run's config). ``best``, ``q3``, ``median``,
+ * ``mean``, ``q1`` and ``worst`` summarise the generation's N fitness values (quartiles by
+ * linear interpolation); ``best_so_far`` is the GA's own best fitness up to that generation;
+ * ``zero`` the networks at exactly 0; ``diversity`` D, the mean pairwise genome distance, as
+ * the GA stored it; ``finished_share`` the share of the N x S drives that finished and
+ * ``finishers`` the networks that finished all S starts (null where a line lacks them);
+ * ``champion`` the row of the generation's best network. ``edges`` are the B + 1 band edges
+ * (width ``band_width``, shared by every generation); ``counts[g][k]`` the networks of
+ * generation ``unit[g]`` with edges[k] <= F < edges[k + 1], adding up to N per generation.
+ *
+ * Since api v1.24 (task 7.7 follow-up, ADR-059): ``start`` is the start (0 to S - 1) the
+ * statistics, ``best_so_far``, ``zero`` and ``counts`` describe, f on that start instead of F
+ * (null: every start); ``n_starts`` is S when every generation saved its per-start results
+ * (null for runs trained before); ``start_finish_share[g][k]`` the share of generation
+ * ``unit[g]`` that finished start k and ``start_mean[g][k]`` its mean f there (null without
+ * per-start results). ``diversity``, ``finished_share`` and ``finishers`` stay for every start.
+ */
+export interface EvolutionView {
+  band_width: number;
+  best: number[];
+  best_so_far: number[];
+  champion: number[];
+  counts: number[][];
+  diversity: (number | null)[];
+  edges: number[];
+  elite: number;
+  finished_share: (number | null)[];
+  finishers: (number | null)[];
+  mean: number[];
+  median: number[];
+  n_starts: number | null;
+  population: number;
+  q1: number[];
+  q3: number[];
+  run_id: string;
+  start: number | null;
+  start_finish_share: number[][] | null;
+  start_mean: number[][] | null;
+  unit: number[];
+  worst: number[];
+  zero: number[];
 }
 
 /**
@@ -655,6 +767,37 @@ export interface TrailPoints {
 }
 
 /**
+ * Answer to ``GET /api/runs/{id}/generations/{g}/starts`` (api v1.24, task 7.7 follow-up,
+ * ADR-059): how every network of one GA generation drove from every evaluation start.
+ *
+ * ``order`` lists the rows (networks) best first by F, the GA's own ranking (ties to the lower
+ * row); row i of every (N, S) list is network i: ``start_fitness`` f_ik, ``status`` how the drive
+ * ended (crashed, finished, stalled or timeout), ``progress`` the share of the target distance
+ * covered, ``finish_time`` seconds to the finish (null where it did not finish). ``fitness`` is
+ * F (N,); ``finish_share`` and ``start_mean`` (S,) each start's finished share and mean f;
+ * ``start_fraction`` and ``start_lateral_m`` (S,) where start k is, as a share of the lap from
+ * the start line and metres to the left of the centre line. Numbers keep 6 significant digits.
+ */
+export interface GenerationStarts {
+  champion: number;
+  elite: number[];
+  finish_share: number[];
+  finish_time: (number | null)[][];
+  fitness: number[];
+  n_starts: number;
+  order: number[];
+  population: number;
+  progress: number[][];
+  run_id: string;
+  start_fitness: number[][];
+  start_fraction: number[];
+  start_lateral_m: number[];
+  start_mean: number[];
+  status: string[][];
+  unit: number;
+}
+
+/**
  * Where the selected car would go in the next ``seconds`` if it held one action (ADR-026).
  *
  * Both paths start at the car's pose now and come from the car physics in Python: ``real`` holds
@@ -755,11 +898,18 @@ export interface LaunchResponse {
  * ``experiment/exam.py: shifted_starts``, the function Study S5b drives. It is allowed for the
  * ``"checkpoint"`` driver and for ``"expert"``, which then also drives the 10 shifted exam
  * starts (``n_cars`` and ``seed`` ignored), so the teacher can be watched from the same start.
+ *
+ * ``"population"`` (api v1.22, task 7.6, ADR-057) races a whole GA generation: ``population``
+ * names it (see :class:`PopulationRef`). Car i is row i of the generation, every car starts at
+ * the chosen evaluation start of the run's fitness track (that track replaces ``track``), and
+ * the ghost, if asked for, is the last car. Each car's drive is exactly the drive the GA scored
+ * for that network at that start. ``n_cars`` and ``seed`` are then ignored.
  */
 export interface LoadScenario {
   checkpoint: CheckpointRef | null;
   n_cars: number;
-  policy: "keyboard" | "constant" | "neuron" | "random_networks" | "expert" | "checkpoint";
+  policy: "keyboard" | "constant" | "neuron" | "random_networks" | "expert" | "checkpoint" | "population";
+  population: PopulationRef | null;
   seed: number | null;
   start_shift: StartShift | null;
   track: string;
@@ -770,6 +920,18 @@ export interface LoadScenario {
  */
 export interface CheckpointRef {
   run: string;
+  unit: number;
+}
+/**
+ * A GA generation to race (api v1.22, task 7.6, ADR-057): generation ``unit`` of GA run
+ * ``run``, every network from evaluation start ``start`` (0-based, in the run's fitness layout:
+ * every lateral offset with every start fraction, offsets in the outer loop), and, when
+ * ``ghost_unit`` is set, that earlier generation's champion as one extra car (the ghost).
+ */
+export interface PopulationRef {
+  ghost_unit: number | null;
+  run: string;
+  start: number;
   unit: number;
 }
 /**
@@ -846,6 +1008,46 @@ export interface OutputReceipt {
 export interface NetworkTrace {
   activations: number[][];
   weighted_sums: number[][];
+}
+
+/**
+ * Answer to ``GET /api/runs/{id}/generations/{g}/rows/{r}/mutation`` (api v1.25, task 7.8,
+ * ADR-060): what made network ``row`` of generation ``unit`` differ from its parents.
+ *
+ * ``weight_delta[l][j][i]`` = the mutation nudge of W_l[j, i] (child minus the value it
+ * inherited from the parent that gene came from; 0 when not mutated), ``bias_delta`` likewise;
+ * ``max_abs_delta`` = D, the largest |nudge|; ``weight_change`` = nudge / D (between -1 and 1;
+ * the same shape as a checkpoint diff, so the diagram draws it the same way).
+ * ``weight_mutated`` / ``bias_mutated`` mark the mutated genes, ``weight_from_other`` /
+ * ``bias_from_other`` the genes taken from the other parent. ``parents_fitness`` and
+ * ``parents_rank`` follow ``parents``; ``fitness`` and ``rank`` are the network's own.
+ */
+export interface MutationView {
+  bias_change: number[][];
+  bias_delta: number[][];
+  bias_from_other: boolean[][];
+  bias_mutated: boolean[][];
+  crossed: boolean | null;
+  fitness: number;
+  layer_sizes: number[];
+  main_parent: number;
+  max_abs_delta: number;
+  n_from_other: number;
+  n_genes: number;
+  n_mutated: number;
+  origin: "elite" | "child";
+  other_parent: number | null;
+  parents: number[];
+  parents_fitness: number[];
+  parents_rank: number[];
+  rank: number;
+  row: number;
+  run_id: string;
+  unit: number;
+  weight_change: number[][][];
+  weight_delta: number[][][];
+  weight_from_other: boolean[][][];
+  weight_mutated: boolean[][][];
 }
 
 /**
@@ -1093,14 +1295,16 @@ export interface RunSummary {
  * geometry is not included: fetch ``GET /api/tracks/{track}``. ``trail_seconds`` is how much
  * of the drive the session remembers for the decision trail (ADR-027). ``checkpoint`` is the
  * replayed network for the ``"checkpoint"`` driver (api v1.14), else null. ``start_shift`` is
- * the shift of the exam starts the cars began from (api v1.18), else null.
+ * the shift of the exam starts the cars began from (api v1.18), else null. ``population`` is the
+ * raced GA generation for the ``"population"`` driver (api v1.22), else null.
  */
 export interface ScenarioMessage {
   car_half_width: number;
   checkpoint: CheckpointRef | null;
   dt: number;
   n_cars: number;
-  policy: "keyboard" | "constant" | "neuron" | "random_networks" | "expert" | "checkpoint";
+  policy: "keyboard" | "constant" | "neuron" | "random_networks" | "expert" | "checkpoint" | "population";
+  population: PopulationInfo | null;
   ray_angles: number[];
   ray_range: number;
   seed: number | null;
@@ -1118,6 +1322,38 @@ export interface ScenarioMessage {
  */
 export interface CheckpointRef {
   run: string;
+  unit: number;
+}
+/**
+ * The raced GA generation (api v1.22, task 7.6, ADR-057), sent with the scenario.
+ *
+ * ``unit`` is the generation g and ``last_unit`` the latest saved one; ``start`` the evaluation
+ * start raced (0-based) of ``n_starts``, at ``start_s0_m`` metres along the track and
+ * ``start_lateral_m`` metres left of the centre line. Per row i (car i) of the ``size``
+ * networks: ``fitness`` F_i (the generation's fitness, the mean over all its starts),
+ * ``ranks`` its place in the GA's ranking (0 = best; equal F keeps the lower row first),
+ * ``finished`` and ``crashed`` (how many of its starts it finished or crashed on). ``elite``
+ * lists the rows that are elites (copies of the previous generation's best), ``champion`` the
+ * best row. ``ghost_unit`` is the ghost's generation, ``ghost_car`` its car index (``size``,
+ * the last car) and ``ghost_fitness`` its F; all three null without a ghost.
+ */
+export interface PopulationInfo {
+  champion: number;
+  crashed: number[];
+  elite: number[];
+  finished: number[];
+  fitness: number[];
+  ghost_car: number | null;
+  ghost_fitness: number | null;
+  ghost_unit: number | null;
+  last_unit: number;
+  n_starts: number;
+  ranks: number[];
+  run: string;
+  size: number;
+  start: number;
+  start_lateral_m: number;
+  start_s0_m: number;
   unit: number;
 }
 /**

@@ -18,6 +18,7 @@ fitness:                    # f = progress (up to 1) + a time bonus for finishin
   start_fractions: [0.0, 0.2, 0.4, 0.6, 0.8]   # the Driving Exam's starts on this track ...
   lateral_offsets: [0.0, 1.5]                  # ... centred and 1.5 m to the left
   target_laps: 2
+  formula: time_bonus        # time_bonus: p + c(1 - t/T) | finish_bonus: p + c | progress: p (ADR-062)
 budget:                     # any limit reached stops the run after that unit
   units: 100                # 2,000 networks, about 5 minutes plus exams
   env_steps: null

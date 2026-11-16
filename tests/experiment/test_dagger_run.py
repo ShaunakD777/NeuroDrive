@@ -119,6 +119,7 @@ def test_epochs_are_not_for_dagger():
 # ── the task's verification: the budget, an exam per round ─────────────────────────────────
 
 
+@pytest.mark.slow
 def test_a_short_run_counts_every_teacher_query(datasets, tmp_path):
     config = parse_config(config_data(checkpoint_every=1, exams=True))
     result = train_dagger_run(config, tmp_path / "runs", datasets_dir=datasets)
@@ -148,6 +149,7 @@ def test_a_short_run_counts_every_teacher_query(datasets, tmp_path):
 # ── resuming ────────────────────────────────────────────────────────────────────────────────
 
 
+@pytest.mark.slow
 def test_a_failed_run_resumes_exactly(datasets, tmp_path, monkeypatch):
     config = parse_config(config_data(dagger={"rounds": 4, "random_starts": 2}))
     reference = train_dagger_run(config, tmp_path / "a", datasets_dir=datasets)
@@ -199,6 +201,7 @@ def test_a_run_folders_config_rebuilds_the_learner(datasets, tmp_path):
 # ── the command line ────────────────────────────────────────────────────────────────────────
 
 
+@pytest.mark.slow
 def test_nd_train_and_sweep(datasets, tmp_path):
     config_file = tmp_path / "small.yaml"
     config_file.write_text(yaml.safe_dump(config_data()), encoding="utf-8")

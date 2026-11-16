@@ -175,6 +175,7 @@ def test_recording_status_comes_with_every_frame(tmp_path):
         ({"policy": "expert"}, "keyboard"),
     ],
 )
+@pytest.mark.slow
 def test_record_start_is_refused_and_nothing_is_recorded(tmp_path, kwargs, word):
     session = session_in(tmp_path, **kwargs)
     (reply,) = send(session, type="record_start")

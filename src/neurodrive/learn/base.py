@@ -32,6 +32,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol, runtime_checkable
 
 import numpy as np
+from numpy.typing import NDArray
 
 from neurodrive.core.nn.network import Network
 from neurodrive.core.rng import Rng
@@ -56,6 +57,13 @@ class UnitResult:
     best in this unit; the runner then saves a checkpoint (and takes the exam) at this unit even
     when it is not on the fixed schedule, so the run timeline shows every improvement (task 5.9,
     ADR-042). Optional: learners that never set it keep the fixed schedule.
+    ``extra``: method-specific lines for the run folder's ``extra/`` (task 7.5, ADR-056), as
+    ``{name: record}``; the runner appends ``{"unit": <unit>, **record}`` to ``extra/<name>.jsonl``
+    right after the metrics line (the GA's ``population`` statistics). JSON-friendly values only.
+    Optional: empty for every other learner.
+    ``arrays``: method-specific arrays of this unit (task 7.6, ADR-057), as
+    ``{name: {key: array}}``; the runner saves each to ``extra/<name>/unit_<unit>.npz`` right
+    after the extra lines (the GA's ``generations``: the genome matrix it scored). Optional.
     """
 
     metrics: dict[str, Metric] = field(default_factory=dict)
@@ -64,6 +72,8 @@ class UnitResult:
     teacher_queries: int = 0
     diverged: bool = False
     new_best: bool = False
+    extra: dict[str, dict[str, Any]] = field(default_factory=dict)
+    arrays: dict[str, dict[str, NDArray[np.float64]]] = field(default_factory=dict)
 
 
 @runtime_checkable

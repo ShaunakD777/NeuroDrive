@@ -357,7 +357,7 @@ def test_rest_track_endpoints():
 def test_websocket_session_end_to_end():
     client = TestClient(create_app())
     with client.websocket_connect("/ws/live") as ws:
-        assert json.loads(ws.receive_text())["api"] == API_VERSION == "v1.20"
+        assert json.loads(ws.receive_text())["api"] == API_VERSION == "v1.25"
         ws.send_text(json.dumps({"type": "load_scenario", "track": TRACK, "policy": "constant"}))
         assert json.loads(ws.receive_text())["type"] == "scenario"
         assert json.loads(ws.receive_text())["step"] == 0
@@ -1055,6 +1055,7 @@ def test_moments_work_for_drivers_without_a_network():
 # ── the scripted expert (api v1.12, ADR-035) ────────────────────────────────────────────────
 
 
+@pytest.mark.slow
 def test_expert_scenario_drives_every_car_like_the_expert_itself():
     session = LiveSession(TrackLibrary(TRACKS))
     scenario, frame = send(

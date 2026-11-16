@@ -24,6 +24,7 @@ dev = [
     "ruff>=0.5",
     "pre-commit>=3.7",
     "httpx2>=2.13.1",
+    "pytest-xdist>=3.6",
 ]
 
 [build-system]
@@ -35,7 +36,13 @@ packages = ["src/neurodrive"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra"
+# -n auto: one worker per CPU core (pytest-xdist, ADR-061); --dist loadfile keeps each test
+# file on one worker, so its module-scoped fixtures (small trained runs) are built only once.
+# Pass -n0 to run in a single process (to debug, or to use breakpoints).
+addopts = "-ra -n auto --dist loadfile"
+markers = [
+    "slow: about 2 s or more alone (trains, resumes or examines a run, or drives many full episodes), or shares a module fixture that does; deselect with -m 'not slow'",
+]
 
 [tool.ruff]
 line-length = 100

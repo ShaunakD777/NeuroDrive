@@ -152,6 +152,7 @@ def test_matched_frames_are_the_experts_first_frames_from_each_start():
             world.step(label[:1], label[1:])
 
 
+@pytest.mark.slow
 def test_unmatched_drives_run_to_their_own_end():
     source = source_with_starts([3, 5, 40])
     full = record_expert_from_starts(track_of(), source, match_frames=False)

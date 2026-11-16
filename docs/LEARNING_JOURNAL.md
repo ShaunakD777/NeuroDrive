@@ -1681,3 +1681,203 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   chosen before looking make DAgger's advantage appear or vanish (T3 and D-1 were decided by the
   pre-registered tie-break)? Which checkpoint rule should imitation use when Phase 8 compares it
   with evolution?
+
+### 2026-11-11 — Task 7.0 Performance check
+- Concept: profiling (measure before optimising); the hot loop; worst case versus typical case;
+  Amdahl's law; timing noise on a processor with performance and efficiency cores.
+- Key equation(s) in words: the budget per step is the wall-clock target divided by the steps,
+  5 s / 1,800 = 2.78 ms (55.6 us per car-step for 50 cars); the sensors do cars x rays x
+  candidate walls = 50 x 5 x 422 = 105,500 ray-wall checks per step; speeding up a part with
+  share p by s makes the whole 1 / ((1 - p) + p / s) faster, so with the sensors at p = 0.87
+  even infinitely fast rays give at most 7.8x.
+- What we observed: the worst-case generation (every car alive for the full 60 s, steered by
+  recorded expert actions while the sensors and 50 networks are still computed) misses the 5 s
+  target: 6.74 s median on a performance core (3.74 ms per step), 10.3 s on an efficiency core.
+  The ray sensors take 87 %, the world step 10 %, the 50 networks only 2.4 %. A typical early
+  generation of random networks costs 0.78 s because they crash or stall within seconds, so a
+  generation gets more expensive as evolution succeeds. The cost per car-step is lowest at
+  10-50 cars (about 65 us) and rises to 88 us at 500 cars, where each temporary array of the ray
+  test is 8 MB and no longer fits in the processor's cache. Prototypes kept all 450,000 readings
+  identical bit for bit: per-direction wall lists made the sensors 2.2-6.6x faster, smaller
+  cells 1.3-1.8x, and removing the padding did nothing (the gathering cost what it saved).
+- Surprise or difficulty: the same run took anywhere from 4.85 s to 10.6 s; Windows moves the
+  process between the i5-13420H's performance and efficiency cores, and the run under cProfile
+  was once faster than the plain runs. Pinning the process to one core made the repeats steady.
+  Numba could not even be imported: Smart App Control blocks its compiled library, as it blocks
+  `nd.exe` and `pre-commit.exe` on this machine.
+- Open question: which optimisation (per-direction wall lists, a process pool, accepting it until
+  the performance pass), and how many starts per network should 7.2 evaluate, given that 10
+  starts make a generation about 10x more expensive?
+
+### 2026-11-11 — Task 7.0b Per-direction wall lists for the ray sensors
+- Concept: broad phase and narrow phase; conservative culling (keep too much, never too
+  little, so the exact step gives exactly the same answer); the separating axis test; the
+  Minkowski sum of a grid cell and a ray direction's wedge; ragged lists instead of padding.
+- Key equation(s) in words: a ray of direction phi belongs to bin floor(phi / 22.5 degrees); the
+  region a bin's rays reach from a cell is the square plus a 50 m wedge, its arc enclosed by two
+  tangent lines that meet 50 / cos(11.25 degrees) = 50.98 m out; a wall stays on the list unless
+  its shadow and the region's shadow on some axis are more than 1e-6 m apart.
+- What we observed: every reading stayed bit-for-bit the full search's on every track, on rays
+  exactly on bin edges, on cars exactly on cell corners and on walls 49-50 m away seen from cell
+  corners; the full suite (exact exam cards, replays, study guards) passed unchanged. The worst
+  case fell from 6.74 s to 1.71 s on a performance core and from 10.3 s to 3.95 s on an
+  efficiency core, inside the 5 s target on both. The first version, padding every ray to the
+  longest list of the step, reached only 3.47 and 6.06 s; testing each ray's own walls in one
+  flat array (45 walls on average instead of up to 123) gave the rest.
+- Surprise or difficulty: the prototype promised 3.4x faster rays, but its baseline had been
+  measured slow in the same noisy run; the real first gain was 2.2x, and the efficiency core
+  still missed. A planted bug that cut the wedge's arc off passed every random test: the lost
+  sliver is at most 0.24 m deep, at the end of a 50 m ray, seen from the cell's outermost corner.
+  Only a test aimed at exactly that place (walls 49-50 m away from cars on cell corners) caught
+  it. The two rounding safeguards (1e-6 m, 1e-9 rad) cover each other, so removing either alone
+  is not caught by any test.
+- Open question: the world step (projection onto the centreline) is now a quarter of the time;
+  is a generation with 10 starts per network (500 cars, about 16 s in the worst case over 60 s) fast
+  enough for 7.2?
+
+### 2026-11-11 — Task 7.1 Genome ↔ network
+- Concept: genome and gene; genotype (the list evolution changes) and phenotype (the network that
+  drives); the gene map; permutation symmetry, the first sign of why crossover is awkward.
+- Key equation(s) in words: with s_l the first gene of layer l, the weight from input m into
+  neuron j of layer l is gene s_l + j x n_in + m and its bias is gene s_l + n_out x n_in + j;
+  back again, k = i - s_l gives row k // n_in and column k % n_in while k < n_out x n_in.
+- What we observed: in the default network gene 37 is W0[5,2] (the straight-ahead ray into hidden
+  neuron 5), gene 400 W2[0,0] and gene 433 the throttle bias b2[1]; changing any one gene changes
+  exactly the one parameter at its address, for five network shapes. In the tiny 2-2-1 network the
+  genome (0.5, -1, 0, 1, 0, 0, 1, 2, 0) outputs 0.9093 on (2, 1); setting gene 3 to 0.5 gives
+  0.7279; swapping the hidden neurons changes 6 of the 9 genes and the output stays 0.9093; a
+  child taking six genes from one and three from the other outputs 0.6420, like neither parent.
+  In the default network such a swap moves 48 genes and changes no output.
+- Surprise or difficulty: most of the conversion already existed (tasks 2.1 and 2.3), so the
+  task became the meaning of the genes. A planted column-by-column reading of the weights failed
+  11 tests but not the named-genes test: 37 = 5 x 7 + 2 = 2 x 16 + 5, so gene 37 decodes to W0[5,2]
+  in both orders by coincidence.
+- Open question: how often does uniform crossover of two good drivers make a bad child in
+  practice, and does it matter once the population descends from one ancestor (7.4, 7.9)?
+
+### 2026-11-11 — Task 7.2 Fitness v1 + population evaluation
+- Concept: fitness as evolution's only view of good driving; batched evaluation of a whole
+  generation in one world; a stable ranking; why only the order of the fitness values matters to
+  tournament and rank selection.
+- Key equation(s) in words: per start f = p + c x (1 - t / T) (progress share, plus time left over
+  for a finisher); F = the mean over the 10 starts; ranking = a stable sort of F, largest first.
+  On one start the planned Fitness v1 (P + 200 laps + (T - t)) orders cars exactly as f does;
+  over several starts they differ: a network finishing once at 60 s and missing at 99 % scores
+  1.169 under f and beats a steady 90 s finisher (1.022), but loses under v1 (1,770.5 vs 1,864).
+- What we observed: the ranking from one batched world matched the ranking from each network's
+  own exam episodes exactly. In a family of the hand-wired neuron and seven noisy copies, a copy
+  with noise 0.3 drove faster than the neuron and ranked first (1.173 vs 1.063); a copy with
+  noise 0.02 reached the end of every drive but too slowly, finishing none (0.997); noise 0.05
+  already crashed at once (0.058), so the ranking did not follow the noise level. Of 50 fresh
+  random networks, 20 scored exactly 0 (they never move and stall), and the best scored 0.17.
+- Surprise or difficulty: my reordering test assumed there would be no ties; random networks
+  that never move tie at exactly 0, and a stable ranking puts tied networks in index order, so
+  the order among them follows the rows. Selection (7.3) must not let the index decide.
+- Open question: with a third of the first generation tied at 0, how much does tie-breaking
+  matter for the first generations of selection?
+
+### 2026-11-12 — Task 7.3 Selection operators
+- Concept: selection turns fitness into parents and is the only place where "better" becomes
+  "more children"; selection pressure (the expected copies of the best); tournament selection;
+  linear rank selection; stochastic universal sampling; fair treatment of ties.
+- Key equation(s) in words: a tournament of k draws with replacement is won by the network at
+  place r with probability ((N - r) / N)^k - ((N - r - 1) / N)^k, and a tied fitness level shares
+  (m_le / N)^k - (m_lt / N)^k equally; linear ranking gives place r an expected
+  e(r) = s - 2 (s - 1) r / (N - 1) copies, tied places sharing their mean; SUS gives every network
+  floor(n p) or ceil(n p) copies.
+- What we observed: for F = (0.3, 1.2, 0.3, 1.9) a tournament of 2 gives (0.125, 0.3125, 0.125,
+  0.4375) and rank selection at s = 1.5 gives (0.1667, 0.2917, 0.1667, 0.375), equal to
+  brute-force enumeration of every draw and of every tie order. In a 50-network generation like
+  7.2's (20 at exactly 0) the best gets 2.94 expected copies with k = 3 and 1.5 with s = 1.5, but
+  the 20 stalled networks together get 3.2 of the 50 parents with tournaments and 13.9 with rank
+  selection: linear ranking keeps far more of the useless networks.
+- Surprise or difficulty: a planted bug that gave tournament ties to the lowest index failed only
+  one test at first, because brute-force enumeration used the same first-drawn rule as the code;
+  a direct test (three tied best networks at rows 0, 4, 8 must win equally often) was added.
+- Open question: is s = 1.5 too gentle for the first generations, where most networks are tied
+  at 0, and does the tournament's stronger pressure cost diversity later (7.7, 7.9)?
+
+### 2026-11-13 — Task 7.4 Mutation and crossover
+- Concept: variation operators make the new genomes; selection only decides who gets children. Gaussian mutation changes each gene with probability p (rate: how many genes) by a normal amount of standard deviation σ (strength: how far). Uniform crossover takes every gene from one parent or the other by a fair coin; with probability 1 − c a child is just a copy of its first parent.
+- Key equation(s) in words: the child gene is the parent gene plus σ times a standard normal number when its uniform draw is below p, otherwise the parent gene itself; a crossed child gene is parent a's when its coin is below 0.5, otherwise parent b's. At p = 0.05 a default child has 21.7 of its 434 genes changed on average, each by 0.08 in size at σ = 0.1.
+- What we observed: the statistics match the formulas (fraction 0.04984, standard deviation of the changes 0.10001, Kolmogorov–Smirnov distance 0.0024 of an allowed 0.0094, 217.0 genes from each parent, neighbouring genes from the same parent 50.0 % of the time). A network crossed with itself comes back unchanged; crossed with its renumbered twin, which drives identically (F = 1.293), it gave 20 children that never finished (median F 0.022). Permutation symmetry is not a footnote: it destroys every child.
+- Surprise or difficulty: mutation at the defaults (p = 0.05, σ = 0.1) also broke the trained imitation driver (median 0.35 of 20 mutants, against 1.29), although its weights average 1.5 in size. Only few changes (p = 0.01: median 1.292, 8 of 20 better than the parent) or tiny ones (σ = 0.01) kept it driving. A good driver sits on a narrow ridge, and the right amount of mutation depends on where the population is.
+- Open question: will a GA started from random networks (genomes 8 times shorter) want stronger mutation early and weaker later, and does crossover ever help when the parents are unrelated, or only when they are close relatives that share a neuron numbering?
+
+### 2026-11-13 — Task 7.5 Elitism and the generation loop
+- Concept: a genetic algorithm is a loop over generations (score, choose parents, make children, replace); elitism copies the best E networks unchanged into the next generation, so the best driver found so far can never be lost. Diversity, the mean distance between the genomes, shows how spread out the population still is.
+- Key equation(s) in words: the next generation is the best E rows in ranking order, then N − E children of 2(N − E) selected parents, crossed and mutated; because the evaluation is fixed and deterministic, an elite scores exactly what it scored before (elite drift 0), so the best of generation g + 1 is at least the best of generation g.
+- What we observed: elite drift was exactly 0 in all 29 checks of a 30-generation run of `configs/ga.yaml` (N = 50, E = 2, k = 3, c = 0.5, p = 0.02, σ = 0.05); best fitness 0.36 → 1.27 and never fell; the champion lapped all 10 training-loop starts from generation 18 (39 s, then 31.9 s by generation 29). Held-out driving rose until about generation 9 and then collapsed (no held-out lap and crash rate 1.0 at generation 30): the GA learned its training loop by heart. Diversity fell from 7.6 to 0.6 in six generations. On a trivial quadratic fitness, no elite plus strong mutation made the best worse in 23 of 59 generations, E = 2 in none.
+- Surprise or difficulty: the population's mean fitness fell late in the run (1.11 → 0.95) while the champion kept improving: only the elite is guaranteed. And at about 4.5 M environment steps this one GA seed (best 0.60) was behind S4's random search (0.89–1.14), because networks that survive longer cost more steps each.
+- Open question: is the diversity collapse a cause of the held-out overfitting, and would gentler selection, stronger mutation or fitness on more training starts and tracks keep held-out driving (Study S6, task 7.9)?
+
+### 2026-11-13 — Task 7.6 Population mode in the Environment view
+- Concept: a GA generation can be watched as a race. All N networks start from one evaluation start, each coloured by the GA's fitness rank (5 bands, best fifth strongest), with an earlier generation's champion as a see-through ghost. A race repeats exactly the drives the GA scored, because cars never interact and every per-car calculation (sensors, the car's own network, the physics) uses only that car's numbers. To make past generations available, every scored genome matrix is saved (`extra/generations/unit_<g>.npz`, about 0.17 MB each).
+- Key equation(s) in words: colour position q = r / (N − 1) for place r (0 = best), band = min(4, floor(5q)); a car's fitness on the raced start is f = p + c (1 − t/T), with t the step it finished at times dt (generation 30's champion: t = 67.4 s, T = 92 s, f = 1.267391, the GA's own number).
+- What we observed: retraining `configs/ga.yaml` for 30 generations with seed 0 gave a `population.jsonl` identical to task 7.5's (saving the genomes changes nothing). Raced from start 1, generation 1 ends 31 stalled, 18 crashed, 1 out of time; generation 10 has 48 of 50 still driving at the time limit; in generation 30, 32 finish and 18 crash. With the ghost at the previous generation it sat exactly on car 1 for the whole race (elitism you can see); generation 5's champion as the ghost was beaten by 44 of generation 30's 50 networks.
+- Surprise or difficulty: fitness rank and race position almost never disagreed. The rank-1 network won all 10 starts in every generation checked (1–6, 10, 20, 30), and only 2–3 % of pairs of networks swapped order between their overall rank and one start. On one training loop the 10 starts are nearly the same test, which fits the held-out overfitting seen in 7.5. Also, the legend box first swallowed clicks on cars under it.
+- Open question: on several training tracks, or held-out ones, would rank and race diverge, and would a GA whose fitness uses more varied starts keep more diversity (Study S6)?
+
+### 2026-11-14 — Task 7.7 Evolution charts
+- Concept: a generation is a distribution, not a number. The evolution panel (Timeline tab, GA runs) shows the best, median, mean and worst fitness, the whole fitness distribution as a heat map (a column per generation, a cell per band of 0.05, shaded by the share of the generation in it), one generation's histogram, and the diversity D. Convergence is the networks becoming near-copies: the spread narrows and D falls.
+- Key equation(s) in words: band k holds the networks with k·w ≤ F < (k + 1)·w, w = 0.05; the quartiles are the 25th and 75th percentiles by linear interpolation at positions 0.25·(N − 1) and 0.75·(N − 1). Fitness (0, 0, 0.12, 0.31, 1.27) gives mean 0.34 but median 0.12, and counts 2, 1, 1, 1 in bands 0, 2, 6 and 25.
+- What we observed: on 7.6's 30-generation run (seed 0), generation 1 has 48 of 50 networks in the bottom band (median 0.0009, best 0.36); by generation 6 most of the lump has moved up to 0.25–0.55 and D has fallen from 7.6 to 0.62; generation 10 is one lump around 0.6 (median 0.61); in generations 18–23 only 3 to 6 networks are below 0.8. Then a lower lump grows back: in generation 30, 32 networks are at 1.15–1.30 (they lap every start) and 18 at 0.2–0.6 (they crash somewhere), so the mean (0.95) sits below the median (1.23). The worst network never scored above 0.41 (generation 26): there are always mutants that crash early.
+- Surprise or difficulty: early on the mean is far above the median (one good network among many at 0); late it is far below (a crashing minority). The mean alone would have looked like a steady population. Also a floating-point trap: 0.15 / 0.05 is 2.9999999999999996, so "round F / w down" puts 0.15 in the wrong band; the band is found by searching the stored edges instead.
+- Open question: why does the lower lump grow back after generation 23 while D stays near 0.6: is it the mutation strength (σ = 0.05 breaks a converged driver this often), and would a gentler mutation or more elites move more of the population up (Study S6)?
+
+### 2026-11-14 — Task 7.7 follow-up: one start at a time (ADR-059)
+- Built: every GA generation now keeps how each of its N networks drove from each of the S starts (f, outcome, progress, finish time; +13 KB per generation), and the evolution panel shows it: a start picker that redraws the charts with f on one start, a starts × generations map shaded by the share that finished, and the chosen generation's outcome grid whose cells race that start with that car selected (api v1.24).
+- Learned: an average over tests (F over 10 starts) can hide which tests fail, so the useful question is whether it does in a given run. The same seed retrained gave a run identical to 7.6's, so the new view describes the run already studied.
+- Observed: the starts are learned almost together, starts 4 and 9 first (generation 15), starts 2 and 7 last (18); half the population finishes each start by generation 19 or 20. Specialists (some starts finished, others not) exist only during that change, at most 13 of 50 in generation 18, and their failures are timeouts (too slow), not crashes. By generation 30 there are none: 32 networks finish all 10 starts and 18 crash on all 10, 12 of them at the same point a third of the way round the lap. So the lower lump of 7.7 is not specialists but networks broken at one bend. The 1.5 m sideways offset hardly matters: starts k and k + 5 look alike.
+- Caught by a planted bug: a test of the saved outcomes passed with the outcomes stored one start over, because in its small run every start ended the same way. A test needs data in which the mistake it guards against would show.
+- Open question: is the bend at 34 % of the lap what mutation breaks in the converged population (S6 can compare mutation strengths with this map)?
+
+### 2026-11-14 — Task 7.8: lineage and mutation diff (ADR-060)
+- Built: every GA generation now records how each of its networks came about (`extra/lineage.jsonl`: random, an elite copy of row r, or a child of rows a and b with the genes from b and the mutated genes), the champion's line of descent in the Evolution panel (each marker races that ancestor), and in population mode a banner with the selected car's origin and "Colour lines by mutation since the parent" in the Network view (api v1.25).
+- Learned: a child's family history needs two parents, but a readable ancestry needs one: the *main parent*, the one that gave more genes. And a mutation diff must compare each gene with the parent it came from, not with the main parent, or crossover looks like mutation (0.6 − 0.2 = 0.4 instead of the real nudge 0.6 − 0.5 = 0.1).
+- Key equation(s) in words: main parent = a when P − |B| ≥ |B|, else b; the nudge of a mutated gene k is δ_k = x_k − y_k, y_k the value it inherited from its source parent; every unmutated gene has x_k = y_k exactly; the diagram draws δ_k / max |δ|.
+- What we observed: retraining 7.6's run with lineage gave an identical `population.jsonl` (recording changes nothing). 1,392 children in 29 generations, 713 crossed (c = 0.5), 8.76 mutated genes per child (P·p = 8.68). Generation 30's champion (F 1.265) goes back through 5 elite copies, 15 crossed and 9 uncrossed children, 213 mutated genes, to row 33 of generation 1, the first generation's best. Its ancestors were often not their generation's best: rank 16 in generations 6 and 8, rank 21 in 15, rank 24 in 19. Every one of the 22 new bests came from a child (15 crossed, 7 not); 7 of the 29 champions were the kept elite. On the line, a crossed child sits 0.26–0.57 from its main parent (one at 0.11, in generation 28, whose two parents were nearly alike), an uncrossed one 0.06–0.21.
+- Surprise or difficulty: the line of descent does not follow the elites. The best network of a generation is often not the one whose children win later; a mid-ranked parent with the right genes does. So "elitism keeps the best" protects the *score* but the *line* to the final champion runs through ordinary networks, which is what selection pressure that is not too strong (tournaments of 3) allows.
+- Open question: would a stronger selection (larger tournaments) or more elites make the champion's line run through the top ranks, and would that be better or worse for the final fitness (Study S6)?
+
+### 2026-11-16 — Task 7.9: Study S6, the GA against random search, its sweeps, fitness ablations and the racing line (ADR-062)
+- Built: a `fitness.formula` setting (`time_bonus` f = p + c(1 − t/T), the default; `finish_bonus` f = p + c; `progress` f = p) for random search, the GA and the live race; `experiment/racing_line.py`, which finds a track's bends (radius under 50 m) from the signed centreline curvature and reads the inside offset at every apex and the outside offsets 20 m before and after; `scripts/study_s6.py`: 10 arms, 60 runs of 40 M environment steps each, trained 11 at a time in 4 h 35 min, analysed into `docs/studies/S6.md`.
+- Learned: an *ablation* takes one piece away to see what it was doing; *equal budgets* must be counted in the currency that costs (environment steps), or a bigger population simply gets more driving; a fitness with a *ceiling* (every finisher scores the same maximum) stops selection the moment the ceiling is reached.
+- Key equation(s) in words: per start f = p + c(1 − t/T): two finishers at 69 s and 90 s of a 92 s limit score 1.25 and 1.02; with f = p + c both score 2.0 and the GA can no longer tell them apart. Inside offset e_in = sign(κ)·e at the apex: 1.2 m left at a left apex is +1.2 (cutting), 0.8 m left at a right apex is −0.8. Paired difference: per seed d_k = A_k − B_k, the median and a bootstrap 95 % interval over seeds.
+- What we observed: every one of the 60 chosen networks laps all 10 training starts, random search included (34,340 networks per run at 40 M steps; S4's 4.5 M had never been enough), so G1 (T(GA) > T(RS)) and G2 failed; the GA only laps 2.1 s faster [0.4, 3.6]. Diversity rises with p and σ (M1), but strong mutation (σ 0.2) gave the *best* fitness and laps and σ 0.02 the worst (M2 reversed). Without the time bonus laps are 6.9 s slower (F1). Finish-bonus and progress-only runs chose the identical network in every seed: all three formulas are f = p until a car first finishes, so with the same seed the populations are identical until generations 10–19, and both alternatives freeze at the first full finisher. No racing line: most networks keep one side of the road all lap, and the left (inside of the anticlockwise loop) side is fastest because progress is measured along the centreline (22 networks, median lap 31.3 s, against 34.1 s on the right): the documented fitness exploit. 41 of 60 networks finish no held-out drive at all; the first checkpoint that laps every training start generalises better than the faster chosen one (+0.046 held-out progress).
+- Surprise or difficulty: the scripted expert, believed to follow the centreline, cuts every apex by about 0.6 m: pure pursuit aims at a point on the centreline ahead and so drives the chord. The test found it before any run, and R1 was restated. And random search, the null model, is not weak at all once given 40 M steps.
+- Open question: would fresh random evaluation starts each generation (ADR-055 D2B) or a fitness measured in metres actually driven remove the inside-line trick and the overfitting, and which GA checkpoint should Phase 8 compare with imitation, the first that laps or the fastest?
+
+### 2026-11-16 — Phase 7 complete (tag `phase-7`)
+- What was built: a performance check of one GA-sized generation and per-direction wall lists that
+  made the ray sensors fast enough for a population (7.0, 7.0b); the genome as one flat vector with
+  a named address for every gene (7.1); the population evaluation, which scores every network with
+  random search's fitness on the exam's 10 starts (7.2); tournament and rank selection, Gaussian
+  mutation and uniform crossover, each tested against its exact probabilities (7.3, 7.4); the
+  generation loop with elitism, elites scored again so that elite drift must be 0, resumable (7.5);
+  population mode, which races a whole generation coloured by rank with an earlier champion as a
+  ghost (7.6); evolution charts with the fitness distribution, the diversity and per-start results
+  (7.7); exact lineage, the champion's line of descent and a mutation diff in the Network view
+  (7.8); and Study S6 with a configurable fitness formula and a racing-line measure (7.9). At the
+  closing check 2,113 Python tests (one skipped without PyTorch), 195 web unit tests and all 79
+  browser tests passed, and so did every pre-commit hook.
+- What was learned: the GA masters the training loop in 10 of 10 seeds, but at an equal budget of
+  40 M environment steps so does random search, so completion cannot separate them; the GA's
+  clear edge is speed (a lap 2.1 s faster). Stronger mutation (σ = 0.2) helped, contrary to the
+  prediction, and population size made no clear difference. Without the time bonus evolution stops
+  at the first network that finishes, so the time pressure is what makes cars fast. The fastest
+  networks keep to the inside of the anticlockwise loop all lap, because progress is measured along
+  the centreline: a documented fitness exploit. Most evolved networks fail the held-out tracks, and
+  the first checkpoint that laps every start generalises better than the faster one chosen later.
+- Decisions: ADR-053 to ADR-062 (sensor wall lists; the gene map; fitness v2 shared with random
+  search; the GA learner; saved generations and the population driver; evolution charts in Python;
+  per-start results; lineage; parallel tests in tiers; the fitness formula and Study S6).
+- Fixed along the way: tests whose small runs could not see a mistake (a tournament tie rule, the
+  outcomes stored one start over) were rebuilt with data in which the mistake shows; the test suite
+  was made parallel (about 3 min instead of 12 min 44 s); a stale database mirror of older DAgger runs
+  was repaired with `nd db rebuild`.
+- Open questions: does a fitness that measures progress along the car's own path, or fresh random
+  starts each generation, remove the inside-line exploit and improve held-out driving? Which GA
+  checkpoint and which budget should Phase 8 use when it compares evolution with imitation, given
+  that `best_unit` favours training-loop speed over generality? Would the GA's advantage over
+  random search appear at a smaller budget, before random search saturates?

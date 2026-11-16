@@ -131,6 +131,7 @@ def test_every_collected_frame_is_one_step_and_one_query(track):
     assert {e["start_kind"] for e in found.episodes} == {"dagger"}
 
 
+@pytest.mark.slow
 def test_a_held_out_track_is_refused(demo):
     heldout = Track.from_json(TRACKS / "hairpins_01.json")
     network = init_network(IMITATION.spec, make_rng(0))
@@ -231,6 +232,7 @@ def test_divergence_in_a_round_keeps_the_last_rounds_network(demo, track, monkey
     assert dagger.network.equals(before)
 
 
+@pytest.mark.slow
 def test_state_and_restore_continue_exactly(demo, track):
     reference = learner(demo, track)
     ref = [reference.train_unit() for _ in range(3)]

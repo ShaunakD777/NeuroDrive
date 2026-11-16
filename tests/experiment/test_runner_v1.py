@@ -71,6 +71,7 @@ def test_schedule_without_a_known_end():
     ]
 
 
+@pytest.mark.slow
 def test_a_run_folder_v1_is_complete(reference):
     meta = reference.read_meta()
     assert meta["run_version"] == 1 and meta["status"] == "completed"
@@ -116,6 +117,7 @@ def test_budgets_need_a_limit_and_no_negatives():
 # ── killed and resumed: exactly the same run ────────────────────────────────────────────────
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("kill", list(KILLS))
 def test_a_killed_run_resumes_exactly(kill, reference, tmp_path):
     store = run_killed(tmp_path, kill)
@@ -130,6 +132,7 @@ def test_a_killed_run_resumes_exactly(kill, reference, tmp_path):
     same_run(store, reference)
 
 
+@pytest.mark.slow
 def test_resume_refuses_finished_old_and_stateless_runs(reference, tmp_path):
     with pytest.raises(ValueError, match="already completed"):
         resume(WalkLearner(SEED), reference)
@@ -181,6 +184,7 @@ class StopsAt(WalkLearner):
         return result
 
 
+@pytest.mark.slow
 def test_a_stop_request_ends_the_run_cleanly_after_the_current_unit(reference, tmp_path):
     store = RunStore.create(tmp_path, "walk", "t", {"seed": SEED})
     assert run(StopsAt(store, 3), store, Budget(units=UNITS)) == "completed"
@@ -195,6 +199,7 @@ def test_a_stop_request_ends_the_run_cleanly_after_the_current_unit(reference, t
     assert not store.stop_requested()  # answered and removed
 
 
+@pytest.mark.slow
 def test_resume_ignores_an_old_stop_request(reference, tmp_path):
     store = run_killed(tmp_path, "during_unit")
     store.request_stop()  # e.g. asked for while the process was already dead
@@ -213,6 +218,7 @@ class NewBestAt(WalkLearner):
         return replace(super().train_unit(), new_best=self.units in (3, 7))
 
 
+@pytest.mark.slow
 def test_units_with_a_new_best_are_checkpointed_and_examined_too(reference, tmp_path):
     store = RunStore.create(tmp_path, "walk", "t", {"seed": SEED})
     run(NewBestAt(SEED), store, Budget(units=UNITS))

@@ -154,6 +154,7 @@ def small(study, monkeypatch):
     return study
 
 
+@pytest.mark.slow
 def test_the_analysis_and_the_hypothesis_rules_on_the_hand_made_runs(small, tmp_path):
     make_study(tmp_path, small, SELECTED, LAST, SPREAD)
     made = small.analyse(tmp_path, inspect=False)
@@ -184,6 +185,7 @@ def test_the_analysis_and_the_hypothesis_rules_on_the_hand_made_runs(small, tmp_
     assert json.dumps(made, sort_keys=True) == json.dumps(again, sort_keys=True)
 
 
+@pytest.mark.slow
 def test_the_hypothesis_rules_can_fail(small, tmp_path):
     selected = {
         **SELECTED,
@@ -203,6 +205,7 @@ def test_the_hypothesis_rules_can_fail(small, tmp_path):
     assert not h["H1"]["supported"]
 
 
+@pytest.mark.slow
 def test_a_run_is_missing_or_repeated(small, tmp_path):
     make_study(tmp_path, small, SELECTED, LAST, SPREAD)
     fake_run(
@@ -212,6 +215,7 @@ def test_a_run_is_missing_or_repeated(small, tmp_path):
         small.analyse(tmp_path, inspect=False)
 
 
+@pytest.mark.slow
 def test_choosing_a_checkpoint_reads_no_held_out_number(small, tmp_path):
     make_study(tmp_path, small, SELECTED, LAST, SPREAD)
     path = small.find_runs(tmp_path)["arms"]["human"][0]
@@ -244,6 +248,7 @@ def datasets(tmp_path_factory) -> Path:
     return folder
 
 
+@pytest.mark.slow
 def test_a_study_run_is_a_plain_imitation_run(study, datasets, tmp_path, monkeypatch):
     spec = {**study.ARMS["human"], "dataset": "20261111-120000-expert-t", "epochs": 3}
     monkeypatch.setitem(study.ARMS, "human", spec)

@@ -6,7 +6,9 @@ import { connectLive, type LiveConnection } from "../../api/ws";
 import { useLive } from "../../state/live";
 import { applyRunsMessage, defaultMetric, initialRunsWatch, plottableKeys, series, watchRun } from "../../state/runsWatch";
 import { useSelection } from "../../state/selection";
+import { defaultGhost } from "../environment/population";
 import { formatNumber, shortName } from "./charts";
+import { Evolution } from "./Evolution";
 import { LiveChart } from "./LiveChart";
 
 /** One car's result on one exam track, as the card stores it (only the fields shown here). */
@@ -48,6 +50,7 @@ function sameShift(a: StartShift | null, b: StartShift | null): boolean {
  * puts the cursor on the run's chart, and lists what the exam card says each car did on that
  * track. The page only sends commands and draws: the drive, the card and the change come from
  * the server. The run's history arrives over /ws/runs, so a run still training grows here too.
+ * For a GA run the Evolution panel (task 7.7) follows the slider's generation.
  */
 export function Timeline({ headerExtra }: { headerExtra?: ReactNode }) {
   const [runs, setRuns] = useState<RunSummary[] | null>(null);
@@ -69,6 +72,7 @@ export function Timeline({ headerExtra }: { headerExtra?: ReactNode }) {
   const replaying = useLive((s) => s.scenario?.checkpoint ?? null);
   const replayedShift = useLive((s) => s.scenario?.start_shift ?? null);
   const policy = useLive((s) => s.scenario?.policy ?? null);
+  const raced = useLive((s) => s.scenario?.population ?? null);
   const selectedCar = useLive((s) => s.frame?.selected?.index ?? null);
   const selectCar = useSelection((s) => s.selectCar);
 
@@ -150,6 +154,20 @@ export function Timeline({ headerExtra }: { headerExtra?: ReactNode }) {
     replaying !== null && replaying.run === runId && replaying.unit === unit && sameShift(replayedShift, shift);
   const expertShown = policy === "expert" && replayedShift !== null && sameShift(replayedShift, shift);
   const run = runs?.find((r) => r.run_id === runId) ?? null;
+  // A GA run (task 7.6): the checkpoint of unit u is generation u's champion, so the slider's unit
+  // names a generation to race (unit 0 is the first generation before it was scored).
+  const generation = unit === null ? null : Math.max(1, unit);
+  const isRaced = raced !== null && raced.run === runId && raced.unit === generation;
+  /** Race generation `g` from evaluation start `start` (0-based); with `car`, select that car too. */
+  function raceGeneration(g: number | null = generation, start = 0, car?: number) {
+    if (runId === null || g === null) return;
+    loadScenario({
+      policy: "population",
+      population: { run: runId, unit: g, start, ghost_unit: defaultGhost(g) },
+    });
+    // after the load (the server answers in order and starts every race at car 0)
+    if (car !== undefined) send({ type: "select_car", index: car });
+  }
 
   return (
     <section className="view toylab" data-testid="timeline">
@@ -258,7 +276,19 @@ export function Timeline({ headerExtra }: { headerExtra?: ReactNode }) {
           <button type="button" onClick={() => replay(unit)} data-testid="timeline-replay" disabled={isReplayed}>
             {isReplayed ? "Replaying in the Environment view" : "Replay this checkpoint"}
           </button>
+          {run?.method === "ga" && (
+            <button type="button" onClick={() => raceGeneration()} data-testid="timeline-race" disabled={isRaced}>
+              {isRaced ? `Generation ${generation} races in the Environment view` : `Race generation ${generation}`}
+            </button>
+          )}
         </div>
+      )}
+      {run?.method === "ga" && unit !== null && (
+        <p className="hint" data-testid="timeline-race-hint">
+          {isRaced
+            ? `All ${raced?.size} networks of generation ${generation} race from start ${(raced?.start ?? 0) + 1} in the Environment view, coloured by their fitness rank, with ${raced?.ghost_unit === null ? "no ghost" : `generation ${raced?.ghost_unit}'s champion as a ghost`}; press Play there and click any car to see its network. Change the generation, start and ghost there.`
+            : `"Race generation ${generation}" puts the whole generation (not only its champion) on the track in the Environment view.`}
+        </p>
       )}
       {unit !== null && (
         <p className="hint">
@@ -280,6 +310,16 @@ export function Timeline({ headerExtra }: { headerExtra?: ReactNode }) {
             const i = units.indexOf(u);
             if (i >= 0) moveTo(i);
           }}
+        />
+      )}
+
+      {run?.method === "ga" && runId !== null && (
+        <Evolution
+          runId={runId}
+          sliderUnit={unit}
+          generations={watch.records.length}
+          onRace={(g, start, car) => raceGeneration(g, start, car)}
+          racing={raced !== null && raced.run === runId ? { unit: raced.unit, start: raced.start } : null}
         />
       )}
 

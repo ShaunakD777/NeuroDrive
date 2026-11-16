@@ -155,6 +155,7 @@ def test_an_added_seed_joins_only_when_asked_for(made, study, tmp_path, monkeypa
     assert study.seeds_label((0, 1, 2)) == "seeds0-2" and study.seeds_label((0, 2)) == "seeds0_2"
 
 
+@pytest.mark.slow
 def test_a_study_run_is_a_plain_random_search_run(study, tmp_path, monkeypatch):
     monkeypatch.setattr(study, "UNITS", 2)
     made = RunStore.open(tmp_path / "study" / study._train_seed((3, "sw", str(tmp_path / "study"))))

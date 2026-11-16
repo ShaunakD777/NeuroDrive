@@ -39,6 +39,7 @@ from neurodrive import __version__
 from neurodrive.experiment.config import (
     ConfigError,
     DaggerRunConfig,
+    GARunConfig,
     RandomSearchRunConfig,
     ToyRunConfig,
     load_config,
@@ -124,10 +125,10 @@ class Launcher:
             except ConfigError:
                 continue
             toy = isinstance(config, ToyRunConfig)
-            by_units = isinstance(config, RandomSearchRunConfig | DaggerRunConfig)
+            by_units = isinstance(config, RandomSearchRunConfig | DaggerRunConfig | GARunConfig)
             if isinstance(config, DaggerRunConfig):  # its units are rounds (api v1.19, ADR-049)
                 length = config.dagger.rounds
-            elif isinstance(config, RandomSearchRunConfig):
+            elif isinstance(config, RandomSearchRunConfig | GARunConfig):  # GA: api v1.21
                 length = config.budget.units
             else:
                 length = config.training.epochs

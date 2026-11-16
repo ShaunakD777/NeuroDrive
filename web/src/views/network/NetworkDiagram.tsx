@@ -1,8 +1,8 @@
 import { memo, useMemo, useState } from "react";
 
-import type { CheckpointDiff, NetworkMessage, NetworkTrace } from "../../api/generated";
+import type { CheckpointDiff, MutationView, NetworkMessage, NetworkTrace } from "../../api/generated";
 import { useSelection } from "../../state/selection";
-import { changeStroke } from "./diff";
+import { changeStroke, mutatedCounts, mutationStroke } from "./diff";
 import {
   columnTitle,
   edgeDescription,
@@ -75,6 +75,8 @@ interface EdgesProps {
   onHover: (h: Hover) => void;
   /** A checkpoint replay's change since the previous checkpoint (task 5.9): lines show it. */
   change: CheckpointDiff | null;
+  /** A GA network's mutation since its parent (task 7.8): lines show it instead. */
+  mutation: MutationView | null;
 }
 
 /**
@@ -82,7 +84,7 @@ interface EdgesProps {
  * frame. Each weight has a visible line and a wider transparent "hit" line on top, so thin lines
  * can still be pointed at and clicked.
  */
-const Edges = memo(function Edges({ network, nodes, hover, selected, onHover, change }: EdgesProps) {
+const Edges = memo(function Edges({ network, nodes, hover, selected, onHover, change, mutation }: EdgesProps) {
   const toggleConnection = useSelection((s) => s.toggleConnection);
   const edges = useMemo(() => collectEdges(network), [network]);
   const layers = network.layer_sizes.length;
@@ -96,9 +98,18 @@ const Edges = memo(function Edges({ network, nodes, hover, selected, onHover, ch
         const isSelected = sameEdge(selected, e);
         const ref = { layer: e.layer, from: e.from, to: e.to };
         // Normally sign and size of the weight; in a replay with "show change", of its change.
-        const c = change?.weight_change[e.layer]?.[e.to]?.[e.from] ?? null;
-        const stroke =
-          c === null
+        // With "show mutation" (task 7.8): the nudge of a mutated weight, grey for the other parent's genes.
+        const mutated = mutation?.weight_mutated[e.layer]?.[e.to]?.[e.from] ?? false;
+        const fromOther = mutation?.weight_from_other[e.layer]?.[e.to]?.[e.from] ?? false;
+        const c = mutation
+          ? (mutation.weight_change[e.layer]?.[e.to]?.[e.from] ?? 0)
+          : (change?.weight_change[e.layer]?.[e.to]?.[e.from] ?? null);
+        const stroke = mutation
+          ? (() => {
+              const m = mutationStroke(c ?? 0, mutated, fromOther);
+              return { sign: m.kind, width: m.width, opacity: m.opacity };
+            })()
+          : c === null
             ? { sign: signOf(e.weight), width: edgeWidth(e.weight), opacity: edgeOpacity(e.weight) }
             : changeStroke(c);
         return (
@@ -114,6 +125,8 @@ const Edges = memo(function Edges({ network, nodes, hover, selected, onHover, ch
               data-testid={`net-edge-${e.layer}-${e.from}-${e.to}`}
               data-weight={e.weight}
               data-change={c ?? undefined}
+              data-mutated={mutation ? mutated : undefined}
+              data-from-other={mutation ? fromOther : undefined}
               data-selected={isSelected}
             />
             <line
@@ -153,6 +166,40 @@ function ChangeLegend({ change }: { change: CheckpointDiff }) {
       </span>
       <span className="net-legend-item">
         thicker = bigger change (largest: {change.max_abs_delta}); unchanged weights are not drawn
+      </span>
+    </div>
+  );
+}
+
+function MutationLegend({ mutation }: { mutation: MutationView }) {
+  const counts = mutatedCounts(mutation);
+  return (
+    <div className="net-legend" data-testid="network-mutation-legend" data-weights={counts.weights} data-biases={counts.biases}>
+      <span className="net-legend-item">
+        <svg width="38" height="14" aria-hidden="true">
+          <line x1="2" y1="7" x2="36" y2="7" className="net-edge net-edge-pos" strokeWidth="3" />
+        </svg>
+        mutation raised the weight
+      </span>
+      <span className="net-legend-item">
+        <svg width="38" height="14" aria-hidden="true">
+          <line x1="2" y1="7" x2="36" y2="7" className="net-edge net-edge-neg" strokeWidth="3" />
+        </svg>
+        lowered it
+      </span>
+      {mutation.other_parent !== null && mutation.n_from_other > 0 && (
+        <span className="net-legend-item">
+          <svg width="38" height="14" aria-hidden="true">
+            <line x1="2" y1="7" x2="36" y2="7" className="net-edge net-edge-other" strokeWidth="1.5" />
+          </svg>
+          from the second parent, row {mutation.other_parent}
+        </span>
+      )}
+      <span className="net-legend-item">
+        {counts.weights} weight{counts.weights === 1 ? "" : "s"}
+        {counts.biases > 0 ? ` and ${counts.biases} bias${counts.biases === 1 ? "" : "es"} (not drawn as lines)` : ""} mutated;
+        thicker = bigger nudge (largest: {mutation.max_abs_delta}); weights inherited unchanged from row{" "}
+        {mutation.main_parent} are not drawn
       </span>
     </div>
   );
@@ -208,6 +255,7 @@ export function NetworkDiagram({
   compact = false,
   atStep = null,
   change = null,
+  mutation = null,
 }: {
   network: NetworkMessage;
   trace: NetworkTrace;
@@ -217,6 +265,8 @@ export function NetworkDiagram({
   atStep?: number | null;
   /** Draw the lines by this change since the previous checkpoint instead of by weight (task 5.9). */
   change?: CheckpointDiff | null;
+  /** Draw the lines by this GA network's mutation since its parent (task 7.8); wins over `change`. */
+  mutation?: MutationView | null;
 }) {
   const [hover, setHover] = useState<Hover>(null);
   const selectedNeuron = useSelection((s) => s.neuron);
@@ -289,7 +339,7 @@ export function NetworkDiagram({
           </text>
         ))}
 
-        <Edges network={network} nodes={nodes} hover={focus} selected={selected} onHover={setHover} change={change} />
+        <Edges network={network} nodes={nodes} hover={focus} selected={selected} onHover={setHover} change={change} mutation={mutation} />
 
         {nodes.map((column, layer) =>
           column.map((p, index) => {
@@ -353,7 +403,7 @@ export function NetworkDiagram({
           <p className="net-readout" data-testid="network-readout">
             {hoverText}
           </p>
-          {change ? <ChangeLegend change={change} /> : <Legend />}
+          {mutation ? <MutationLegend mutation={mutation} /> : change ? <ChangeLegend change={change} /> : <Legend />}
         </>
       )}
     </div>

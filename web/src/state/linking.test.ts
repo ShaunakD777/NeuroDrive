@@ -50,6 +50,7 @@ const scenario: ScenarioMessage = {
   seed: 1,
   checkpoint: null,
   start_shift: null,
+  population: null,
   dt: 1 / 30,
   time_limit: 92,
   target_laps: 2,

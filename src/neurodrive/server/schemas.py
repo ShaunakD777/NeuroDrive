@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
-API_VERSION = "v1.20"
+API_VERSION = "v1.25"
 
 
 class WireModel(BaseModel):
@@ -96,6 +96,18 @@ class StartShift(CommandModel):
     heading_rad: float = Field(ge=-1.5708, le=1.5708)
 
 
+class PopulationRef(CommandModel):
+    """A GA generation to race (api v1.22, task 7.6, ADR-057): generation ``unit`` of GA run
+    ``run``, every network from evaluation start ``start`` (0-based, in the run's fitness layout:
+    every lateral offset with every start fraction, offsets in the outer loop), and, when
+    ``ghost_unit`` is set, that earlier generation's champion as one extra car (the ghost)."""
+
+    run: str
+    unit: int = Field(ge=1)
+    start: int = Field(default=0, ge=0)
+    ghost_unit: int | None = Field(default=None, ge=1)
+
+
 class LoadScenario(CommandModel):
     """Load a track and a driver; the session starts paused at step 0.
 
@@ -117,17 +129,24 @@ class LoadScenario(CommandModel):
     ``experiment/exam.py: shifted_starts``, the function Study S5b drives. It is allowed for the
     ``"checkpoint"`` driver and for ``"expert"``, which then also drives the 10 shifted exam
     starts (``n_cars`` and ``seed`` ignored), so the teacher can be watched from the same start.
+
+    ``"population"`` (api v1.22, task 7.6, ADR-057) races a whole GA generation: ``population``
+    names it (see :class:`PopulationRef`). Car i is row i of the generation, every car starts at
+    the chosen evaluation start of the run's fitness track (that track replaces ``track``), and
+    the ghost, if asked for, is the last car. Each car's drive is exactly the drive the GA scored
+    for that network at that start. ``n_cars`` and ``seed`` are then ignored.
     """
 
     type: Literal["load_scenario"] = "load_scenario"
     track: str
-    policy: Literal["keyboard", "constant", "neuron", "random_networks", "expert", "checkpoint"] = (
-        "keyboard"
-    )
+    policy: Literal[
+        "keyboard", "constant", "neuron", "random_networks", "expert", "checkpoint", "population"
+    ] = "keyboard"
     n_cars: int = Field(default=1, ge=1, le=100)
     seed: int | None = Field(default=None, ge=0)
     checkpoint: CheckpointRef | None = None
     start_shift: StartShift | None = None
+    population: PopulationRef | None = None
 
 
 class Play(CommandModel):
@@ -255,6 +274,39 @@ COMMAND_ADAPTER: TypeAdapter[Command] = TypeAdapter(Command)
 # ── server → client ────────────────────────────────────────────────────────────────────────────
 
 
+class PopulationInfo(WireModel):
+    """The raced GA generation (api v1.22, task 7.6, ADR-057), sent with the scenario.
+
+    ``unit`` is the generation g and ``last_unit`` the latest saved one; ``start`` the evaluation
+    start raced (0-based) of ``n_starts``, at ``start_s0_m`` metres along the track and
+    ``start_lateral_m`` metres left of the centre line. Per row i (car i) of the ``size``
+    networks: ``fitness`` F_i (the generation's fitness, the mean over all its starts),
+    ``ranks`` its place in the GA's ranking (0 = best; equal F keeps the lower row first),
+    ``finished`` and ``crashed`` (how many of its starts it finished or crashed on). ``elite``
+    lists the rows that are elites (copies of the previous generation's best), ``champion`` the
+    best row. ``ghost_unit`` is the ghost's generation, ``ghost_car`` its car index (``size``,
+    the last car) and ``ghost_fitness`` its F; all three null without a ghost.
+    """
+
+    run: str
+    unit: int
+    last_unit: int
+    start: int
+    n_starts: int
+    start_s0_m: float
+    start_lateral_m: float
+    size: int
+    fitness: list[float]
+    ranks: list[int]
+    finished: list[int]
+    crashed: list[int]
+    elite: list[int]
+    champion: int
+    ghost_unit: int | None = None
+    ghost_car: int | None = None
+    ghost_fitness: float | None = None
+
+
 class ScenarioMessage(WireModel):
     """Sent after ``load_scenario``: what was loaded and the constants needed to draw it.
 
@@ -263,16 +315,20 @@ class ScenarioMessage(WireModel):
     geometry is not included: fetch ``GET /api/tracks/{track}``. ``trail_seconds`` is how much
     of the drive the session remembers for the decision trail (ADR-027). ``checkpoint`` is the
     replayed network for the ``"checkpoint"`` driver (api v1.14), else null. ``start_shift`` is
-    the shift of the exam starts the cars began from (api v1.18), else null.
+    the shift of the exam starts the cars began from (api v1.18), else null. ``population`` is the
+    raced GA generation for the ``"population"`` driver (api v1.22), else null.
     """
 
     type: Literal["scenario"] = "scenario"
     track: str
-    policy: Literal["keyboard", "constant", "neuron", "random_networks", "expert", "checkpoint"]
+    policy: Literal[
+        "keyboard", "constant", "neuron", "random_networks", "expert", "checkpoint", "population"
+    ]
     n_cars: int
     seed: int | None
     checkpoint: CheckpointRef | None = None
     start_shift: StartShift | None = None
+    population: PopulationInfo | None = None
     dt: float
     time_limit: float
     target_laps: int
@@ -504,7 +560,10 @@ class FrameMessage(WireModel):
 class EpisodeEndMessage(WireModel):
     """Sent once when every car has stopped; the session then pauses.
 
-    ``status`` has one name per car: crashed, finished, stalled or timeout.
+    ``status`` has one name per car: crashed, finished, stalled or timeout. ``fitness`` (api v1.22,
+    population driver only, else null) is each car's fitness on this start, f = p + c (1 - t / T)
+    (the GA's ``start_fitness``: p the progress as a share of the target laps, c 1 for a finish,
+    t its time, T the time limit), exactly the per-start fitness the GA scored.
     """
 
     type: Literal["episode_end"] = "episode_end"
@@ -513,6 +572,7 @@ class EpisodeEndMessage(WireModel):
     status: list[str]
     progress: list[float]
     laps: list[int]
+    fitness: list[float] | None = None
 
 
 class RecordingMessage(WireModel):
@@ -696,14 +756,15 @@ class ConfigInfo(WireModel):
     accepts.
 
     ``length_field`` names what the run's length counts (``epochs`` for toy and imitation
-    configs, ``units`` for random search and for DAgger, whose units are rounds) and ``length``
-    is the file's value (null when a random-search budget has no unit limit). ``task`` is the toy
-    task (null for the others). ``imitation`` was added in api v1.17 (task 6.3), ``dagger`` in
-    api v1.19 (task 6.6).
+    configs, ``units`` for random search, for DAgger, whose units are rounds, and for the GA,
+    whose units are generations) and ``length`` is the file's value (null when a random-search
+    or GA budget has no unit limit). ``task`` is the toy task (null for the others).
+    ``imitation`` was added in api v1.17 (task 6.3), ``dagger`` in api v1.19 (task 6.6), ``ga``
+    in api v1.21 (task 7.5).
     """
 
     name: str
-    method: Literal["toy", "random_search", "imitation", "dagger"]
+    method: Literal["toy", "random_search", "imitation", "dagger", "ga"]
     task: str | None
     seed: int
     tag: str
@@ -941,6 +1002,160 @@ class DatasetDetail(WireModel):
     map: DatasetMap
 
 
+class EvolutionView(WireModel):
+    """Answer to ``GET /api/runs/{id}/evolution`` (api v1.23, task 7.7, ADR-058): a GA run's
+    evolution charts, computed by ``experiment/evolution_view.py``. Entry g of every list is
+    generation ``unit[g]``; numbers keep 6 significant digits.
+
+    ``population`` is N and ``elite`` E (from the run's config). ``best``, ``q3``, ``median``,
+    ``mean``, ``q1`` and ``worst`` summarise the generation's N fitness values (quartiles by
+    linear interpolation); ``best_so_far`` is the GA's own best fitness up to that generation;
+    ``zero`` the networks at exactly 0; ``diversity`` D, the mean pairwise genome distance, as
+    the GA stored it; ``finished_share`` the share of the N x S drives that finished and
+    ``finishers`` the networks that finished all S starts (null where a line lacks them);
+    ``champion`` the row of the generation's best network. ``edges`` are the B + 1 band edges
+    (width ``band_width``, shared by every generation); ``counts[g][k]`` the networks of
+    generation ``unit[g]`` with edges[k] <= F < edges[k + 1], adding up to N per generation.
+
+    Since api v1.24 (task 7.7 follow-up, ADR-059): ``start`` is the start (0 to S - 1) the
+    statistics, ``best_so_far``, ``zero`` and ``counts`` describe, f on that start instead of F
+    (null: every start); ``n_starts`` is S when every generation saved its per-start results
+    (null for runs trained before); ``start_finish_share[g][k]`` the share of generation
+    ``unit[g]`` that finished start k and ``start_mean[g][k]`` its mean f there (null without
+    per-start results). ``diversity``, ``finished_share`` and ``finishers`` stay for every start.
+    """
+
+    run_id: str
+    population: int
+    elite: int
+    unit: list[int]
+    best_so_far: list[float]
+    best: list[float]
+    q3: list[float]
+    median: list[float]
+    mean: list[float]
+    q1: list[float]
+    worst: list[float]
+    zero: list[int]
+    diversity: list[float | None]
+    finished_share: list[float | None]
+    finishers: list[int | None]
+    champion: list[int]
+    band_width: float
+    edges: list[float]
+    counts: list[list[int]]
+    start: int | None = None
+    n_starts: int | None = None
+    start_finish_share: list[list[float]] | None = None
+    start_mean: list[list[float]] | None = None
+
+
+class GenerationStarts(WireModel):
+    """Answer to ``GET /api/runs/{id}/generations/{g}/starts`` (api v1.24, task 7.7 follow-up,
+    ADR-059): how every network of one GA generation drove from every evaluation start.
+
+    ``order`` lists the rows (networks) best first by F, the GA's own ranking (ties to the lower
+    row); row i of every (N, S) list is network i: ``start_fitness`` f_ik, ``status`` how the drive
+    ended (crashed, finished, stalled or timeout), ``progress`` the share of the target distance
+    covered, ``finish_time`` seconds to the finish (null where it did not finish). ``fitness`` is
+    F (N,); ``finish_share`` and ``start_mean`` (S,) each start's finished share and mean f;
+    ``start_fraction`` and ``start_lateral_m`` (S,) where start k is, as a share of the lap from
+    the start line and metres to the left of the centre line. Numbers keep 6 significant digits.
+    """
+
+    run_id: str
+    unit: int
+    population: int
+    n_starts: int
+    elite: list[int]
+    champion: int
+    start_fraction: list[float]
+    start_lateral_m: list[float]
+    fitness: list[float]
+    order: list[int]
+    start_fitness: list[list[float]]
+    status: list[list[str]]
+    progress: list[list[float]]
+    finish_time: list[list[float | None]]
+    finish_share: list[float]
+    start_mean: list[float]
+
+
+class AncestryStepView(WireModel):
+    """One network on a line of descent (api v1.25, task 7.8, ADR-060): generation ``unit``,
+    ``row``, its fitness F and ``rank`` (0 = best), ``origin`` ("random", "elite", "child" or
+    "unknown"), ``parents`` (rows of the previous generation), ``crossed`` (children only),
+    ``main_parent`` (the next step's row; null at the end), the genes taken from the main and the
+    other parent, the number of mutated genes, and ``distance`` from the main parent's genome."""
+
+    unit: int
+    row: int
+    fitness: float
+    rank: int
+    origin: Literal["random", "elite", "child", "unknown"]
+    parents: list[int]
+    crossed: bool | None
+    main_parent: int | None
+    from_main: int | None
+    from_other: int | None
+    mutated: int | None
+    distance: float | None
+
+
+class Ancestry(WireModel):
+    """Answer to ``GET /api/runs/{id}/generations/{g}/ancestry?row=r`` (api v1.25, task 7.8,
+    ADR-060): the line of descent of row ``row`` of generation ``unit`` (default its champion),
+    through each network's main parent (the parent that gave more genes, a on a tie) back to
+    generation 1. ``steps`` run from generation ``unit`` backwards. Numbers keep 6 significant
+    digits."""
+
+    run_id: str
+    unit: int
+    row: int
+    n_genes: int
+    steps: list[AncestryStepView]
+
+
+class MutationView(WireModel):
+    """Answer to ``GET /api/runs/{id}/generations/{g}/rows/{r}/mutation`` (api v1.25, task 7.8,
+    ADR-060): what made network ``row`` of generation ``unit`` differ from its parents.
+
+    ``weight_delta[l][j][i]`` = the mutation nudge of W_l[j, i] (child minus the value it
+    inherited from the parent that gene came from; 0 when not mutated), ``bias_delta`` likewise;
+    ``max_abs_delta`` = D, the largest |nudge|; ``weight_change`` = nudge / D (between -1 and 1;
+    the same shape as a checkpoint diff, so the diagram draws it the same way).
+    ``weight_mutated`` / ``bias_mutated`` mark the mutated genes, ``weight_from_other`` /
+    ``bias_from_other`` the genes taken from the other parent. ``parents_fitness`` and
+    ``parents_rank`` follow ``parents``; ``fitness`` and ``rank`` are the network's own.
+    """
+
+    run_id: str
+    unit: int
+    row: int
+    origin: Literal["elite", "child"]
+    parents: list[int]
+    parents_fitness: list[float]
+    parents_rank: list[int]
+    crossed: bool | None
+    main_parent: int
+    other_parent: int | None
+    fitness: float
+    rank: int
+    n_genes: int
+    n_mutated: int
+    n_from_other: int
+    layer_sizes: list[int]
+    weight_delta: list[list[list[float]]]
+    bias_delta: list[list[float]]
+    max_abs_delta: float
+    weight_change: list[list[list[float]]]
+    bias_change: list[list[float]]
+    weight_mutated: list[list[list[bool]]]
+    bias_mutated: list[list[bool]]
+    weight_from_other: list[list[list[bool]]]
+    bias_from_other: list[list[bool]]
+
+
 WIRE_MODELS: tuple[type[WireModel], ...] = (
     HealthResponse,
     HelloMessage,
@@ -1007,4 +1222,9 @@ WIRE_MODELS: tuple[type[WireModel], ...] = (
     DatasetHistogram,
     DatasetMap,
     DatasetDetail,
+    EvolutionView,
+    GenerationStarts,
+    AncestryStepView,
+    Ancestry,
+    MutationView,
 )

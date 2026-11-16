@@ -117,14 +117,14 @@ neurodrive/
 │  │  ├─ car.py                  batched kinematic car physics
 │  │  ├─ sensors.py              batched raycasts + observation builder
 │  │  ├─ world.py                World: reset/step for N cars, termination
-│  │  ├─ feedback.py             the three taps: teacher label, step reward, episode summary
+│  │  ├─ feedback.py             (planned, not built: the teacher label is `experts.py`, the episode summary `experiment/metrics.py`; the step reward comes with Phase 10)
 │  │  ├─ experts.py              scripted expert driver (privileged state)
 │  │  ├─ policies.py             Policy protocol + Keyboard/Neuron/MLP/Expert/Stochastic policies
 │  │  └─ episode.py              episode runner + EpisodeRecording
 │  ├─ learn/
 │  │  ├─ base.py                 Learner contract (v0 since task 3.7), budget counters
 │  │  ├─ supervised/             toy_tasks.py, train_toy.py, datasets.py, demos.py (dataset v1, §6.16), imitation.py, dagger.py
-│  │  ├─ evolution/              random_search.py, ga.py, es.py, neat/ (genome, species, ...)
+│  │  ├─ evolution/              random_search.py, genome.py (gene map, genome matrices), ga.py (evaluation and ranking since 7.2; the generation loop and `GALearner` since 7.5), selection.py (tournament and rank selection, 7.3), variation.py (Gaussian mutation and uniform crossover, 7.4), es.py, neat/ (genome, species, ...)
 │  │  ├─ rl/                     returns.py, gaussian_policy.py, reinforce.py, actor_critic.py, ppo.py
 │  │  └─ hybrid/                 distill.py, pretrain_finetune.py
 │  ├─ experiment/
@@ -224,6 +224,10 @@ Each step, in this order (semi-implicit Euler):
 Note: `o7` uses track knowledge (like the reference video's θ). This is documented and identical
 for every method.
 
+*Task 7.0b (ADR-053), no version change:* the readings are computed faster, from a wall list per
+(10 m cell, 22.5-degree ray-direction bin) instead of per 25 m cell; the lists are conservative,
+so every reading is bit-for-bit that of testing every wall.
+
 **Frozen at task 2.5 (ADR-005):** `OBSERVATION_VERSION = "v1"` and the names of the seven inputs
 are in `env/sensors.py`; `tests/env/test_contract.py` pins them. Changing §6.4 or §6.5 needs an
 ADR and a new version.
@@ -264,8 +268,20 @@ ADR and a new version.
 - **Step reward** (reward v1): r_t = 0.1·Δs_t (metres of forward progress this step); add −5 on
   the crash step. Revised in Phase 10 via ADR.
 - **Episode summary** (summary v1): total progress P, laps, crashed (yes/no), steps alive, lap
-  times, mean speed, steering smoothness. **Fitness v1** = P + 200·(laps completed), plus a time
-  bonus of (time_limit − finish_time) if the target laps were completed. Examined in Phase 7.
+  times, mean speed, steering smoothness (as built: `experiment/metrics.py: EpisodeMetrics`, task 5.2).
+  ~~Fitness v1~~ = P + 200·(laps completed) + (time_limit − finish_time) if finished: planned, never
+  implemented, replaced at task 7.2 (ADR-055). **Fitness v2** (random search since task 5.7,
+  ADR-040; the GA since task 7.2): per start f = p + c·(1 − t/T), with p the progress as a share
+  of the target laps in [0, 1], c = 1 for a finish and t its time, T the per-track time limit;
+  a network's fitness F is the mean of f over the evaluation starts (the exam's 10 starts on a
+  training track), 0 ≤ F < 2. `learn/evolution/ga.py: evaluate_genomes` scores and ranks a
+  genome matrix with random search's `evaluate` (best first, ties in index order). Since task 7.9
+  (ADR-062) the formula is configurable, `fitness.formula` (§6.15): `time_bonus` (fitness v2, the
+  default), `finish_bonus` f = p + c (no time bonus), or `progress` f = p (no reward for finishing);
+  the GA, random search and the live race all score with the run's own formula. Fitness compares
+  only within one formula. The racing line through a track's bends is measured by
+  `experiment/racing_line.py` (bends where the centreline radius is under 50 m; at every pass the
+  inside offset at the apex e_in = sign(κ)·e and the outside offsets 20 m before and after it).
 
 ### 6.8 Network spec and file (network v1)
 - `NetworkSpec`: `layer_sizes` (default [7, 16, 16, 2]), `hidden_activation` (default tanh),
@@ -274,6 +290,13 @@ ADR and a new version.
   of length n_out.
 - **Flat genome order:** W_0 row by row, then b_0, then W_1, b_1, and so on. For [7,16,16,2]:
   128 + 272 + 34 = **434 numbers**.
+- *Gene map (task 7.1, ADR-054, `learn/evolution/genome.py`; the order above is unchanged):*
+  with s_l the first gene of layer l, W_l[j, m] is gene s_l + j·n_in + m and b_l[j] is gene
+  s_l + n_out·n_in + j; `gene_address` / `gene_index` convert both ways (`GeneAddress`, names
+  such as `W0[5,2]`), `layer_slices` gives each layer's ranges (default: W0 0–111, b0 112–127,
+  W1 128–383, b1 384–399, W2 400–431, b2 432–433). A generation is a plain (N, P) matrix:
+  `genomes_of(networks)`, `networks_of(spec, genomes)`, `random_genomes(spec, n, rng)` (equal to
+  `init_population(...).genomes()`); `Population.from_genomes` drives it.
 - File: `.npz` with arrays `W0, b0, W1, b1, ...` plus a `spec` JSON string.
 
 ### 6.9 Forward pass and ForwardTrace
@@ -315,7 +338,7 @@ rebuilds the same world. Replaying the actions reproduces every array bit for bi
 ### 6.12 Learner contract (learner v1)
 *Version 0 (task 3.7, ADR-030): `learn/base.py` without save/restore; wall-clock time measured by the runner; `experiment/runner.py` v0 owns a minimal loop.*
 
-*Version 1 (task 5.5, ADR-037):* save/restore is the optional `Resumable` protocol: `state()` → `LearnerState` (named NumPy arrays + a JSON-friendly `info` dict holding counters and every generator's state, `generator_state`), `restore(state)`. A learner without it trains but cannot resume. `experiment/runner.py` v1: `run(learner, store, budget, exams)` and `resume(learner, store)`; `Budget(units, env_steps, wall_clock_s)`, any limit stops the run after the unit that reaches it (overshoot ≤ 1 unit); checkpoint schedule 0, 1, 2, 5, 10, 20, 50, … plus the last unit; at every checkpoint the Driving Exam runs when exams are on and the network drives (7 → 2), its time kept out of the training clock (`exam_wall_clock_s`). Order within a unit: train → metrics line → checkpoint + exam → state (last). Resume cuts the folder back to the state's unit and continues; a killed run (status running) or a failed one can be resumed, identically except for wall-clock times. Since task 5.5b (ADR-038) the wall-clock limit is compared with the training time recorded in the last metrics line, like the step totals, so a run stops after the first unit whose line reaches the limit; the database mirror's time, like exam time, is kept out of the training clock. Since task 5.8 (ADR-041) the runner also stops before the next unit when the run folder holds a stop request (the file `stop_requested`): stop reason `stopped`, status `completed`, the last unit checkpointed and examined like any last unit; the request is removed before the final status is written, and `resume` removes an old one before continuing. `train_toy_run` and `train_random_search_run` take `on_start(store)`, called as soon as the folder exists. Since task 5.9 (ADR-042) `UnitResult` has an optional `new_best` flag: a unit that reports a new best network (`current_networks()[0]`) is checkpointed, and examined, even when it is not on the schedule, so the run timeline shows every improvement; random search sets it when it improves (expected number of such units in n units: the harmonic number H_n, about 5 per 100), the toy learner never does. Since task 6.3 (ADR-047) `run(..., checkpoint_every=k)` also checkpoints (and examines) every unit that is a multiple of k (`runner.checkpoint_due`; k = 5 over 20 units gives 0, 1, 2, 5, 10, 15, 20; None, the default, keeps the schedule alone); k is kept in `meta.json` and `resume` reads it back. The imitation learner (`learn/supervised/imitation.py`, name `imitation`, feedback `labels`, resumable) is behavioural cloning: one unit is one epoch of minibatch gradient descent on the MSE between the network's outputs and the dataset's labels, with whole episodes held back for validation; it reports `demo_frames` = F (every frame of the dataset, validation frames included) in unit 1 only, and 0 environment steps and teacher queries. Since task 6.6 (ADR-049) the DAgger learner (`learn/supervised/dagger.py`, name `dagger`, feedback `labels`, resumable) subclasses it: one unit is one **round**. Round 1 is E epochs of behavioural cloning on the dataset (bit for bit the imitation learner with the same seed: the same "split", "init" and "batches" generators); in every later round the current network drives R cars from fresh seeded random starts (generator "collect"; arc length uniform, ±1 m, ±0.1 rad, at rest) on a training track, the scripted expert labels every running car's state at every step (`ExpertLabelled`; the labels never steer), those frames are **added** to the training frames, and the network, with the optimizer's state, trains E more epochs on all of them. A collected frame (the dataset rule, ADR-044) is one environment step and one **teacher query**: round i reports `env_steps` = `teacher_queries` = M_i, its frames; round 1 reports `demo_frames` = F. The validation set stays the dataset's held-back episodes. Its state adds the collection generator, the round count and every collected frame. If an epoch diverges the network of the last completed round is kept.
+*Version 1 (task 5.5, ADR-037):* save/restore is the optional `Resumable` protocol: `state()` → `LearnerState` (named NumPy arrays + a JSON-friendly `info` dict holding counters and every generator's state, `generator_state`), `restore(state)`. A learner without it trains but cannot resume. `experiment/runner.py` v1: `run(learner, store, budget, exams)` and `resume(learner, store)`; `Budget(units, env_steps, wall_clock_s)`, any limit stops the run after the unit that reaches it (overshoot ≤ 1 unit); checkpoint schedule 0, 1, 2, 5, 10, 20, 50, … plus the last unit; at every checkpoint the Driving Exam runs when exams are on and the network drives (7 → 2), its time kept out of the training clock (`exam_wall_clock_s`). Order within a unit: train → metrics line → checkpoint + exam → state (last). Resume cuts the folder back to the state's unit and continues; a killed run (status running) or a failed one can be resumed, identically except for wall-clock times. Since task 5.5b (ADR-038) the wall-clock limit is compared with the training time recorded in the last metrics line, like the step totals, so a run stops after the first unit whose line reaches the limit; the database mirror's time, like exam time, is kept out of the training clock. Since task 5.8 (ADR-041) the runner also stops before the next unit when the run folder holds a stop request (the file `stop_requested`): stop reason `stopped`, status `completed`, the last unit checkpointed and examined like any last unit; the request is removed before the final status is written, and `resume` removes an old one before continuing. `train_toy_run` and `train_random_search_run` take `on_start(store)`, called as soon as the folder exists. Since task 5.9 (ADR-042) `UnitResult` has an optional `new_best` flag: a unit that reports a new best network (`current_networks()[0]`) is checkpointed, and examined, even when it is not on the schedule, so the run timeline shows every improvement; random search sets it when it improves (expected number of such units in n units: the harmonic number H_n, about 5 per 100), the toy learner never does. Since task 6.3 (ADR-047) `run(..., checkpoint_every=k)` also checkpoints (and examines) every unit that is a multiple of k (`runner.checkpoint_due`; k = 5 over 20 units gives 0, 1, 2, 5, 10, 15, 20; None, the default, keeps the schedule alone); k is kept in `meta.json` and `resume` reads it back. The imitation learner (`learn/supervised/imitation.py`, name `imitation`, feedback `labels`, resumable) is behavioural cloning: one unit is one epoch of minibatch gradient descent on the MSE between the network's outputs and the dataset's labels, with whole episodes held back for validation; it reports `demo_frames` = F (every frame of the dataset, validation frames included) in unit 1 only, and 0 environment steps and teacher queries. Since task 6.6 (ADR-049) the DAgger learner (`learn/supervised/dagger.py`, name `dagger`, feedback `labels`, resumable) subclasses it: one unit is one **round**. Round 1 is E epochs of behavioural cloning on the dataset (bit for bit the imitation learner with the same seed: the same "split", "init" and "batches" generators); in every later round the current network drives R cars from fresh seeded random starts (generator "collect"; arc length uniform, ±1 m, ±0.1 rad, at rest) on a training track, the scripted expert labels every running car's state at every step (`ExpertLabelled`; the labels never steer), those frames are **added** to the training frames, and the network, with the optimizer's state, trains E more epochs on all of them. A collected frame (the dataset rule, ADR-044) is one environment step and one **teacher query**: round i reports `env_steps` = `teacher_queries` = M_i, its frames; round 1 reports `demo_frames` = F. The validation set stays the dataset's held-back episodes. Its state adds the collection generator, the round count and every collected frame. If an epoch diverges the network of the last completed round is kept. Since task 7.5 (ADR-056) `UnitResult` has an optional `extra` = `{name: record}`: the runner appends `{"unit": u, **record}` to the run folder's `extra/<name>.jsonl` right after the unit's metrics line (before checkpoint and state), and `resume` cuts those files back with the metrics; learners without it are unchanged. The GA learner (`learn/evolution/ga.py: GALearner`, name `ga`, feedback `episode_score`, resumable) makes one **generation** per unit: it scores the whole current generation, elites included (`evaluate_genomes`, fitness v2 on the configured training-track starts), records the generation's statistics and its best network (the checkpoint; `new_best` when it beats every earlier generation), then breeds the next generation (`next_generation`): rows 0 … E−1 are the best E rows in ranking order, copied exactly; the other N − E rows are children of 2(N − E) parents picked by tournament or rank selection and paired in pick order, crossed (rate c) and mutated (rate p, strength σ). Generators "init" (the first generation: N Xavier genomes), "selection", "crossover" and "mutation" are named children of the seed's generator. An elite scores exactly what it scored before (`elite_drift` = 0), so with E ≥ 1 the generation's best never decreases. Budget: environment steps = car-steps driven, as random search. Before unit 1 the checkpoint is row 0 of the first generation. Its state holds the next generation's genomes, the champion, the elites' fitness, the counters and the three operators' generators. Since task 7.6 (ADR-057) `UnitResult` also has an optional `arrays` = `{name: {key: array}}`: the runner saves each as the run folder's `extra/<name>/unit_<u>.npz` right after the unit's extra lines (before checkpoint and state), and `resume` deletes those of later units; learners without it are unchanged. The GA hands back the genome matrix it has just scored (`generations`: `{genomes}`, shape (N, P)), before breeding the next one.
 
 Every learning method provides:
 - `name` and `feedback_kind` ∈ {`labels`, `episode_score`, `step_reward`, `none`}
@@ -339,6 +362,13 @@ stop conditions (max env steps, max wall-clock, max units).
 *Task 6.3 (ADR-047), additions without a version change:* meta.json gains `checkpoint_every` (k, or null; absent in older folders, read as null), and imitation runs gain `dataset` = `{id, sha256, demo_frames, train_frames, val_episodes}`: the exact dataset learned from, the SHA-256 checksum of its `dataset.npz`, its frame count F, the training frames and the held-back episode numbers. Imitation metrics lines hold `loss`, `loss_steer`, `loss_throttle`, `val_loss`, `val_loss_steer`, `val_loss_throttle` (the last three only with a validation set), `loss_before` and `grad_norm`.
 
 *Task 6.6 (ADR-049), additions without a version change:* DAgger runs (method `dagger`) have imitation's `dataset` in meta.json and, once the run has ended (also after `nd resume`) with at least one collected frame, `dagger_dataset`: the id of the dataset v1 holding its collected frames (§6.16). Their metrics lines (one per round) hold imitation's fields after the round's last epoch (`loss_before` and `grad_norm` from its first epoch, on the round's aggregated frames), `train_frames`, `epochs` (cumulative) and the collection drive's `onpolicy_loss`, `onpolicy_loss_steer`, `onpolicy_loss_throttle` (the network's squared error against the expert's labels on its own states, before training on them), `collect_frames`, `collect_finished` and `collect_crashed` (shares of the R drives); in round 1 these six are null. `teacher_queries_total` is the first method's non-zero teacher budget.
+
+*Task 7.5 (ADR-056), additions without a version change:* `extra/<name>.jsonl` files hold one JSON line per unit (`{"unit": u, ...}`, written from `UnitResult.extra`), and `cut_back` removes their lines after the resumed unit like metrics lines (`RunStore.append_extra_line`, `read_extra_lines`, `extra_line_names`). GA runs (method `ga`) write `extra/population.jsonl`: per generation `fitness` (every row's F, in row order), `finished` and `crashed` (each row's number of such starts), `elite` (the rows that were elites: [] in generation 1, else 0 … E−1) and `champion` (the best row). Their metrics lines hold `best_fitness` (the best of every generation so far), `generation_best_fitness`, `mean_fitness`, `median_fitness`, `worst_fitness`, `fitness_std`, `zero_fitness` (networks at exactly 0), `finished_share` and `crashed_share` (of the N × S drives), `finishers` (networks that finished every start), `diversity` (mean pairwise Euclidean distance of the generation's genomes), `elite_drift` (null in generation 1 or with E = 0), `improved` and `best_unit`.
+
+*Task 7.6 (ADR-057), additions without a version change:* per-unit arrays `extra/<name>/unit_<u>.npz` (from `UnitResult.arrays`; written under a temporary name and renamed; `RunStore.save_unit_arrays`, `load_unit_arrays`, `unit_array_units`, `unit_array_names`), deleted after the resumed unit by `cut_back`. GA runs write `extra/generations/unit_<g>.npz` = `{genomes}`, the (N, P) float64 matrix generation g was scored with: row i is the network whose fitness is entry i of `extra/population.jsonl` line g (scoring the file again gives that line exactly; tested). About 0.17 MB per generation for N = 50, P = 434 (17 MB per 100 generations). GA runs trained before task 7.6 have no such files: their checkpoints still replay, but their generations cannot race.
+*Task 7.7 follow-up (ADR-059), additions without a version change:* each GA generation file also holds four (N, S) arrays, S the evaluation starts in the order of `RandomSearchSettings.starts` (offsets outer, fractions inner): `start_fitness` f_ik (float64; the mean of row i is entry i of the population line's `fitness`, bit for bit), `status` (int8 `Status` codes: 1 crashed, 2 finished, 3 stalled, 4 timeout), `progress` (float64, share of the target distance) and `finish_time` (float64 seconds, NaN where the car did not finish). About 13 KB per generation for N = 50, S = 10. Generations saved before have only `genomes`; the evolution charts then show F only.
+
+*Task 7.8 (ADR-060), additions without a version change:* GA runs also write `extra/lineage.jsonl`, line g = how each row of generation g came about from generation g − 1 (`learn/evolution/ga.py: lineage_record`): `rows`, one record per row in row order, `{"origin": "random"}` in generation 1, `{"origin": "elite", "parents": [r]}` for an exact copy of row r, `{"origin": "child", "parents": [a, b], "crossed": bool, "from_b": [genes from b], "mutated": [mutated genes]}` for a child (gene indices in the 7.1 gene map; every gene not in `from_b` is a's; a child not crossed is a copy of a, so `from_b` is empty), or `"rows": null` when the origins are unknown (a run resumed from a state saved before 7.8). The *main parent* is the parent that gave more genes (a when P − |B| ≥ |B|). Every unmutated gene of a child equals its source parent's gene in `extra/generations/unit_<g−1>.npz` exactly (tested). About 28 KB per generation at the shipped settings. The GA learner's state `info` holds the pending record (`lineage`), so a resumed run writes the same lines.
 
 ```
 runs/<YYYYMMDD-HHMMSS>-<method>-<tag>/
@@ -381,7 +411,7 @@ that is not a network (the policy is then rebuilt from the run's config). Each t
 batch in start order: a network's output differs by about 1e-16 between batch sizes, so a
 recording matches a card only when made the same way.
 
-### 6.15 Config file (toy, random_search, imitation and dagger: config v1, ADR-032, ADR-040, ADR-047, ADR-049)
+### 6.15 Config file (toy, random_search, imitation, dagger and ga: config v1, ADR-032, ADR-040, ADR-047, ADR-049, ADR-056, ADR-062)
 A YAML file; `method` picks the model in `experiment/config.py` (`toy`, and since task 5.7
 `random_search`; later methods add their own model). Unknown fields, wrong types, unknown names and out-of-range numbers are
 refused, every problem listed as `field.path: message`. A toy config:
@@ -414,11 +444,13 @@ Only the named optimizer's own settings are allowed; their defaults are those of
 `nd train --config FILE [--seed S] [--tag T] [--epochs E] [--runs-dir D]` overrides `seed`, `tag`
 and `training.epochs`; an invalid config exits with status 2 and creates no run folder.
 
-*Random search (task 5.7, ADR-040, `configs/random_search.yaml`):* `method: random_search`, `seed`, `tag`; `network` (a driving network: 7 inputs first, 2 outputs last; default [7, 16, 16, 2], tanh / tanh, xavier); `search.candidates_per_unit` (≥ 1, default 20); `fitness` (`track`, which must have split `train`, default `train_loop_01`; `start_fractions` in [0, 1) and `lateral_offsets`, default the Driving Exam's 5 × 2 starts; `target_laps`, default 2); `budget` (`units`, `env_steps`, `wall_clock_s`: at least one); `exams` (default true). `nd train` and `nd sweep` pick the method from the file; `--units` overrides `budget.units` (`--epochs` is for toy configs only, and the other way round). `nd resume --run <folder>` rebuilds the learner from the run's resolved `config.yaml` (`runner.learner_from_config`) and continues it with `runner.resume`; it refuses runs whose learner saves no state (toy) and finished runs (status 2).
+*Random search (task 5.7, ADR-040, `configs/random_search.yaml`):* `method: random_search`, `seed`, `tag`; `network` (a driving network: 7 inputs first, 2 outputs last; default [7, 16, 16, 2], tanh / tanh, xavier); `search.candidates_per_unit` (≥ 1, default 20); `fitness` (`track`, which must have split `train`, default `train_loop_01`; `start_fractions` in [0, 1) and `lateral_offsets`, default the Driving Exam's 5 × 2 starts; `target_laps`, default 2; since task 7.9, ADR-062, `formula`: `time_bonus` (default, fitness v2), `finish_bonus` or `progress`, an added field, so older configs read as `time_bonus`); `budget` (`units`, `env_steps`, `wall_clock_s`: at least one); `exams` (default true). `nd train` and `nd sweep` pick the method from the file; `--units` overrides `budget.units` (`--epochs` is for toy configs only, and the other way round). `nd resume --run <folder>` rebuilds the learner from the run's resolved `config.yaml` (`runner.learner_from_config`) and continues it with `runner.resume`; it refuses runs whose learner saves no state (toy) and finished runs (status 2).
 
 *Imitation (task 6.3, ADR-047, `configs/imitation.yaml`):* `method: imitation`, `seed`, `tag`; `network` (a driving network, as for random search); `data` (`dataset`: a dataset id, or a selector `<teacher>-<tag>` meaning the newest dataset of that teacher and tag, `learn/supervised/demos.find_dataset`; `sha256`: 64 lowercase hexadecimal digits or null, default null; `val_fraction` in [0, 1), default 0.2: the share of whole episodes held back, round(v · E), at least 1); `training` (`epochs` required ≥ 1, `loss` mse | huber, default mse, `batch_size` ≥ 1, default 256); `optimizer` (as for toys); `checkpoint_every` (≥ 1 or null, default null); `exams` (default true). Validation does not look for the dataset. The runner (`runner.pin_dataset`) finds it in `--datasets-dir` (default `<repo>/data/demos`), refuses it when `sha256` is given and differs, and writes the run folder's config with the exact id and the checksum, so `nd train --config runs/<id>/config.yaml` and `nd resume` learn from the very same frames or refuse. `--epochs` overrides `training.epochs`; `--units` is refused. `nd train`, `nd sweep` and `nd resume` take `--datasets-dir`; `nd sweep` pins the dataset once for all seeds and summarises the final validation loss.
 
 *DAgger (task 6.6, ADR-049, `configs/dagger.yaml`):* `method: dagger`, `seed`, `tag`; `network`, `data`, `optimizer`, `checkpoint_every` and `exams` as for imitation; `training` (`epochs_per_round` E ≥ 1, default 30; `loss`; `batch_size`); `dagger` (`rounds` ≥ 1, required: the run's units; `track`, a training track, default `train_loop_01`; `random_starts` R ≥ 1, default 10; `target_laps` ≥ 1, default 2; since the task 6.6 follow-up (ADR-050) `start_lateral_m` a in [0, 4.5], default 1.0, and `start_heading_rad` h in [0, π/4], default 0.1: each collection start is moved sideways uniformly on ±a and turned on ±h; `configs/dagger_wide.yaml` uses 3.0 and 0.35). `--units` overrides `dagger.rounds`, `--epochs` is refused. The dataset is pinned as for imitation (`runner.pin_dataset`). `runner.train_dagger_run` runs it and then saves the collected frames (`runner.save_dagger_dataset`) into `--datasets-dir` (default `<repo>/data/demos`); `nd resume` of a DAgger run saves them when it ends. `nd sweep` summarises the final validation loss and the final on-policy error. The shipped config (10 rounds × 30 epochs = 300, S5a's length; checkpoint and exam every round) took 5.5–6.3 minutes per seed in task 6.6 (5 seeds side by side; about 4 min training and collecting, 1.5 min exams) and collected 149,000–178,000 frames.
+
+*Genetic algorithm (task 7.5, ADR-056, `configs/ga.yaml`):* `method: ga`, `seed`, `tag`; `network`, `fitness`, `budget` and `exams` as for random search; `population` (`size` N ≥ 2, default 50; `elite` E, 0 ≤ E < N, default 2); `selection` (`method` tournament | rank, default tournament; `tournament_size` k ≥ 1, default 3; `rank_pressure` s in [1, 2], default 1.5); `variation` (`crossover_rate` c in [0, 1], default 0.5; `mutation_rate` p in [0, 1], default 0.02; `mutation_strength` σ ≥ 0, default 0.05). The defaults are those of `learn/evolution/ga.py: BreedingSettings` and `GASettings`. One unit is one generation; `--units` overrides `budget.units`, `--epochs` is refused. `nd train` prints the best fitness and the generation that found it; `nd sweep` and `nd resume` summarise it as for random search.
 ### 6.16 Demonstration dataset (dataset v1, task 6.1, ADR-044)
 A folder `data/demos/<YYYYMMDD-HHMMSS>-<teacher>-<tag>/` (git-ignored; `-2`, `-3`, … when the name
 exists), written and read by `learn/supervised/demos.py` (`save_dataset`, `DemoDataset.load`):
@@ -450,7 +482,7 @@ data/demos/<dataset_id>/
   and provenance.
 - Shown by the dataset inspector (task 6.2, ADR-045; dense coverage and the comparator, ADR-046): `GET datasets` and `GET datasets/{id}` (§7).
 
-## 7. Server API (api v1.20, ADR-051, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033, ADR-035, ADR-041, ADR-042, ADR-045, ADR-046, ADR-047, ADR-048, ADR-049)
+## 7. Server API (api v1.25, ADR-060, ADR-059, ADR-058, ADR-057, ADR-056, ADR-051, ADR-016, ADR-018, ADR-019, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033, ADR-035, ADR-041, ADR-042, ADR-045, ADR-046, ADR-047, ADR-048, ADR-049)
 
 REST (`/api/...`):
 - `GET health` → `{status: "ok", version}` (`version` is the NeuroDrive package version)
@@ -503,7 +535,48 @@ REST (`/api/...`):
   `method` may also be `imitation` (`length_field` `epochs`, `task` null); a launched imitation run
   finds its dataset in the default `<repo>/data/demos`. *Since api v1.19 (task 6.6, ADR-049):*
   `method` may also be `dagger` (`length_field` `units`: its rounds, `length` = `dagger.rounds`;
-  the launch's `units` override sets the rounds).
+  the launch's `units` override sets the rounds). *Since api v1.21 (task 7.5, ADR-056):* `method`
+  may also be `ga` (`length_field` `units`: its generations, `length` = `budget.units`).
+- `GET runs/{id}/evolution`: a GA run's evolution charts
+  *As built (task 7.7, ADR-058, api v1.23):* → `{run_id, population, elite, unit, best_so_far,
+  best, q3, median, mean, q1, worst, zero, diversity, finished_share, finishers, champion,
+  band_width, edges, counts}`, computed by `experiment/evolution_view.py` from `metrics.jsonl` and
+  `extra/population.jsonl`: entry g of every list is generation `unit[g]`; the six statistics
+  summarise its N fitness values (quartiles by linear interpolation); `best_so_far`, `diversity`,
+  `finished_share` and `finishers` are the GA's own metrics; `zero` the networks at exactly 0;
+  `edges` the B + 1 band edges (w = 0.05 from 0 to 2, extended in whole bands if a fitness lies
+  outside; one set per run) and `counts[g][k]` the networks with edges[k] ≤ F < edges[k + 1]
+  (adding up to N). 6 significant digits. Unknown or malformed id → 404; not a GA run, or a
+  generation without its population line → 400.
+- `GET runs/{id}/evolution?start=k` and `GET runs/{id}/generations/{g}/starts`: one start at a time
+  *As built (task 7.7 follow-up, ADR-059, api v1.24):* `?start=k` (0-based) computes `best` …
+  `worst`, `best_so_far` (the highest best on start k up to g), `zero` and `counts` from f on
+  start k instead of F; `start` names it (null: every start). Every answer also has `n_starts`
+  (S, or null when a generation has no per-start results), `start_finish_share[g][k]` and
+  `start_mean[g][k]` (null without them). A start that does not exist, or a run without per-start
+  results, → 400; a negative start → 422. `generations/{g}/starts` → `{run_id, unit, population,
+  n_starts, elite, champion, start_fraction, start_lateral_m, fitness, order, start_fitness,
+  status, progress, finish_time, finish_share, start_mean}` (`experiment/evolution_view.py:
+  generation_starts`): `order` the rows best first by F (the GA's ranking), row i of every (N, S)
+  list network i, `status` names (crashed, finished, stalled, timeout), `finish_time` null where
+  it did not finish, 6 significant digits; unknown run → 404; not a GA run, no such generation or
+  no per-start results → 400.
+- `GET runs/{id}/generations/{g}/ancestry?row=r` and `GET runs/{id}/generations/{g}/rows/{r}/mutation`:
+  a GA run's lineage
+  *As built (task 7.8, ADR-060, api v1.25):* `ancestry` → `{run_id, unit, row, n_genes, steps}`
+  (`experiment/lineage_view.py: ancestry`): the line of descent of row r (default the champion)
+  from generation g back to generation 1 through each network's main parent (an elite's copied
+  row), each step `{unit, row, fitness, rank, origin, parents, crossed, main_parent, from_main,
+  from_other, mutated, distance}` (distance = Euclidean distance of the genome from the main
+  parent's). `mutation` → `{run_id, unit, row, origin, parents, parents_fitness, parents_rank,
+  crossed, main_parent, other_parent, fitness, rank, n_genes, n_mutated, n_from_other,
+  layer_sizes, weight_delta, bias_delta, max_abs_delta, weight_change, bias_change,
+  weight_mutated, bias_mutated, weight_from_other, bias_from_other}` (`mutation_change`): the
+  nudge of each mutated gene against the parent that gene came from (not the main parent), D the
+  largest |nudge|, change = nudge / D, in the checkpoint diff's shapes. 6 significant digits
+  (changes 4 decimals). Unknown run → 404; not a GA run, no lineage (trained before 7.8), no such
+  generation or row, generation 1 (random, no parent), unknown origins, or an unmutated gene that
+  does not equal its source (damaged) → 400; a negative `row` → 422.
 - `GET datasets`, `GET datasets/{id}`: demonstration datasets (dataset v1, §6.16)
   *As built (task 6.2, ADR-045, api v1.15):* the server reads the dataset folders in `nd serve
   --datasets-dir` (default `<repo>/data/demos`). `GET datasets` → `{datasets: [{dataset_id, teacher,
@@ -532,7 +605,7 @@ REST (`/api/...`):
 
 WebSocket `/ws/live` (one independent session per connection):
 - `hello` is sent first, on connect: `{type: "hello", version, api}` (`api` is the message-contract
-  version, currently `"v1.20"`).
+  version, currently `"v1.25"`).
 - client → server (each has a `type` field):
   - `load_scenario {track, policy, n_cars, seed}`: `policy` is `"keyboard"`, `"constant"`,
     `"neuron"`, `"random_networks"` (every car is driven by its own random [7,16,16,2] network;
@@ -556,6 +629,20 @@ WebSocket `/ws/live` (one independent session per connection):
     shifted_starts`, the function Study S5b drives, so a shifted replay ends car for car as the
     study's drive). With `"expert"` the expert then drives those 10 starts (`n_cars`, `seed`
     ignored). A shift with any other driver is refused with `error`; the scenario stays.
+    Since api v1.22 (task 7.6, ADR-057) also `"population"` with `population {run, unit, start,
+    ghost_unit}` (null for every other driver, which refuses it): generation `unit` (≥ 1) of a GA
+    run races, one car per network (car i = row i of `extra/generations/unit_<unit>.npz`, as one
+    `PopulationPolicy`), every car at evaluation start `start` (0-based, the run's fitness layout:
+    offsets in the outer loop) of the run's fitness track (it replaces `track`), with the run's
+    target laps; `n_cars` and `seed` are ignored. With `ghost_unit` (≥ 1, earlier than `unit`) that
+    generation's champion (its `population.jsonl` line's `champion` row) drives as one more car,
+    the last. Cars never interact and every per-car calculation uses only that car's numbers, so
+    each car drives exactly the drive the GA scored for that network at that start: its end
+    status, progress, finish time and per-start fitness equal `evaluate_genomes`' to the last digit
+    (tested). It sends `network`, traces, explanations, `what_if`, trail and `inspect_step` like the
+    random-networks driver. Refused with `error` (the scenario stays): an unknown run, a run that
+    is not a GA run, one without saved generations (trained before task 7.6), an unsaved
+    generation, a start outside 0 … S−1, a ghost not earlier than `unit`, more than 200 networks.
   - `record_start`, `record_stop {save, tag}` (since api v1.20, task 6.1b, ADR-051): keyboard
     demonstrations. `record_start` is accepted only with the keyboard driver, exactly one car, a
     training track and the session at step 0 (and a server with a datasets folder); otherwise it is
@@ -593,7 +680,13 @@ WebSocket `/ws/live` (one independent session per connection):
     car_half_width, ray_angles, ray_range, trail_seconds}`: no geometry (use
     `GET tracks/{name}`). `trail_seconds` (60) is how much of the drive the session remembers.
     Since api v1.14 also `checkpoint` (the replayed `{run, unit}`, else null), since api v1.18
-    `start_shift` (the shift of the exam starts, else null).
+    `start_shift` (the shift of the exam starts, else null), since api v1.22 `population` (the raced
+    GA generation, else null): `{run, unit, last_unit, start, n_starts, start_s0_m, start_lateral_m,
+    size, fitness, ranks, finished, crashed, elite, champion, ghost_unit, ghost_car, ghost_fitness}`,
+    per row its generation fitness F (6 significant digits), its place in the GA's ranking (0 =
+    best, equal F keeps the lower row first: `learn/evolution/ga.py: ranking`), how many starts it
+    finished and crashed on; the elite rows, the champion row; the ghost's generation, car index
+    (`size`) and F, or null.
   - `frame {step, time, playing, speed, cars, selected}`: `cars` holds one array per quantity, one
     entry per car: `x`, `y`, `psi`, `v`, `alive`, `progress`, `status` (0 running, 1 crashed,
     2 finished, 3 stalled, 4 timeout), `action` (a [steer, throttle] pair per car; the last action
@@ -649,7 +742,10 @@ WebSocket `/ws/live` (one independent session per connection):
     `record_stop`; the dataset is listed by `GET datasets`.
   - `episode_end {step, time, status, progress, laps}`: sent once when every car has stopped; the
     session then pauses. `status` holds a name per car (`crashed`, `finished`, `stalled`,
-    `timeout`).
+    `timeout`). Since api v1.22 also `fitness`: for the population driver every car's fitness on
+    the raced start, f = p + c (1 − t/T) (since task 7.9 with the run's own `fitness.formula`),
+    computed by the GA's own `start_fitness` from the step at which the car stopped (6 decimals),
+    exactly the GA's per-start fitness; null for other drivers.
   - `error {message}`: a bad message or a command that cannot be run; the connection stays open.
 - The world advances in fixed physics steps of 1/30 s. `set_speed` changes how many steps run per
   second of real time (speed 2 = 60 steps per second), never the step size. While playing, one
@@ -739,6 +835,54 @@ listed, the selected car's row highlighted, and clicking a row selects that car.
 *Since task 6.5 (ADR-048):* two inputs, sideways shift (m) and heading (°, sent in radians), are
 sent with the replay as `start_shift`; with a shift the card is hidden (it describes the unshifted
 starts), and "Watch the expert from these starts" loads the expert from the same shifted starts.
+*Since task 7.6 (ADR-057), population mode:* for a GA run the Timeline also offers "Race generation
+g" (g = the slider's unit, at least 1): `load_scenario` with the `"population"` driver, start 0 and
+the previous generation's champion as the ghost. The Environment view then draws every car in its
+rank band (`views/environment/population.ts`: q = r/(N − 1), band = min(4, ⌊5q⌋); the CSS tokens
+`--rank-1` … `--rank-5`, the dataviz palette's blue ramp checked as an ordinal ramp on both
+surfaces), rings the elites, fades stopped cars, outlines the selected car, and draws the ghost
+see-through and dashed with a label; a legend explains the colours (clicks pass through it to the
+cars). Its controls add a row for the generation (1 … `last_unit`), the start (1 … S) and the
+ghost's generation (0 = none); cars, random start and track are fixed. The HUD shows the selected
+car's role (row, rank, elite or child, champion, or the ghost), F with its finished and crashed
+starts, and, after the race, f on this start. Clicking any car selects it and the Network view
+shows its network, as for the random-networks driver.
+
+*Since task 7.7 (ADR-058), evolution charts:* for a GA run the Timeline also shows an Evolution
+panel (`views/experiment/Evolution.tsx`, pure helpers in `evolutionCharts.ts`) from `GET
+runs/{id}/evolution`, fetched again whenever the run's metrics gain a line: the generation's best,
+median, mean and worst fitness (`--series-1` … `--series-4`, labelled at the line ends, with a
+legend; hover: every statistic, best so far and finishers), the fitness distribution as a heat map
+(a column per generation, a cell per filled band of 0.05, shaded by the share of the generation in
+5 steps: up to 5, 10, 20, 40 % and more, drawn with the rank ramp `--rank-5` … `--rank-1`; the two
+fitness charts share their axis), the chosen generation's histogram (bars per band, the count on
+each, the networks at exactly 0 named), the diversity line and a table of every generation. The
+panel's generation follows the slider (at least 1); clicking any chart chooses another, and "Race
+generation g" races it (the population driver of 7.6).
+
+*Since the 7.7 follow-up (ADR-059), one start at a time:* the panel's start picker ("all starts
+(mean F)" or "start k") fetches `?start=k` and the fitness lines, heat map and histogram name f on
+that start; the race button races from it. Below, for runs with per-start results: the starts map
+(rows = starts, columns = generations, shaded by the share that finished: none, up to 20, 40, 60,
+80 % and more, with the rank ramp; hover: where the start is, finishers and mean f; a click
+chooses that generation and start) and the chosen generation's outcome grid from `GET
+runs/{id}/generations/{g}/starts` (rows = starts, columns = networks by rank of F, cells coloured
+`--ok` finished, `--bad` crashed, `--warn` stalled, `--chart-mid` out of time, with a legend, the
+drive in words on hover, a table, and each start's finishers at the right; a click races that
+generation from that start and selects that car, the raced start is outlined). Runs without
+per-start results say they need training again.
+
+*Since task 7.8 (ADR-060), the Ancestry section:* under the charts, the line of descent of the
+chosen generation's champion (or any row, from a picker) from `GET .../generations/{g}/ancestry`,
+drawn over each generation's best fitness (dashed) as a path with one marker per generation,
+shaped by origin (square random, ring elite copy, dot child, diamond crossed child, cross
+unknown), a summary (elite copies, children, crossed, mutated genes along the line), hover in
+words and a table; a click races that generation with that ancestor selected. In population mode
+the Network view shows a banner with the selected car's origin and, for a child, the toggle
+"Colour lines by mutation since the parent" (`GET .../rows/{r}/mutation`): mutated weights blue
+(raised) or orange (lowered), thickness by |nudge| / D as in the checkpoint diff, genes from the
+second parent thin dashed grey, weights inherited unchanged from the main parent not drawn;
+mutated biases are counted in the legend. Generation 1, the ghost and elites have no toggle.
 
 ### 8.3 Output-neuron inspector (built up over phases)
 1. Readout: the value plus its physical meaning ("−0.93 = hard left").
@@ -760,6 +904,35 @@ What-if overrides and answers belong to one car at one step and are dropped when
 - Steps, in order, only when profiling shows a need: vectorise everything (default); windowed
   projection search; spatial grid for raycasts; process pool for independent seeds and runs;
   Numba for env hot loops only, via an ADR.
+
+*As measured (task 7.0, `scripts/profile_generation.py`, 2026-11-11):* vectorising, the windowed
+projection search (task 1.5) and the wall grid for the rays (task 1.12) are all in place. The
+**worst case** (50 cars from seeded random starts on `train_loop_01`, all driving the whole
+60 s: the timed pass computes the sensors and 50 different [7, 16, 16, 2] networks but steers
+with recorded expert actions) takes **4.9–7.6 s on a performance core and 10.2–10.6 s on an
+efficiency core** of the development machine (Intel i5-13420H, 4 + 4 cores, 12 threads; Python
+3.12.10, NumPy 2.5.3; 22 runs, 3 under 5 s). So the **target is missed**, by about 1.3× on the
+fast cores and 2× on the slow ones. Of the time, the ray sensors take 85–87 %, the world step
+(physics, projection, termination) 10–12 % and the 50 networks 2–3 %. The cost grows with the
+number of cars: about 65 µs per car-step at 10–50 cars and 85–88 µs at 100–500, of which the
+sensors take 67 % at 10 cars and 96 % at 500. A typical early generation (random networks
+that crash or stall) takes about 0.8 s; one random-search unit (50 networks × 10 starts =
+500 cars, 92 s limit) about 7 s. The live view is far inside its budget (3.7 ms per step for
+50 cars against 33 ms per frame). Numba cannot run on the development machine: Windows Smart
+App Control blocks its compiled library (`_helperlib`). The options are listed in the task 7.0
+Report and ADR-013; none is implemented yet.
+
+*As built (task 7.0b, ADR-053, 2026-11-11):* the wall grid keeps one list per (10 m cell,
+22.5-degree ray-direction bin), and each ray tests exactly its own list, all of a step's
+(ray, wall) tests in one flat array; every reading is still bit-for-bit the full search's. The
+same worst case now takes **1.71 s on a performance core (best 1.67 s) and 3.95 s on an
+efficiency core (best 3.86 s)**: the **target is met** on both, at 0.34x and 0.79x the budget
+(0.95 ms and 2.20 ms per step). The sensors take 1.19 s (69 %, from 5.88 s), the world step
+0.43 s (25 %), the networks 0.08 s (5 %); the cost per car-step is 17-20 us from 50 to 500 cars
+(it was 65-88 us). A typical early generation takes 0.49 s, one random-search unit (500 cars)
+3.86 s. Each track's lists are built once per process: 1.3 s for the training loop, about 5 s
+for Monza (unpinned), then kept (`edge_grid`). Next in line, if needed, is the world step
+(projection onto the centreline), now a quarter of the time.
 
 ## 10. Testing layers
 See `EXPERIMENT_PROTOCOL.md` §1 for the component verification table.

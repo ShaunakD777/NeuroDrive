@@ -147,13 +147,23 @@ def test_configs_lists_the_dagger_config(configs, runs):
     assert (dagger["length_field"], dagger["length"]) == ("units", 10)
 
 
+def test_configs_lists_the_ga_config(configs, runs):
+    # api v1.21 (task 7.5): a GA config is listed; its units are its generations.
+    shutil.copy(CONFIGS / "ga.yaml", configs / "ga.yaml")
+    with TestClient(create_app(runs_dir=runs, configs_dir=configs)) as client:
+        answer = client.get("/api/configs").json()["configs"]
+    (ga,) = [c for c in answer if c["name"] == "ga.yaml"]
+    assert (ga["method"], ga["task"], ga["seed"]) == ("ga", None, 0)
+    assert (ga["length_field"], ga["length"]) == ("units", 100)
+
+
 def test_bad_launches_are_refused_and_start_nothing(client, runs):
     cases = [
         ({"config": "missing.yaml"}, "unknown config"),
         ({"config": "broken.yaml"}, "unknown config"),
         ({"config": "../configs/toy_xor.yaml"}, "unknown config"),
         ({"config": "small_search.yaml", "epochs": 5}, "--epochs is for toy and imitation configs"),
-        ({"config": "toy_xor.yaml", "units": 5}, "--units is for random_search and dagger configs"),
+        ({"config": "toy_xor.yaml", "units": 5}, "--units is for random_search, ga and dagger"),
         ({"config": "toy_xor.yaml", "seed": -1}, "seed"),
         ({"config": "toy_xor.yaml", "tag": "a b"}, "tag"),
     ]
@@ -168,6 +178,7 @@ def test_bad_launches_are_refused_and_start_nothing(client, runs):
 # ── a launched run is the same run as one trained from the terminal ────────────────────────────
 
 
+@pytest.mark.slow
 def test_a_launched_toy_run_equals_a_run_trained_directly(client, configs, tmp_path):
     def body() -> None:
         store = launch(client, config="toy_xor.yaml", seed=3, epochs=200, tag="launch")
@@ -186,6 +197,7 @@ def test_a_launched_toy_run_equals_a_run_trained_directly(client, configs, tmp_p
     within(180, body)
 
 
+@pytest.mark.slow
 def test_a_launched_random_search_run_equals_one_trained_directly(client, configs, tmp_path):
     def body() -> None:
         store = launch(client, config="small_search.yaml", seed=4)
@@ -207,6 +219,7 @@ def receive(ws) -> dict:
     return json.loads(ws.receive_text())
 
 
+@pytest.mark.slow
 def test_ws_runs_streams_every_line_once_in_order(client):
     def body() -> None:
         with client.websocket_connect("/ws/runs") as ws:
@@ -243,6 +256,7 @@ def test_ws_runs_streams_every_line_once_in_order(client):
     within(180, body)
 
 
+@pytest.mark.slow
 def test_ws_runs_sends_exam_cards_and_refuses_bad_commands(client, runs):
     def body() -> None:
         store = launch(client, config="small_search.yaml", seed=1)
@@ -285,6 +299,7 @@ def test_ws_runs_sends_exam_cards_and_refuses_bad_commands(client, runs):
 # ── stopping ───────────────────────────────────────────────────────────────────────────────────
 
 
+@pytest.mark.slow
 def test_stop_ends_a_run_cleanly_after_its_current_unit(runs, configs):
     launcher = Launcher(runs, configs, max_active=1)
     with TestClient(create_app(runs_dir=runs, launcher=launcher)) as test_client:

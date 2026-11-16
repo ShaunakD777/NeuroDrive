@@ -1,5 +1,6 @@
 """Tests for `nd demo-record` (cli.py), task 6.1."""
 
+import pytest
 from typer.testing import CliRunner
 
 from neurodrive.cli import app
@@ -8,6 +9,7 @@ from neurodrive.learn.supervised.demos import DemoDataset
 runner = CliRunner()
 
 
+@pytest.mark.slow
 def test_records_the_expert_into_a_dataset_folder(tmp_path):
     args = ["demo-record", "--random-starts", "1", "--seed", "2", "--tag", "t"]
     result = runner.invoke(app, [*args, "--out-dir", str(tmp_path)])

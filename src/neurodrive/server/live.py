@@ -32,9 +32,19 @@ observation and the clipped action of every step in which the car is running, ju
 world moves, so the frames are the session's own steps. A drive ends with the episode, a reset
 or ``record_stop``; ``record_stop`` with ``save`` writes dataset v1 (teacher ``keyboard``) into
 the session's datasets folder.
+
+Racing a GA generation (task 7.6, ADR-057, api v1.22). The ``"population"`` driver loads one
+saved generation of a GA run (``extra/generations/unit_<g>.npz``): car i is row i, every car
+starts at one of the run's evaluation starts on its fitness track, and an earlier generation's
+champion can drive along as the last car, the ghost. Cars never interact and every per-car
+calculation (sensors, the car's own network, the physics) uses only that car's numbers, so car
+i's drive is exactly the drive the GA scored for network i at that start: the ``episode_end``
+message's per-car ``fitness`` equals the GA's per-start fitness f = p + c (1 - t / T) bit for
+bit. The session notes the step at which each car stops (t = that step times dt) for it.
 """
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +54,7 @@ from pydantic import ValidationError
 from neurodrive.core.nn.forward import ForwardTrace, forward
 from neurodrive.core.nn.init import init_population
 from neurodrive.core.nn.network import Network
+from neurodrive.core.nn.population import Population
 from neurodrive.core.nn.spec import NetworkSpec
 from neurodrive.core.rng import child_rng, make_rng
 from neurodrive.env.car import CarState, step_cars
@@ -63,6 +74,8 @@ from neurodrive.experiment.exam import EXAM_V1, shifted_starts
 from neurodrive.experiment.store import _git_info
 from neurodrive.explain.contributions import neuron_contributions
 from neurodrive.explain.sensitivity import sensitivity
+from neurodrive.learn.evolution.ga import ranking
+from neurodrive.learn.evolution.random_search import start_fitness
 from neurodrive.learn.supervised.demos import DemoRecorder, save_dataset
 from neurodrive.server.runs import RunLibrary
 from neurodrive.server.schemas import (
@@ -85,6 +98,7 @@ from neurodrive.server.schemas import (
     OutputReceipt,
     Pause,
     Play,
+    PopulationInfo,
     RecordingMessage,
     RecordStart,
     RecordStop,
@@ -108,6 +122,19 @@ RANDOM_START_LATERAL = 1.0  # metres: random-start sideways range for seeded sce
 RANDOM_START_HEADING = 0.1  # radians: random-start heading range for seeded scenarios
 GHOST_SECONDS = 2.0  # how far ahead the what-if ghost car is drawn (slow cars need time to part)
 TRAIL_SECONDS = 60.0  # how much of the drive the session remembers for the decision trail (ADR-027)
+MAX_POPULATION = 200  # the largest GA generation the live view races (plus the ghost)
+
+
+@dataclass(frozen=True)
+class Race:
+    """A loaded GA generation race: where every car starts, the target laps and what the browser
+    is told about the generation (``info``)."""
+
+    s0: float
+    lateral: float
+    target_laps: int
+    info: PopulationInfo
+    formula: str = "time_bonus"  # the run's fitness formula (task 7.9, ADR-062)
 
 
 class DriveMemory:
@@ -243,6 +270,8 @@ class LiveSession:
         # a random start or a detour through another driver all keep the same weights.
         self._saved_neuron: NeuronPolicy | None = None
         self._scenario: LoadScenario | None = None
+        self._race: Race | None = None
+        self._end_step = np.zeros(0, dtype=np.int64)  # the step each car stopped at (-1: running)
         self._segments = np.zeros((0, 2, 2))
         self._action = np.zeros((0, 2))
         self._obs = np.zeros((0, 7))
@@ -356,6 +385,19 @@ class LiveSession:
                     message="a recording is open: save or discard it before loading another one"
                 )
             ]
+        race: tuple[Race, Population, str] | None = None
+        if command.policy == "population":
+            # Checked before anything changes: a refused generation keeps the old scenario.
+            try:
+                race = self._population(command)
+            except ValueError as error:
+                return [ErrorMessage(message=str(error))]
+            # The run's fitness track and one car per network (plus the ghost).
+            command = command.model_copy(
+                update={"track": race[2], "n_cars": race[1].size, "seed": None}
+            )
+        elif command.population is not None:
+            return [ErrorMessage(message="population works only with the population driver")]
         try:
             track = self.tracks.get(command.track)
         except KeyError:
@@ -378,6 +420,9 @@ class LiveSession:
             command = command.model_copy(update={"n_cars": n_starts, "seed": None})
             laps = EXAM_V1.target_laps
         self._scenario = command
+        self._race = None if race is None else race[0]
+        if self._race is not None:
+            laps = self._race.target_laps  # the GA's own lap count, as it scored the drives
         # Per-track time limit (ADR-022); a replay uses the exam's lap count.
         self._world = World(track, WorldConfig.for_track(track, laps))
         self._segments = edge_grid(track)
@@ -393,6 +438,9 @@ class LiveSession:
             # when none is given). Built once per load, so Reset replays the same brains.
             rng = child_rng(make_rng(command.seed or 0), "init")
             self._policy = PopulationPolicy(init_population(NetworkSpec(), command.n_cars, rng))
+        elif race is not None:
+            # One network per car, row i for car i (and the ghost last): as the GA drove them.
+            self._policy = PopulationPolicy(race[1])
         elif replayed is not None:
             # One network for every car, as one batch: exactly how the exam drove it.
             self._policy = MLPPolicy(replayed)
@@ -413,6 +461,7 @@ class LiveSession:
             seed=command.seed,
             checkpoint=command.checkpoint if replayed is not None else None,
             start_shift=command.start_shift,
+            population=None if self._race is None else self._race.info,
             dt=world.dt,
             time_limit=world.config.time_limit,
             target_laps=world.config.target_laps,
@@ -428,7 +477,11 @@ class LiveSession:
     def _reset_world(self) -> None:
         assert self._world is not None and self._scenario is not None
         scenario = self._scenario
-        if scenario.policy == "checkpoint" or scenario.start_shift is not None:
+        if self._race is not None:
+            # Every network from the same evaluation start, as the GA placed it (at rest).
+            n = scenario.n_cars
+            self._world.reset(s0=np.full(n, self._race.s0), lateral=np.full(n, self._race.lateral))
+        elif scenario.policy == "checkpoint" or scenario.start_shift is not None:
             # The exam's starts in the exam's order (car k = exam start k), shifted if asked.
             shift = scenario.start_shift
             s0, lateral, heading = shifted_starts(
@@ -449,6 +502,7 @@ class LiveSession:
                 heading_jitter=RANDOM_START_HEADING,
             )
         self._action = np.zeros((scenario.n_cars, 2))
+        self._end_step = np.full(scenario.n_cars, -1, dtype=np.int64)
         self._obs_step = -1
         if self._recorder is not None:  # a reset ends the drive in progress and opens the next
             self._recorder.end_episode("stopped")
@@ -457,6 +511,74 @@ class LiveSession:
         self._memory = DriveMemory(capacity, scenario.n_cars)  # a new drive: forget the old one
         self._trail_sent = 0
         self._trail_full = True
+
+    def _population(self, command: LoadScenario) -> tuple[Race, Population, str]:
+        """The generation ``command.population`` names, as a race, its networks (the ghost last)
+        and the track to race on; ``ValueError`` (in plain words) if it cannot race."""
+        ref = command.population
+        if ref is None:
+            raise ValueError("the population driver needs population {run, unit, start}")
+        if self.runs is None:
+            raise ValueError("this server has no run folders to race")
+        gen = self.runs.ga_generation(ref.run, ref.unit)
+        settings, line = gen.settings, gen.line
+        n = len(gen.genomes)
+        if n > MAX_POPULATION:
+            raise ValueError(
+                f"generation {ref.unit} has {n} networks; the live view races at most "
+                f"{MAX_POPULATION}"
+            )
+        n_starts = settings.starts_per_network
+        if ref.start >= n_starts:
+            raise ValueError(
+                f"start {ref.start} does not exist: the run has starts 0 to {n_starts - 1}"
+            )
+        try:
+            track = self.tracks.get(gen.track)
+        except KeyError:
+            raise ValueError(f"the run's fitness track {gen.track!r} is not available") from None
+        s0, lateral = settings.evaluation().starts(track.length)
+        genomes = gen.genomes
+        ghost_fitness = None
+        if ref.ghost_unit is not None:
+            if ref.ghost_unit >= ref.unit:
+                raise ValueError(
+                    f"the ghost must come from an earlier generation than {ref.unit}, "
+                    f"got {ref.ghost_unit}"
+                )
+            ghost = self.runs.ga_generation(ref.run, ref.ghost_unit)
+            champion = int(ghost.line["champion"])
+            genomes = np.vstack([genomes, ghost.genomes[champion]])
+            ghost_fitness = float(ghost.line["fitness"][champion])
+        fitness = np.asarray(line["fitness"], dtype=np.float64)
+        _, places = ranking(fitness)  # the GA's own ranking: ties keep the lower row first
+        info = PopulationInfo(
+            run=gen.run,
+            unit=gen.unit,
+            last_unit=gen.last_unit,
+            start=ref.start,
+            n_starts=n_starts,
+            start_s0_m=round(float(s0[ref.start]), 3),
+            start_lateral_m=round(float(lateral[ref.start]), 3),
+            size=n,
+            fitness=[float(f"{v:.6g}") for v in fitness],
+            ranks=places.astype(int).tolist(),
+            finished=[int(v) for v in line["finished"]],
+            crashed=[int(v) for v in line["crashed"]],
+            elite=[int(v) for v in line["elite"]],
+            champion=int(line["champion"]),
+            ghost_unit=ref.ghost_unit,
+            ghost_car=None if ref.ghost_unit is None else n,
+            ghost_fitness=None if ghost_fitness is None else float(f"{ghost_fitness:.6g}"),
+        )
+        race = Race(
+            s0=float(s0[ref.start]),
+            lateral=float(lateral[ref.start]),
+            target_laps=settings.target_laps,
+            info=info,
+            formula=settings.fitness_formula,
+        )
+        return race, Population.from_genomes(settings.spec, genomes), gen.track
 
     def _checkpoint_network(self, command: LoadScenario) -> Network:
         """The network ``command.checkpoint`` names; ``ValueError`` (in plain words) if there is
@@ -508,6 +630,8 @@ class LiveSession:
                 recorder.add(obs[0], action[0], cars.x[0], cars.y[0], cars.psi[0], cars.v[0])
             world.step(action[:, 0], action[:, 1])
             self._action = action
+            stopped = (world.status != Status.RUNNING) & (self._end_step < 0)
+            self._end_step[stopped] = world.step_count  # t = this step x dt (the GA's finish time)
             if recorder is not None and recorder.is_open and world.done:
                 recorder.end_episode(Status(int(world.status[0])).name.lower())
 
@@ -776,9 +900,23 @@ class LiveSession:
                     status=[Status(int(s)).name.lower() for s in world.status],
                     progress=np.round(world.progress, 3).tolist(),
                     laps=world.laps.astype(int).tolist(),
+                    fitness=self._race_fitness(),
                 )
             )
         return messages
+
+    def _race_fitness(self) -> list[float] | None:
+        """Every car's fitness on the raced start, computed exactly as the GA computed it
+        (``start_fitness`` with the run's formula, f = p + c (1 - t / T) by default); None unless a
+        GA generation is racing."""
+        world, race = self._world, self._race
+        if race is None or world is None:
+            return None
+        progress = np.clip(world.progress / (race.target_laps * world.track.length), 0.0, 1.0)
+        finished = world.status == Status.FINISHED
+        finish_time = np.where(finished, self._end_step * world.dt, np.nan)
+        f = start_fitness(progress, finished, finish_time, world.config.time_limit, race.formula)
+        return [round(float(v), 6) for v in f]
 
 
 def _wire_trace(trace: ForwardTrace) -> NetworkTrace:

@@ -11,8 +11,8 @@ Every task in `ROADMAP.md` follows the same loop. The user starts a task by nami
    marked ⚑ (decision needed), or you found a decision that is not covered, stop here and wait
    for the user.
 3. **Implement.** Only the files named in the Brief. Mark the task ◐ in the checklist.
-4. **Verify.** Run the task's verification. Fix and re-run if needed. After two failed fix attempts,
-   stop and report the diagnosis.
+4. **Verify.** Run the task's verification, in the tiers of §1a. Fix and re-run if needed. After
+   two failed fix attempts, stop and report the diagnosis.
 5. **Report.** Post the Report (template below) and save it to `task-notes/` (§2a). Mark ☑ then ✅
    once verification has passed.
 6. **Record.** Append a journal entry, add new glossary terms, add an ADR if a decision was made,
@@ -20,6 +20,30 @@ Every task in `ROADMAP.md` follows the same loop. The user starts a task by nami
 7. **Stop.** Name the next task, but do not start it.
 
 If the user says "brief only", do steps 1–2 and stop.
+
+## 1a. Verification tiers (ADR-061)
+
+The full Python suite takes about 3 minutes in parallel (12 min 44 s in one process); the fast tier
+about 40 s. Each full suite runs **once per task**, not after every change. Use the smallest tier
+that answers the question at hand:
+
+1. **While implementing and fixing:** only the tests of the files the task touches, for example
+   `uv run python -m pytest tests/learn/evolution -m "not slow"`, then the task's slow tests by
+   name. After a failure, re-run only what failed: `uv run python -m pytest --lf`.
+2. **Once, before the Report:** the full Python suite, `uv run python -m pytest` (parallel by
+   default, one worker per core). If it fails and the fix is local, re-run the failed tests and
+   the touched area; run the full suite again only when the fix could affect other areas.
+3. **Web, when the task changed `web/`:** `npm run test` and `npx tsc -b` (both fast), then only the
+   Playwright specs the task added or could affect, for example `npx playwright test lineage.spec.ts
+   --workers=1`. The full Playwright suite runs when a task changes something many views share
+   (the API client, the layout, the shared stores, global setup), and always at `/finish-phase`.
+4. **Never run a suite beside a real training run** or a study: both slow down and the timings in
+   the Report become meaningless. Run the real run first, then the suite (or the other way round).
+
+Slow tests (about 2 s or more alone: they train, resume or examine a run, or drive many full
+episodes) carry `@pytest.mark.slow`, and so does every test sharing a module fixture with one.
+New tests like these get the mark too. Add `-n0` to run
+in a single process, for example to use a debugger.
 
 ## 2. Brief template
 

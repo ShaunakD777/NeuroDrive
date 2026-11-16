@@ -15,7 +15,10 @@ A run folder is the master record of a run (ADR-007). Version 1 (task 5.5) adds 
       checkpoints/       unit_<n>.npz (network files, core/nn/io.py) + index.json {"units": [...]}
       exams/             unit_<n>.json: Driving Exam cards of examined checkpoints (exam v1)
       state/             latest.npz: the learner's state after the latest unit, for resuming
-      extra/             method-specific arrays, e.g. the toy dataset (extra/dataset.npz)
+      extra/             method-specific data: arrays, e.g. the toy dataset (extra/dataset.npz),
+                         and per-unit lines, e.g. the GA's extra/population.jsonl (task 7.5),
+                         and per-unit arrays, extra/<name>/unit_<n>.npz, e.g. every scored GA
+                         generation's genomes in extra/generations/ (task 7.6, ADR-057)
       stop_requested     (only while asked to stop, task 5.8) an empty file: the runner ends
                          the run cleanly after the unit in progress
 
@@ -236,12 +239,46 @@ class RunStore:
         for u in self.exam_units():
             if u > unit:
                 (self.path / "exams" / f"unit_{u}.json").unlink()
+        for name in self.extra_line_names():
+            lines = [r for r in self.read_extra_lines(name) if r["unit"] <= unit]
+            text = "".join(json.dumps(r, allow_nan=False) + "\n" for r in lines)
+            tmp = self.path / "extra" / f"{name}.tmp.jsonl"
+            tmp.write_text(text, encoding="utf-8")
+            os.replace(tmp, self.path / "extra" / f"{name}.jsonl")
+        for name in self.unit_array_names():
+            for u in self.unit_array_units(name):
+                if u > unit:
+                    self._unit_array_path(name, u).unlink()
         (self.path / "state" / "latest.tmp.npz").unlink(missing_ok=True)
 
     def save_extra(self, name: str, **arrays: np.ndarray) -> None:
         """Save named arrays to extra/<name>.npz."""
         _check_name("extra name", name)
         np.savez(self.path / "extra" / f"{name}.npz", **arrays)
+
+    def append_extra_line(self, name: str, record: dict[str, Any]) -> None:
+        """Add one unit's line to extra/<name>.jsonl (task 7.5, ADR-056; ``record`` must contain
+        ``unit``). ``cut_back`` removes later lines, like later metrics lines."""
+        _check_name("extra name", name)
+        if "unit" not in record:
+            raise ValueError("an extra line needs a 'unit' entry")
+        with open(self.path / "extra" / f"{name}.jsonl", "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, allow_nan=False) + "\n")
+
+    def save_unit_arrays(self, name: str, unit: int, arrays: dict[str, np.ndarray]) -> None:
+        """Save one unit's named arrays to extra/<name>/unit_<unit>.npz (task 7.6, ADR-057).
+
+        Written under a temporary name and renamed, so a kill never leaves half a file; ``cut_back``
+        removes the files of later units, like later metrics lines.
+        """
+        _check_name("extra name", name)
+        if not arrays:
+            raise ValueError("unit arrays need at least one array")
+        folder = self.path / "extra" / name
+        folder.mkdir(exist_ok=True)
+        tmp = folder / f"unit_{unit}.tmp.npz"
+        np.savez(tmp, **arrays)
+        os.replace(tmp, self._unit_array_path(name, unit))
 
     # --- reading ---
 
@@ -278,6 +315,51 @@ class RunStore:
     def load_extra(self, name: str) -> dict[str, np.ndarray]:
         with np.load(self.path / "extra" / f"{name}.npz") as data:
             return {key: data[key] for key in data.files}
+
+    def extra_line_names(self) -> list[str]:
+        """Names of the per-unit line files in extra/ (``<name>.jsonl``), sorted."""
+        folder = self.path / "extra"
+        if not folder.is_dir():
+            return []
+        found = (p.name.removesuffix(".jsonl") for p in folder.glob("*.jsonl"))
+        return sorted(n for n in found if not n.endswith(".tmp"))
+
+    def read_extra_lines(self, name: str) -> list[dict[str, Any]]:
+        """The lines of extra/<name>.jsonl, in order ([] if there is no such file)."""
+        path = self.path / "extra" / f"{name}.jsonl"
+        if not path.is_file():
+            return []
+        lines = path.read_text(encoding="utf-8").splitlines()
+        return [json.loads(line) for line in lines if line.strip()]
+
+    def unit_array_names(self) -> list[str]:
+        """Names of the per-unit array folders in extra/ (``extra/<name>/``), sorted."""
+        folder = self.path / "extra"
+        if not folder.is_dir():
+            return []
+        return sorted(p.name for p in folder.iterdir() if p.is_dir())
+
+    def unit_array_units(self, name: str) -> list[int]:
+        """Units with a saved extra/<name>/unit_<n>.npz, in order ([] if none)."""
+        _check_name("extra name", name)
+        folder = self.path / "extra" / name
+        if not folder.is_dir():
+            return []
+        names = (p.name for p in folder.glob("unit_*.npz"))
+        stems = (n.removesuffix(".npz").removeprefix("unit_") for n in names)
+        return sorted(int(s) for s in stems if s.isdigit())
+
+    def load_unit_arrays(self, name: str, unit: int) -> dict[str, np.ndarray]:
+        """The arrays of extra/<name>/unit_<unit>.npz; ``KeyError`` if that unit has none."""
+        _check_name("extra name", name)
+        path = self._unit_array_path(name, unit)
+        if not path.is_file():
+            raise KeyError(f"no {name} arrays for unit {unit}")
+        with np.load(path, allow_pickle=False) as data:
+            return {key: data[key] for key in data.files}
+
+    def _unit_array_path(self, name: str, unit: int) -> Path:
+        return self.path / "extra" / name / f"unit_{unit}.npz"
 
     def _write_json(self, relative: str, obj: dict[str, Any]) -> None:
         text = json.dumps(obj, indent=2, allow_nan=False) + "\n"

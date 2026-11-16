@@ -2,7 +2,8 @@
 
 A config file is YAML. Its ``method`` field says which kind of run it describes: ``toy`` (task
 4.6b), ``random_search`` (task 5.7, ``configs/random_search.yaml``), ``imitation`` (task 6.3,
-``configs/imitation.yaml``) or ``dagger`` (task 6.6, ``configs/dagger.yaml``). A toy config
+``configs/imitation.yaml``), ``dagger`` (task 6.6, ``configs/dagger.yaml``) or ``ga`` (task 7.5,
+``configs/ga.yaml``). A toy config
 (config v1, docs/ARCHITECTURE.md §6.15) looks like::
 
     method: toy
@@ -46,6 +47,12 @@ A DAgger config (task 6.6, ADR-049) has imitation's ``network``, ``data``, ``opt
 ``epochs``, and a ``dagger`` section: ``rounds`` (the run's units; ``--units`` overrides it), the
 collection ``track`` (a training track), ``random_starts`` per round and ``target_laps``.
 
+A GA config (task 7.5, ADR-056, ``configs/ga.yaml``) has random search's ``network``,
+``fitness``, ``budget`` (``--units`` overrides ``budget.units``: one unit is one generation) and
+``exams``, plus ``population`` (``size`` N >= 2, ``elite`` E < N), ``selection`` (``method``
+tournament or rank, ``tournament_size`` k, ``rank_pressure`` s in [1, 2]) and ``variation``
+(``crossover_rate`` c and ``mutation_rate`` p in [0, 1], ``mutation_strength`` sigma >= 0).
+
 The learners keep their own plain settings (``learn/`` does not use Pydantic); this module
 converts between the file and them. Every list of valid names comes from the module that owns it.
 """
@@ -75,7 +82,8 @@ from neurodrive.env.car import ACTION_SIZE
 from neurodrive.env.sensors import OBSERVATION_SIZE
 from neurodrive.env.track import Track
 from neurodrive.experiment.exam import DEFAULT_TRACKS_DIR, EXAM_V1, TRAINING_TRACK
-from neurodrive.learn.evolution.random_search import RandomSearchSettings
+from neurodrive.learn.evolution.ga import SELECTIONS, BreedingSettings, GASettings
+from neurodrive.learn.evolution.random_search import FITNESS_FORMULAS, RandomSearchSettings
 from neurodrive.learn.supervised.dagger import DaggerSettings
 from neurodrive.learn.supervised.demos import RANDOM_START_HEADING, RANDOM_START_LATERAL
 from neurodrive.learn.supervised.imitation import ImitationSettings
@@ -251,7 +259,8 @@ def _track_split(name: str) -> str:
 
 
 class FitnessSection(_Section):
-    """Where fitness is measured: a training track and the starts (the exam's layout by default)."""
+    """Where fitness is measured: a training track and the starts (the exam's layout by default),
+    and its formula (task 7.9: time_bonus, the default, finish_bonus or progress)."""
 
     track: str = TRAINING_TRACK
     start_fractions: list[Annotated[float, Field(ge=0.0, lt=1.0)]] = Field(
@@ -261,6 +270,12 @@ class FitnessSection(_Section):
         default_factory=lambda: list(EXAM_V1.lateral_offsets), min_length=1
     )
     target_laps: Annotated[StrictInt, Field(ge=1)] = 2
+    formula: str = "time_bonus"  # time_bonus | finish_bonus | progress (task 7.9, ADR-062)
+
+    @field_validator("formula")
+    @classmethod
+    def _formula(cls, v: str) -> str:
+        return _one_of(v, FITNESS_FORMULAS, "fitness formula")
 
     @field_validator("track")
     @classmethod
@@ -295,6 +310,61 @@ class RandomSearchRunConfig(_Section):
     tag: str = Field("default", pattern=r"^[A-Za-z0-9_-]+$")
     network: DrivingNetworkSection = Field(default_factory=DrivingNetworkSection)
     search: SearchSection = Field(default_factory=SearchSection)
+    fitness: FitnessSection = Field(default_factory=FitnessSection)
+    budget: BudgetSection
+    exams: bool = True
+
+
+_BREEDING = BreedingSettings()  # the GA's defaults live in learn/evolution/ga.py
+
+
+class PopulationSection(_Section):
+    """The GA's generation: N networks, of which the best E pass unchanged to the next."""
+
+    size: Annotated[StrictInt, Field(ge=2)] = GASettings().population
+    elite: Annotated[StrictInt, Field(ge=0)] = _BREEDING.elite
+
+    @model_validator(mode="after")
+    def _children_left(self) -> "PopulationSection":
+        if self.elite >= self.size:
+            raise ValueError(
+                f"elite ({self.elite}) must be smaller than size ({self.size}), "
+                "or no child is ever made"
+            )
+        return self
+
+
+class SelectionSection(_Section):
+    """How the GA picks parents: tournaments of k, or linear ranking with pressure s."""
+
+    method: str = _BREEDING.selection
+    tournament_size: Annotated[StrictInt, Field(ge=1)] = _BREEDING.tournament_size
+    rank_pressure: Annotated[float, Field(ge=1.0, le=2.0)] = _BREEDING.rank_pressure
+
+    @field_validator("method")
+    @classmethod
+    def _method(cls, v: str) -> str:
+        return _one_of(v, SELECTIONS, "selection")
+
+
+class VariationSection(_Section):
+    """How the GA makes children: crossover rate c, mutation rate p and strength sigma."""
+
+    crossover_rate: Annotated[float, Field(ge=0.0, le=1.0)] = _BREEDING.crossover_rate
+    mutation_rate: Annotated[float, Field(ge=0.0, le=1.0)] = _BREEDING.mutation_rate
+    mutation_strength: Annotated[float, Field(ge=0.0)] = _BREEDING.mutation_strength
+
+
+class GARunConfig(_Section):
+    """A complete genetic-algorithm run (task 7.5, ADR-056): one unit is one generation."""
+
+    method: Literal["ga"]
+    seed: Annotated[StrictInt, Field(ge=0)] = 0
+    tag: str = Field("default", pattern=r"^[A-Za-z0-9_-]+$")
+    network: DrivingNetworkSection = Field(default_factory=DrivingNetworkSection)
+    population: PopulationSection = Field(default_factory=PopulationSection)
+    selection: SelectionSection = Field(default_factory=SelectionSection)
+    variation: VariationSection = Field(default_factory=VariationSection)
     fitness: FitnessSection = Field(default_factory=FitnessSection)
     budget: BudgetSection
     exams: bool = True
@@ -394,13 +464,17 @@ class DaggerRunConfig(_Section):
     exams: bool = True
 
 
-RunConfig = ToyRunConfig | RandomSearchRunConfig | ImitationRunConfig | DaggerRunConfig
-METHODS = ("toy", "random_search", "imitation", "dagger")
+RunConfig = (
+    ToyRunConfig | RandomSearchRunConfig | ImitationRunConfig | DaggerRunConfig | GARunConfig
+)
+METHODS = ("toy", "random_search", "imitation", "dagger", "ga")
 _MODELS: dict[str, type[_Section]] = {
     "random_search": RandomSearchRunConfig,
     "imitation": ImitationRunConfig,
     "dagger": DaggerRunConfig,
+    "ga": GARunConfig,
 }
+_BY_UNITS = ("random_search", "ga")  # methods whose --units overrides budget.units
 
 
 # --- reading ---
@@ -445,8 +519,8 @@ def parse_config(
     """Validate ``data`` (a parsed YAML mapping) and return the config.
 
     ``seed``, ``tag``, ``epochs`` (toy and imitation: training.epochs) and ``units`` (random
-    search: budget.units; DAgger: dagger.rounds) override the file's values when given. A
-    Phase 3 flat config is converted first. Raises ``ConfigError`` listing every problem.
+    search and GA: budget.units; DAgger: dagger.rounds) override the file's values when given.
+    A Phase 3 flat config is converted first. Raises ``ConfigError`` listing every problem.
     """
     if not isinstance(data, dict):
         raise ConfigError(["the file must contain a mapping (field: value lines)"], source)
@@ -462,7 +536,7 @@ def parse_config(
         data["tag"] = tag
     method = data.get("method")
     if epochs is not None:
-        if method in ("random_search", "dagger"):
+        if method in (*_BY_UNITS, "dagger"):
             raise ConfigError(["--epochs is for toy and imitation configs; use --units"], source)
         training = data.get("training")
         data["training"] = (
@@ -474,9 +548,9 @@ def parse_config(
             {**section, "rounds": units} if isinstance(section, dict) else {"rounds": units}
         )
     elif units is not None:
-        if method != "random_search":
+        if method not in _BY_UNITS:
             raise ConfigError(
-                ["--units is for random_search and dagger configs; use --epochs"], source
+                ["--units is for random_search, ga and dagger configs; use --epochs"], source
             )
         budget = data.get("budget")
         data["budget"] = (
@@ -562,6 +636,34 @@ def to_random_search_settings(config: RandomSearchRunConfig) -> RandomSearchSett
         start_fractions=tuple(config.fitness.start_fractions),
         lateral_offsets=tuple(config.fitness.lateral_offsets),
         target_laps=config.fitness.target_laps,
+        fitness_formula=config.fitness.formula,
+    )
+
+
+def to_ga_settings(config: GARunConfig) -> GASettings:
+    """The learner's ``GASettings`` (with its ``BreedingSettings``) for this config."""
+    net, sel, var = config.network, config.selection, config.variation
+    return GASettings(
+        spec=NetworkSpec(
+            layer_sizes=tuple(net.layer_sizes),
+            hidden_activation=net.hidden_activation,
+            output_activation=net.output_activation,
+        ),
+        population=config.population.size,
+        init_scheme=net.init_scheme,
+        start_fractions=tuple(config.fitness.start_fractions),
+        lateral_offsets=tuple(config.fitness.lateral_offsets),
+        target_laps=config.fitness.target_laps,
+        fitness_formula=config.fitness.formula,
+        breeding=BreedingSettings(
+            elite=config.population.elite,
+            selection=sel.method,
+            tournament_size=sel.tournament_size,
+            rank_pressure=sel.rank_pressure,
+            crossover_rate=var.crossover_rate,
+            mutation_rate=var.mutation_rate,
+            mutation_strength=var.mutation_strength,
+        ),
     )
 
 

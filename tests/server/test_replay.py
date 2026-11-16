@@ -79,6 +79,7 @@ def load_checkpoint(session: LiveSession, run: str, unit: int, track: str) -> li
 # ── the replay is the exam drive ───────────────────────────────────────────────────────────────
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("track", ["train_loop_01", "hairpins_01"])
 def test_a_replayed_checkpoint_drives_exactly_its_exam_drive(runs, track):
     store = run_of(runs, "random_search")
@@ -107,6 +108,7 @@ def test_a_replayed_checkpoint_drives_exactly_its_exam_drive(runs, track):
         assert world.step_count == max(e["steps"] for e in part["episodes"])
 
 
+@pytest.mark.slow
 def test_the_replay_offers_what_every_network_driver_offers(runs):
     store = run_of(runs, "random_search")
     session = session_for(runs)
@@ -121,6 +123,7 @@ def test_the_replay_offers_what_every_network_driver_offers(runs):
     assert reset.step == 0 and len(reset.cars.x) == 10
 
 
+@pytest.mark.slow
 def test_refused_checkpoints_keep_the_loaded_scenario(runs):
     search, toy, expert = (run_of(runs, m) for m in ("random_search", "toy_xor", "scripted_expert"))
     session = session_for(runs)
@@ -170,6 +173,7 @@ def assert_same_ending(session: LiveSession, direct: World) -> None:
     assert world.progress.tolist() == direct.progress.tolist()  # to the last digit
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("shift", [(-3.0, 0.2618), (1.5, -0.5236)])
 def test_a_shifted_replay_drives_exactly_the_studys_drive(runs, shift):
     store = run_of(runs, "random_search")
@@ -197,6 +201,7 @@ def test_a_shifted_replay_drives_exactly_the_studys_drive(runs, shift):
     assert session._world.start["heading_offset"].tolist() == [heading] * 10
 
 
+@pytest.mark.slow
 def test_the_expert_drives_the_same_shifted_starts(runs):
     session = session_for(runs)
     replies = send(
@@ -212,6 +217,7 @@ def test_the_expert_drives_the_same_shifted_starts(runs):
     assert_same_ending(session, drive_shifted("train_loop_01", ScriptedExpert, -3.0, 0.2618))
 
 
+@pytest.mark.slow
 def test_a_shift_without_the_checkpoint_or_expert_driver_is_refused(runs):
     session = session_for(runs)
     send(session, type="load_scenario", track="train_loop_01", policy="constant", n_cars=3)
@@ -232,6 +238,7 @@ def test_a_shift_without_the_checkpoint_or_expert_driver_is_refused(runs):
 # ── new bests get a checkpoint (D2) ────────────────────────────────────────────────────────────
 
 
+@pytest.mark.slow
 def test_every_new_best_of_random_search_has_a_checkpoint_and_an_exam(runs):
     store = run_of(runs, "random_search")
     improved = [m["unit"] for m in store.read_metrics() if m["improved"]]
@@ -281,6 +288,7 @@ def test_the_diff_of_the_worked_example(diff_run):
         assert client.get(unknown).status_code == 404
 
 
+@pytest.mark.slow
 def test_exam_cards_are_served_as_stored(runs):
     store = run_of(runs, "random_search")
     unit = store.exam_units()[-1]
@@ -293,11 +301,12 @@ def test_exam_cards_are_served_as_stored(runs):
         assert client.get(f"/api/runs/{toy.path.name}/exams/0").status_code == 404
 
 
+@pytest.mark.slow
 def test_a_checkpoint_replay_over_the_live_socket(runs):
     store = run_of(runs, "random_search")
     with TestClient(create_app(runs_dir=runs)) as client:
         with client.websocket_connect("/ws/live") as ws:
-            assert json.loads(ws.receive_text())["api"] == "v1.20"
+            assert json.loads(ws.receive_text())["api"] == "v1.25"
             ws.send_text(
                 json.dumps(
                     {
