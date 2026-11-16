@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { defaultLayout, effectivePartner, sanitizeLayout, useLayout } from "./layout";
+import { defaultLayout, effectivePartner, resolveTheme, sanitizeLayout, useLayout } from "./layout";
 
 describe("sanitizeLayout", () => {
   it("falls back to the defaults for missing or broken data", () => {
@@ -14,6 +14,26 @@ describe("sanitizeLayout", () => {
     expect(layout.mode).toBe("split");
     expect(layout.splitPartner).toBe(defaultLayout.splitPartner);
     expect(layout.drawerOpen).toEqual({ environment: true, network: false, experiment: true });
+  });
+
+  it("keeps a saved theme and falls back to following the system", () => {
+    expect(defaultLayout.theme).toBe("auto");
+    expect(sanitizeLayout({ theme: "dark" }).theme).toBe("dark");
+    expect(sanitizeLayout({ theme: "light" }).theme).toBe("light");
+    expect(sanitizeLayout({ theme: "sepia" }).theme).toBe("auto");
+    expect(sanitizeLayout({ theme: 1 }).theme).toBe("auto");
+  });
+});
+
+describe("resolveTheme", () => {
+  it("uses an explicit choice whatever the system says", () => {
+    expect(resolveTheme("light", true)).toBe("light");
+    expect(resolveTheme("dark", false)).toBe("dark");
+  });
+
+  it("follows the system on auto", () => {
+    expect(resolveTheme("auto", true)).toBe("dark");
+    expect(resolveTheme("auto", false)).toBe("light");
   });
 });
 
@@ -45,6 +65,13 @@ describe("layout store", () => {
     useLayout.getState().setSplitPartner("experiment");
     expect(useLayout.getState().mode).toBe("all");
     expect(useLayout.getState().splitPartner).toBe("experiment");
+  });
+
+  it("changes the theme setting", () => {
+    useLayout.getState().setTheme("dark");
+    expect(useLayout.getState().theme).toBe("dark");
+    useLayout.getState().setTheme("auto");
+    expect(useLayout.getState().theme).toBe("auto");
   });
 
   it("toggles one page's drawer without touching the others", () => {

@@ -28,7 +28,7 @@
 }
 
 .neuron-diagram .node-fill {
-  fill: var(--accent);
+  fill: var(--pos);
   stroke: none;
 }
 
@@ -54,11 +54,11 @@
 }
 
 .wire-pos {
-  stroke: var(--accent);
+  stroke: var(--pos);
 }
 
 .wire-neg {
-  stroke: var(--warn);
+  stroke: var(--neg);
 }
 
 .wire-out {
@@ -86,12 +86,12 @@
 }
 
 .dial-arrow line {
-  stroke: var(--accent);
+  stroke: var(--text-2);
   stroke-linecap: round;
 }
 
 .dial-arrow polygon {
-  fill: var(--accent);
+  fill: var(--text-2);
 }
 
 .neuron-grid {
@@ -185,7 +185,7 @@
 }
 
 .chart-curve {
-  stroke: var(--accent);
+  stroke: var(--text-2);
   stroke-width: 2;
 }
 
@@ -253,11 +253,11 @@
 }
 
 .net-edge-pos {
-  stroke: var(--accent);
+  stroke: var(--pos);
 }
 
 .net-edge-neg {
-  stroke: var(--warn);
+  stroke: var(--neg);
 }
 
 /* a gene taken from a GA network's second parent, in the mutation diff (task 7.8) */
@@ -292,12 +292,12 @@
 }
 
 .net-fill-pos {
-  fill: var(--accent);
+  fill: var(--pos);
   stroke: none;
 }
 
 .net-fill-neg {
-  fill: var(--warn);
+  fill: var(--neg);
   stroke: none;
 }
 
@@ -500,11 +500,11 @@
 }
 
 .cnet-fill-pos {
-  background: var(--accent);
+  background: var(--pos);
 }
 
 .cnet-fill-neg {
-  background: var(--warn);
+  background: var(--neg);
 }
 
 .cnet-cells {
@@ -732,12 +732,12 @@
 }
 
 .ray-legend-pos {
-  color: var(--accent);
+  color: var(--pos);
   font-weight: 600;
 }
 
 .ray-legend-neg {
-  color: var(--warn);
+  color: var(--neg);
   font-weight: 600;
 }
 

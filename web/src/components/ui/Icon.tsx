@@ -1,7 +1,8 @@
 // One small icon set, drawn on a 16 px grid with a 1.5 px stroke, so every icon has the same
 // weight as the text beside it. Icons never carry meaning alone: every button that uses one also
 // has a text label or an aria-label and a tooltip.
-// Lifted unchanged from the redesign prototype (prototypes/2d-redesign/src/ui/Icon.tsx, task S0).
+// Lifted unchanged from the redesign prototype (prototypes/2d-redesign/src/ui/Icon.tsx, task S0);
+// task S1 added `all` (three columns) for the All layout, which the prototype does not have.
 
 const PATHS: Record<string, string> = {
   play: "M5 3.5v9l7.5-4.5z",
@@ -27,6 +28,7 @@ const PATHS: Record<string, string> = {
   flask: "M6.2 2.5h3.6M6.8 2.5v4L3.4 12a1 1 0 0 0 .9 1.5h7.4a1 1 0 0 0 .9-1.5L9.2 6.5v-4M5 10h6",
   split: "M2.5 3.5h11v9h-11zM8 3.5v9",
   page: "M2.5 3.5h11v9h-11zM10.5 3.5v9",
+  all: "M2.5 3.5h11v9h-11zM6.2 3.5v9M9.8 3.5v9",
   rays: "M3 13 13 3M3 13l9.5-4M3 13l4-9.5",
   trail: "M2.5 12.5c2-5 4-1 6-4s2.5-4 5-5",
   info: "M8 13.5a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11zM8 7.3v3.5M8 5.2v.1",

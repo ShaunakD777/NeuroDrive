@@ -4,10 +4,12 @@ import { Icon, type IconName } from "./Icon";
 
 // The shared controls of the redesign (prototypes/2d-redesign/DESIGN_SPEC.md §6): once the views
 // are rebuilt, every interactive element is one of these, so hover, pressed, selected, focus and
-// disabled states look the same everywhere. Lifted from the prototype in task S0 and not used yet;
-// their styles arrive with step S1. Each takes the test id the browser tests already use for the
-// element it replaces (a Select's `testId`, one `testId` per Segmented option), so no hook is lost
-// when a view moves onto them (prototypes/2d-redesign/MIGRATION_AUDIT.md §7.4).
+// disabled states look the same everywhere. Lifted from the prototype in task S0. Task S1 styles
+// Button and Segmented (base.css) and uses Segmented in the top bar; the others are styled when
+// their first user arrives, because production's view CSS already uses some of their class
+// names. Each takes the test id the browser tests already use for the element it replaces (a
+// Select's `testId`, one `testId` per Segmented option), so no hook is lost when a view moves onto
+// them (prototypes/2d-redesign/MIGRATION_AUDIT.md §7.4).
 
 export function Button({
   children,
@@ -67,6 +69,7 @@ export function Segmented<T extends string>({
           key={o.id}
           type="button"
           aria-pressed={o.id === value}
+          aria-label={o.label ? undefined : o.hint}
           disabled={o.disabled}
           data-tip={o.hint}
           onClick={() => onChange(o.id)}

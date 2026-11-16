@@ -158,11 +158,11 @@ neurodrive/
 │  ├─ scripts/                   gen-types.mjs: Pydantic JSON Schema → TypeScript (`npm run gen:types`)
 │  ├─ src/api/                   REST client, WebSocket client, generated types (committed)
 │  ├─ src/nav/                   the views table and hash routing (#/environment, #/network, #/experiment)
-│  ├─ src/state/                 selection store, layout store (Page/Split/All, drawers), playback clock, runs watch + `/ws/runs` hook
+│  ├─ src/state/                 selection store, layout store (Page/Split/All, drawers, theme), playback clock, runs watch + `/ws/runs` hook
 │  ├─ src/views/environment/     canvas renderer, trails, HUD, population mode
 │  ├─ src/views/network/         SVG diagram, output inspector, what-if panel, diff
 │  ├─ src/views/experiment/      toy lab (ToyLab, LossChart, ...), Compare runs (CompareRuns, RunList, CompareChart), Training (TrainingRuns, LiveChart; task 5.8), Timeline (task 5.9), Datasets (DatasetView; task 6.2)
-│  ├─ src/components/            shared UI pieces (top bar, drawer, view panel); `ui/`: the redesign's shared controls (task S0)
+│  ├─ src/components/            shared UI pieces (top bar, breadcrumb, drawer, view panel); `ui/`: the redesign's shared controls (task S0)
 │  └─ src/styles/                stylesheets: tokens, base, one per view, imported in order by `index.css` (task S0)
 └─ docs/                         concept, architecture, roadmap, checklist, protocol, journal ...
 ```
@@ -790,6 +790,18 @@ them (`npm run gen:types`), so the two sides cannot drift apart.
   input bars, one strip of coloured cells per hidden layer, output bars with words, all clickable.
 - **Layout switch:** Page (default), Split (any two views side by side, resizable) and All (the
   three panels). The choice is remembered per browser.
+- **Top bar (task S1):** dark in both themes; the brand mark, the view tabs (links, each with its
+  view's question as a tooltip), the **breadcrumb** and, on the right, the layout switch, the theme
+  switch and the connection badge. The breadcrumb (`components/Breadcrumb.tsx`) shows the shared
+  selection in the concept's order: where the cars' behaviour comes from (Run › Generation › Start
+  for a GA race, Run › Checkpoint › Track for a replay, Driver › Track otherwise), then Car › Neuron
+  › Moment. It only reads the live scenario and frame, the selection store and the playback clock;
+  each part is a button that opens the view where that part is chosen.
+- **Theme (task S1, ADR-063 D4):** a `theme` setting in the layout store, light, dark or follow the
+  system (`auto`, the default), remembered per browser. The app always writes the resolved theme
+  to `<html data-theme>`; the colour tokens (`styles/tokens.css`) are defined per theme, and the
+  canvases read CSS variables on every draw, so everything follows. Until task E1 the track canvas
+  reads its own `--w-*` tokens, which keep its pre-redesign colours.
 - The selection store (§8.1) and the live connection belong to the app, not to a page, so they
   survive page changes; the linking rules in §8.2 apply in every layout.
 

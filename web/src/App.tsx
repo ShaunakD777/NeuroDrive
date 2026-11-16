@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useLayoutEffect } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 
 import { useLiveConnection } from "./api/useLiveConnection";
@@ -7,7 +7,7 @@ import { TopBar } from "./components/TopBar";
 import { ViewPanel } from "./components/ViewPanel";
 import { useRoute } from "./nav/route";
 import { VIEWS, viewInfo, type ViewId } from "./nav/views";
-import { effectivePartner, useLayout } from "./state/layout";
+import { applyTheme, effectivePartner, onSystemThemeChange, useLayout } from "./state/layout";
 import { useLive } from "./state/live";
 import { EnvironmentView } from "./views/environment/EnvironmentView";
 import { ExperimentView } from "./views/experiment/ExperimentView";
@@ -19,7 +19,14 @@ export function App() {
   const status = useLive((s) => s.status);
 
   const current = useRoute();
-  const { mode, setMode } = useLayout();
+  const { mode, setMode, theme } = useLayout();
+
+  // Keep <html data-theme> in step with the setting and, on "follow the system", with the
+  // operating system (main.tsx already set it once before the first render).
+  useLayoutEffect(() => {
+    applyTheme(theme);
+    return onSystemThemeChange(() => applyTheme(theme));
+  }, [theme]);
 
   return (
     <div className="app">

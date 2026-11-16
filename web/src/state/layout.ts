@@ -9,18 +9,24 @@ import { isViewId, VIEW_IDS, type ViewId } from "../nav/views";
 
 export type LayoutMode = "page" | "split" | "all";
 
+/** The theme setting: always light, always dark, or follow the operating system ("auto"). */
+export type ThemeChoice = "light" | "dark" | "auto";
+
 export interface LayoutState {
   mode: LayoutMode;
   /** The view shown next to the current one in Split mode. */
   splitPartner: ViewId;
   /** Whether each page's companion drawer is open. */
   drawerOpen: Record<ViewId, boolean>;
+  /** Light, dark or follow the system (task S1). */
+  theme: ThemeChoice;
 }
 
 export interface LayoutActions {
   setMode: (mode: LayoutMode) => void;
   setSplitPartner: (view: ViewId) => void;
   toggleDrawer: (view: ViewId) => void;
+  setTheme: (theme: ThemeChoice) => void;
 }
 
 export const STORAGE_KEY = "neurodrive.layout.v1";
@@ -29,9 +35,11 @@ export const defaultLayout: LayoutState = {
   mode: "page",
   splitPartner: "network",
   drawerOpen: { environment: true, network: true, experiment: true },
+  theme: "auto",
 };
 
 const LAYOUT_MODES: readonly LayoutMode[] = ["page", "split", "all"];
+const THEMES: readonly ThemeChoice[] = ["light", "dark", "auto"];
 
 /** Keep only well-formed saved values; anything missing or odd falls back to the default. */
 export function sanitizeLayout(raw: unknown): LayoutState {
@@ -49,7 +57,37 @@ export function sanitizeLayout(raw: unknown): LayoutState {
       : defaultLayout.mode,
     splitPartner: isViewId(saved.splitPartner) ? saved.splitPartner : defaultLayout.splitPartner,
     drawerOpen,
+    theme: THEMES.includes(saved.theme as ThemeChoice) ? (saved.theme as ThemeChoice) : defaultLayout.theme,
   };
+}
+
+/**
+ * The theme actually shown: the setting itself when it is "light" or "dark"; for "auto", dark
+ * exactly when the operating system asks for dark.
+ */
+export function resolveTheme(choice: ThemeChoice, systemIsDark: boolean): "light" | "dark" {
+  if (choice !== "auto") return choice;
+  return systemIsDark ? "dark" : "light";
+}
+
+const DARK_QUERY = "(prefers-color-scheme: dark)";
+
+/**
+ * Write the resolved theme to `<html data-theme>`, which the stylesheets (tokens.css) and the
+ * canvases (they read CSS variables on every draw) follow. Does nothing outside a browser.
+ */
+export function applyTheme(choice: ThemeChoice = useLayout.getState().theme): void {
+  if (typeof document === "undefined") return;
+  const systemIsDark = globalThis.matchMedia?.(DARK_QUERY).matches ?? false;
+  document.documentElement.dataset.theme = resolveTheme(choice, systemIsDark);
+}
+
+/** Call `listener` whenever the operating system switches between light and dark; returns the unsubscribe. */
+export function onSystemThemeChange(listener: () => void): () => void {
+  const media = globalThis.matchMedia?.(DARK_QUERY);
+  if (!media) return () => {};
+  media.addEventListener("change", listener);
+  return () => media.removeEventListener("change", listener);
 }
 
 /** The partner actually shown in Split mode: never the current view itself. */
@@ -69,8 +107,11 @@ function loadLayout(): LayoutState {
 
 function saveLayout(state: LayoutState): void {
   try {
-    const { mode, splitPartner, drawerOpen } = state;
-    globalThis.localStorage?.setItem(STORAGE_KEY, JSON.stringify({ mode, splitPartner, drawerOpen }));
+    const { mode, splitPartner, drawerOpen, theme } = state;
+    globalThis.localStorage?.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ mode, splitPartner, drawerOpen, theme }),
+    );
   } catch {
     // Storage unavailable: the layout still works, it just is not remembered.
   }
@@ -82,6 +123,7 @@ export const useLayout = create<LayoutState & LayoutActions>()((set) => ({
   setSplitPartner: (splitPartner) => set({ splitPartner }),
   toggleDrawer: (view) =>
     set((s) => ({ drawerOpen: { ...s.drawerOpen, [view]: !s.drawerOpen[view] } })),
+  setTheme: (theme) => set({ theme }),
 }));
 
 useLayout.subscribe(saveLayout);

@@ -29,20 +29,24 @@ export interface Theme {
 
 const RANK_FALLBACK = ["#0d366b", "#184f95", "#256abf", "#3987e5", "#6da7ec"];
 
-/** Read the colours from the CSS variables in effect on `el`. */
+/**
+ * Read the colours from the CSS variables in effect on `el`. The canvas has its own `--w-*`
+ * tokens (task S1), holding the colours it had before the redesign, so the new page palette does
+ * not change the track; task E1 gives the world its own palette.
+ */
 export function readTheme(el: Element): Theme {
   const style = getComputedStyle(el);
   const get = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback;
   return {
-    bg: get("--bg", "#f6f7f9"),
-    road: get("--surface", "#ffffff"),
-    edge: get("--text-muted", "#5b6472"),
-    text: get("--text", "#1b1f27"),
-    muted: get("--border", "#d5d9e0"),
-    accent: get("--accent", "#2563eb"),
-    ok: get("--ok", "#15803d"),
-    warn: get("--warn", "#b45309"),
-    bad: get("--bad", "#b91c1c"),
+    bg: get("--w-bg", "#f6f7f9"),
+    road: get("--w-road", "#ffffff"),
+    edge: get("--w-edge", "#5b6472"),
+    text: get("--w-text", "#1b1f27"),
+    muted: get("--w-muted", "#d5d9e0"),
+    accent: get("--w-accent", "#2563eb"),
+    ok: get("--w-ok", "#15803d"),
+    warn: get("--w-warn", "#b45309"),
+    bad: get("--w-bad", "#b91c1c"),
     rank: RANK_FALLBACK.map((fallback, k) => get(`--rank-${k + 1}`, fallback)),
   };
 }
