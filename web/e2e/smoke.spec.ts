@@ -323,3 +323,61 @@ test("bad numbers are not sent: the box shows the real value again", async ({ pa
   await cars.press("Enter");
   await expect(cars).toHaveValue("1");
 });
+
+test("the theme switch has three positions and the choice survives a reload", async ({ page }) => {
+  // "Follow the system" is the default: the page takes the operating system's choice.
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.goto("/#/environment");
+  const html = page.locator("html");
+  await expect(page.getByTestId("theme-auto")).toHaveAttribute("aria-pressed", "true");
+  await expect(html).toHaveAttribute("data-theme", "dark");
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect(html).toHaveAttribute("data-theme", "light");
+
+  // An explicit choice wins over the system, and is remembered.
+  await page.getByRole("group", { name: "Theme" }).getByRole("button", { name: "Dark" }).click();
+  await expect(html).toHaveAttribute("data-theme", "dark");
+  // --bg in the dark theme (polled: the background fades over 200 ms)
+  await expect
+    .poll(() => page.evaluate(() => getComputedStyle(document.body).backgroundColor))
+    .toBe("rgb(11, 13, 17)");
+  await page.reload();
+  await expect(page.getByTestId("theme-dark")).toHaveAttribute("aria-pressed", "true");
+  await expect(html).toHaveAttribute("data-theme", "dark");
+
+  await page.getByTestId("theme-light").click();
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(html).toHaveAttribute("data-theme", "light");
+  await page.reload();
+  await expect(html).toHaveAttribute("data-theme", "light");
+
+  await page.getByTestId("theme-auto").click();
+  await expect(html).toHaveAttribute("data-theme", "dark");
+});
+
+test("the breadcrumb follows the driver and the selection, and opens the view of each part", async ({
+  page,
+}) => {
+  await page.goto("/#/environment");
+  await expect(page.getByTestId("hud-step")).toHaveText("0");
+  const crumbs = page.getByTestId("breadcrumb");
+  await expect(crumbs.getByTestId("crumb-driver")).toContainText("Keyboard");
+  await expect(crumbs.getByTestId("crumb-car")).toContainText("Car 1");
+  await expect(crumbs.getByTestId("crumb-neuron")).toContainText("none");
+  await expect(crumbs.getByTestId("crumb-moment")).toContainText("now");
+
+  await page.getByTestId("select-policy").selectOption("random_networks");
+  const cars = page.getByTestId("input-cars");
+  await cars.fill("5");
+  await cars.press("Enter");
+  await expect(page.getByTestId("select-car").locator("option")).toHaveCount(5);
+  await expect(crumbs.getByTestId("crumb-driver")).toContainText("Random networks");
+  await page.getByTestId("select-car").selectOption("3");
+  await expect(crumbs.getByTestId("crumb-car")).toContainText("Car 4");
+
+  // The Neuron part is chosen in the Network view: clicking it goes there.
+  await crumbs.getByTestId("crumb-neuron").click();
+  await expect(page).toHaveURL(/#\/network$/);
+  await page.getByTestId("net-node-1-5").click();
+  await expect(crumbs.getByTestId("crumb-neuron")).toContainText("Hidden 1 · 6");
+});

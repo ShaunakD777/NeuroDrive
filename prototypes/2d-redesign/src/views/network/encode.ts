@@ -1,0 +1,165 @@
+// How numbers become marks in the network diagram. Pure functions: no React, no network maths
+// (production: web/src/views/network/networkLayout.ts and diff.ts hold the same kind of helper).
+
+import type { OutputReceipt } from "@prod/api/generated";
+import { changeStroke, mutationStroke as prodMutationStroke } from "@prod/views/network/diff";
+import { edgeOpacity, edgeWidth } from "@prod/views/network/networkLayout";
+
+import type { Diff, Mutation, Network } from "../../source/model";
+import type { LineMode } from "../../state/store";
+
+export interface Point {
+  x: number;
+  y: number;
+}
+
+export const FRAME = { width: 860, height: 510, left: 200, right: 686, top: 60, bottom: 42 };
+export const NODE_R = 10;
+export const OUTPUT_R = 13;
+
+/**
+ * Node positions, one array per layer. Columns are spread evenly between the left and right
+ * margins. Rows share one spacing (set by the widest layer) so the hidden layers line up; the
+ * output layer gets a wider spacing because each output carries a label, a value and a bar.
+ */
+export function layoutNodes(sizes: number[]): Point[][] {
+  const columns = sizes.length;
+  const widest = Math.max(...sizes);
+  const usable = FRAME.height - FRAME.top - FRAME.bottom;
+  const gap = Math.min(30, widest > 1 ? usable / (widest - 1) : 0);
+  const middle = FRAME.top + usable / 2;
+  return sizes.map((size, layer) => {
+    const x = FRAME.left + ((FRAME.right - FRAME.left) * layer) / Math.max(1, columns - 1);
+    const g = layer === columns - 1 ? Math.max(gap, 104) : gap;
+    const top = middle - (g * (size - 1)) / 2;
+    return Array.from({ length: size }, (_, i) => ({ x, y: top + g * i }));
+  });
+}
+
+/** A smooth S-curve between two nodes: it leaves and arrives horizontally, so fans stay readable. */
+export function edgePath(a: Point, b: Point, ra: number, rb: number): string {
+  const x1 = a.x + ra;
+  const x2 = b.x - rb;
+  const mid = (x1 + x2) / 2;
+  return `M${x1} ${a.y}C${mid} ${a.y} ${mid} ${b.y} ${x2} ${b.y}`;
+}
+
+export interface Stroke {
+  /** pos = blue, neg = orange, other = grey dashed (second parent), none = barely there. */
+  tone: "pos" | "neg" | "other" | "none";
+  width: number;
+  opacity: number;
+}
+
+/**
+ * A weight: production's own `edgeWidth` and `edgeOpacity` (0.3 + 4·|w| px, capped at |w| = 1),
+ * so the stroke-width that network.spec.ts compares with the weight stays the same after the
+ * migration.
+ */
+export function weightStroke(w: number): Stroke {
+  return { tone: w < 0 ? "neg" : "pos", width: edgeWidth(w), opacity: edgeOpacity(w) };
+}
+
+/** Flow: what the connection carries now (weight × source value), relative to its layer's largest. */
+export function flowStroke(c: number, layerMax: number): Stroke {
+  const size = Math.min(1, Math.abs(c) / Math.max(layerMax, 1e-9));
+  return { tone: c < 0 ? "neg" : "pos", width: 0.3 + 4.4 * size ** 1.3, opacity: 0.04 + 0.92 * size ** 1.5 };
+}
+
+/**
+ * A mutation (task 7.8): production's own `mutationStroke` for a mutated weight and for a gene of
+ * the second parent. One deliberate difference: an unchanged weight stays as a faint line (production
+ * leaves it out), so the network keeps its shape while the few mutated lines stand out.
+ */
+export function mutationStroke(change: number, mutated: boolean, fromOther: boolean): Stroke {
+  const s = prodMutationStroke(change, mutated, fromOther);
+  if (s.kind === null) return { tone: "none", width: 0.5, opacity: 0.05 };
+  return { tone: s.kind, width: s.width, opacity: s.opacity };
+}
+
+/**
+ * A checkpoint change (task 5.9): production's own `changeStroke`, so a migrated diagram draws
+ * the same widths the browser tests read. An unchanged weight is not drawn.
+ */
+export function checkpointStroke(c: number): Stroke {
+  const s = changeStroke(c);
+  return { tone: s.sign ?? "none", width: s.sign === null ? 0.5 : s.width, opacity: s.sign === null ? 0.05 : s.opacity };
+}
+
+export interface Edge {
+  layer: number;
+  from: number;
+  to: number;
+  weight: number;
+}
+
+/** Every connection, weakest first so the strong ones are drawn on top. */
+export function collectEdges(network: Network): Edge[] {
+  const edges: Edge[] = [];
+  network.weights.forEach((matrix, layer) =>
+    matrix.forEach((row, to) => row.forEach((weight, from) => edges.push({ layer, from, to, weight }))),
+  );
+  return edges.sort((a, b) => Math.abs(a.weight) - Math.abs(b.weight));
+}
+
+export function strokeFor(
+  mode: LineMode,
+  e: Edge,
+  flow: number[][][] | null,
+  flowMax: number[],
+  mutation: Mutation | null,
+  diff: Diff | null,
+): Stroke {
+  if (mode === "flow" && flow !== null) return flowStroke(flow[e.layer][e.to][e.from], flowMax[e.layer]);
+  if (mode === "change" && diff !== null) return checkpointStroke(diff.weight_change[e.layer]?.[e.to]?.[e.from] ?? 0);
+  if (mode === "mutation" && mutation !== null) {
+    return mutationStroke(
+      mutation.weight_change[e.layer][e.to][e.from],
+      mutation.weight_mutated[e.layer][e.to][e.from],
+      mutation.weight_from_other[e.layer][e.to][e.from],
+    );
+  }
+  return weightStroke(e.weight);
+}
+
+/**
+ * The strongest routes from the inputs to one output, as a set of edge keys: the `fan[0]`
+ * largest contributions into the output, then for each of those neurons its `fan[1]` largest,
+ * and so on back to the inputs. This is what "why" looks like as a picture.
+ */
+export function strongPaths(flow: number[][][], output: number, fan = [4, 2, 2]): Set<string> {
+  const keys = new Set<string>();
+  let targets = [output];
+  for (let layer = flow.length - 1, depth = 0; layer >= 0; layer--, depth++) {
+    const next = new Set<number>();
+    for (const to of targets) {
+      const row = flow[layer][to];
+      const order = row.map((c, from) => ({ from, size: Math.abs(c) })).sort((a, b) => b.size - a.size);
+      for (const { from } of order.slice(0, fan[depth] ?? 1)) {
+        keys.add(`${layer}-${from}-${to}`);
+        next.add(from);
+      }
+    }
+    targets = [...next];
+  }
+  return keys;
+}
+
+/**
+ * The strongest connections into one output, from what Python sends today: the output's receipt
+ * holds c = weight × value for every neuron of the last hidden layer, so the `fan` largest |c| can
+ * be lit one layer back (PRODUCTION_MAPPING.md N13). Further back needs every layer's
+ * contributions (N14, an API addition), which only the recorded stand-in has.
+ */
+export function receiptPaths(receipts: OutputReceipt[], output: number, lastLayer: number, fan = 4): Set<string> {
+  const receipt = receipts[output];
+  if (receipt === undefined) return new Set();
+  const order = receipt.contributions.map((c, from) => ({ from, size: Math.abs(c) })).sort((a, b) => b.size - a.size);
+  return new Set(order.slice(0, fan).map(({ from }) => `${lastLayer}-${from}-${output}`));
+}
+
+export function nodeName(layer: number, index: number, layers: number, inputs: string[], outputs: string[]): string {
+  if (layer === 0) return inputs[index] ?? `Input ${index + 1}`;
+  if (layer === layers - 1) return outputs[index] ?? `Output ${index + 1}`;
+  return `Hidden ${layer} · ${index + 1}`;
+}

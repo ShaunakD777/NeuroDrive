@@ -4,6 +4,7 @@ import type { RunStatusMessage } from "../api/generated";
 import {
   applyRunsMessage,
   defaultMetric,
+  historyFor,
   initialRunsWatch,
   plottableKeys,
   runsNewestFirst,
@@ -93,6 +94,39 @@ describe("applyRunsMessage", () => {
     s = watchRun(s, B);
     expect(s.watched).toBe(B);
     expect(s.records).toEqual([]);
+  });
+});
+
+describe("historyFor (task S0: the stale-history guard of useRunsSocket)", () => {
+  // Run A's history: two checkpoints and an exam at unit 10, as the server sent it.
+  function watchingA() {
+    let s = applyRunsMessage(initialRunsWatch, status(A));
+    s = applyRunsMessage(s, status(B, { method: "toy_xor" }));
+    s = watchRun(s, A);
+    s = applyRunsMessage(s, metrics(A, true, [5, 10]));
+    s = applyRunsMessage(s, { type: "checkpoint", run_id: A, units: [5, 10] });
+    return applyRunsMessage(s, exam(A, 10));
+  }
+
+  it("hands out the stored history when it is the run asked for", () => {
+    const s = watchingA();
+    expect(historyFor(s, A)).toBe(s);
+  });
+
+  it("never hands out run A's units as run B's in the render before the reset", () => {
+    const shown = historyFor(watchingA(), B);
+    expect(shown.watched).toBe(B);
+    expect(shown.records).toEqual([]);
+    expect(shown.checkpoints).toEqual([]);
+    expect(shown.exams).toEqual([]);
+    // every run's status stays: the Training tool's run list does not flicker
+    expect(Object.keys(shown.runs).sort()).toEqual([A, B].sort());
+  });
+
+  it("also when the caller stops watching, and once the reset has run", () => {
+    expect(historyFor(watchingA(), null).checkpoints).toEqual([]);
+    const reset = watchRun(watchingA(), B);
+    expect(historyFor(reset, B)).toBe(reset);
   });
 });
 

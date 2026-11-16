@@ -1,0 +1,959 @@
+/* Environment view: the stage and everything that floats on it. Floating layers use the HUD
+   tokens (dark in both themes) because the track under them is dark in both themes. */
+
+.scenario {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+
+.scenario .input {
+  width: 46px;
+  text-align: center;
+}
+
+.scenario .input-wide {
+  width: 60px;
+}
+
+.scenario-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-small);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Recording keyboard demonstrations: a second floating bar under the transport (keyboard only). */
+.recbar .rec-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 11px var(--font-label);
+  letter-spacing: 0.06em;
+  color: #ff6b5e;
+}
+
+.recbar .rec-badge::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: rec-pulse 1.2s ease-in-out infinite;
+}
+
+.recbar .hud-input {
+  width: 110px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--hud-border);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--hud-text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.recbar-note {
+  font-size: 11.5px;
+  color: var(--hud-muted);
+  white-space: nowrap;
+}
+
+@keyframes rec-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .recbar .rec-badge::before {
+    animation: none;
+  }
+}
+
+.env-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.stage {
+  position: relative;
+  flex: 1;
+  min-height: 260px;
+  overflow: hidden;
+  background: var(--w-grass);
+}
+
+.stage-box {
+  position: absolute;
+  inset: 0;
+}
+
+.stage-canvas {
+  display: block;
+  cursor: grab;
+  touch-action: none;
+}
+
+.stage-canvas[data-dragging="true"] {
+  cursor: grabbing;
+}
+
+/* A soft darkening towards the corners: depth, and it quiets the area the HUD sits on. */
+.stage-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 45%, transparent 55%, var(--w-vignette) 100%);
+}
+
+.stage-top {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  pointer-events: none;
+}
+
+.stage-top > * {
+  pointer-events: auto;
+}
+
+.stage-top-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--sp-2);
+  pointer-events: none;
+}
+
+.stage-top-right > * {
+  pointer-events: auto;
+}
+
+.stage-top-left {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  pointer-events: none;
+}
+
+.stage-top-left > * {
+  pointer-events: auto;
+}
+
+.hudbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--hud-bg);
+  border: 1px solid var(--hud-border);
+  box-shadow: var(--shadow-2);
+  color: var(--hud-text);
+}
+
+.hudbar .btn {
+  height: 28px;
+}
+
+.hudbar .btn-icon {
+  width: 28px;
+}
+
+.hudbar-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--hud-border);
+}
+
+.hudbar-note {
+  padding: 0 6px;
+  font-family: var(--font-label);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--hud-muted);
+}
+
+.minimap {
+  width: 168px;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--hud-bg);
+  border: 1px solid var(--hud-border);
+  box-shadow: var(--shadow-2);
+}
+
+.minimap svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.minimap-road {
+  fill: none;
+  stroke: #4a505b;
+  stroke-linejoin: round;
+}
+
+.minimap-centre {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.25);
+  stroke-width: 1.2;
+  stroke-dasharray: 5 7;
+}
+
+.minimap-car {
+  stroke: #0f1218;
+  stroke-width: 1.5;
+  cursor: pointer;
+}
+
+.minimap-selected {
+  fill: #b9a6ff;
+  stroke: #ffffff;
+  stroke-width: 3;
+}
+
+.stage-bottom {
+  container-type: inline-size;
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  pointer-events: none;
+}
+
+.stage-bottom > * {
+  pointer-events: auto;
+}
+
+.stage-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: var(--hud-bg);
+  border: 1px solid var(--hud-border);
+  color: var(--hud-muted);
+  font-size: 11.5px;
+  pointer-events: none; /* a legend never blocks a click on a car */
+}
+
+.stage-legend-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.stage-legend b {
+  font-family: var(--font-label);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--hud-text);
+}
+
+.rank-ramp {
+  display: inline-flex;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.rank-ramp i {
+  width: 12px;
+  height: 10px;
+}
+
+.legend-ring {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 2px solid var(--car-elite);
+}
+
+.legend-ghost {
+  display: inline-block;
+  width: 14px;
+  height: 8px;
+  border-radius: 2px;
+  border: 1.5px dashed #e3e6eb;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.legend-faded {
+  width: 14px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--car-rank-3);
+  opacity: 0.4;
+}
+
+.legend-line {
+  width: 16px;
+  height: 3px;
+  border-radius: 2px;
+}
+
+.legend-dash {
+  width: 16px;
+  height: 0;
+  border-top: 2px dashed #e3e6eb;
+}
+
+.endbanner {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px 5px 6px;
+  border-radius: 8px;
+  background: var(--hud-bg);
+  border: 1px solid var(--hud-border);
+  color: var(--hud-text);
+  font-size: 12px;
+}
+
+.endbanner .chip {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--hud-text);
+}
+
+.endbanner[data-kind="bad"] .chip {
+  color: #ff8a80;
+}
+
+.endbanner[data-kind="ok"] .chip {
+  color: #62e092;
+}
+
+.endbanner[data-kind="warn"] .chip {
+  color: #f5b83d;
+}
+
+/* ── Telemetry ───────────────────────────────────────────────────────────────────── */
+
+.telemetry {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  border-radius: 12px;
+  background: var(--hud-bg);
+  border: 1px solid var(--hud-border);
+  box-shadow: var(--shadow-2);
+  color: var(--hud-text);
+  overflow: hidden;
+}
+
+.telemetry[data-past="true"] {
+  border-color: var(--track-select);
+  box-shadow:
+    0 0 0 1px var(--track-select),
+    var(--shadow-2);
+}
+
+.telemetry .eyebrow {
+  color: var(--hud-muted);
+}
+
+.tele-group {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 9px 14px;
+  border-left: 1px solid var(--hud-border);
+  min-width: 0;
+}
+
+.tele-group:first-child {
+  border-left: 0;
+}
+
+.tele-id {
+  min-width: 150px;
+  align-items: flex-start;
+}
+
+.tele-id .chip {
+  margin-top: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--hud-text);
+}
+
+.tele-id .chip[data-kind="bad"] {
+  color: #ff8a80;
+}
+
+.tele-id .chip[data-kind="ok"] {
+  color: #62e092;
+}
+
+.tele-id .chip[data-kind="warn"] {
+  color: #f5b83d;
+}
+
+.tele-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.tele-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.tele-sub {
+  font-size: 11px;
+  color: var(--hud-muted);
+  white-space: nowrap;
+}
+
+.tele-sub b {
+  font-weight: 500;
+  color: var(--hud-text);
+}
+
+.tele-big {
+  font-size: 30px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  min-width: 96px;
+}
+
+.tele-big small {
+  margin-left: 5px;
+  font-family: var(--font-label);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--hud-muted);
+}
+
+.tele-mid {
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.15;
+}
+
+.tele-actions {
+  flex: 1;
+  min-width: 300px;
+  gap: 7px;
+}
+
+.tele-row {
+  display: grid;
+  grid-template-columns: 54px minmax(70px, 1fr) 40px 82px;
+  align-items: center;
+  gap: 8px;
+}
+
+.tele-val {
+  text-align: right;
+  font-size: 12.5px;
+}
+
+.tele-word {
+  font-size: 11px;
+  color: var(--hud-muted);
+  white-space: nowrap;
+}
+
+.gauge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.gauge-end {
+  font-family: var(--font-label);
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--hud-muted);
+}
+
+.gauge-track {
+  position: relative;
+  flex: 1;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--hud-track);
+}
+
+.gauge-track::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -3px;
+  bottom: -3px;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.gauge-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 2px;
+}
+
+.gauge-pos {
+  background: var(--track-pos);
+}
+
+.gauge-neg {
+  background: var(--track-neg);
+}
+
+.tele-progress {
+  min-width: 150px;
+  gap: 5px;
+}
+
+.lapbar {
+  display: flex;
+  gap: 3px;
+}
+
+.lapbar-lap {
+  flex: 1;
+  height: 6px;
+  border-radius: 2px;
+  background: var(--hud-track);
+  overflow: hidden;
+}
+
+.lapbar-fill {
+  display: block;
+  height: 100%;
+  background: #f1f3f6;
+}
+
+.tele-rays {
+  align-items: center;
+  gap: 0;
+  min-width: 176px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.rayfan {
+  width: 104px;
+  height: 52px;
+}
+
+.rayfan-range {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.14);
+  stroke-width: 1;
+}
+
+.rayfan-ray {
+  stroke-linecap: round;
+}
+
+.rayfan-clear {
+  stroke: var(--ray-clear);
+  fill: var(--ray-clear);
+}
+
+.rayfan-near {
+  stroke: var(--ray-near);
+  fill: var(--ray-near);
+}
+
+.rayfan-danger {
+  stroke: var(--ray-danger);
+  fill: var(--ray-danger);
+}
+
+.rayfan-none {
+  stroke: var(--ray-none);
+  stroke-dasharray: 3 3;
+}
+
+.rayfan-dot {
+  stroke: none;
+}
+
+.rayfan-car {
+  fill: #f1f3f6;
+}
+
+.tele-raynums {
+  display: grid;
+  grid-template-columns: repeat(5, 30px);
+  font-size: 10.5px;
+  text-align: center;
+  color: var(--hud-text);
+}
+
+.tele-raynums [data-dim="true"] {
+  opacity: 0.35;
+}
+
+.tele-fit {
+  min-width: 170px;
+}
+
+.tele-clock {
+  min-width: 84px;
+}
+
+/* ── Look-back timeline ──────────────────────────────────────────────────────────── */
+
+.trailstrip {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) 230px;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 8px var(--sp-4);
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+}
+
+.trailstrip-side {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.trailstrip-end {
+  align-items: flex-end;
+}
+
+.trailstrip-now {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.trailstrip-now small {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 400;
+  color: var(--text-3);
+}
+
+.trailstrip-hint {
+  font-size: 11.5px;
+  color: var(--text-3);
+  text-align: right;
+}
+
+.trailstrip-chart {
+  position: relative;
+  padding-bottom: 14px;
+}
+
+.trailstrip-chart svg {
+  display: block;
+  width: 100%;
+  height: 56px;
+  border-radius: var(--r-1);
+  background: var(--surface-2);
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.trailstrip[data-disabled="true"] .trailstrip-chart svg {
+  cursor: default;
+  opacity: 0.75;
+}
+
+.trailstrip-zero {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.trailstrip-area {
+  transition: opacity var(--dur-2) var(--ease);
+}
+
+.trailstrip-area.dim {
+  opacity: 0.25;
+}
+
+.ts-pos {
+  fill: var(--pos);
+}
+
+.ts-neg {
+  fill: var(--neg);
+}
+
+
+.trailstrip-cursor {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.trailstrip-label {
+  position: absolute;
+  left: 6px;
+  font-family: var(--font-label);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-2);
+  pointer-events: none;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--surface-2) 82%, transparent);
+}
+
+.trailstrip-scale {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--text-3);
+}
+
+/* ── Standings (drawer) ──────────────────────────────────────────────────────────── */
+
+.standings-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--border);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-2);
+}
+
+.standings-summary span {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 10px;
+  background: var(--surface);
+}
+
+.standings-summary b {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.standings-table tbody tr {
+  cursor: pointer;
+}
+
+.standings-table td {
+  padding: 4px 8px;
+}
+
+.standings-car {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.standings-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+
+.standings-swatch[data-elite="true"] {
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 1.5px var(--surface),
+    0 0 0 3px var(--car-elite);
+}
+
+.standings-role {
+  display: inline-flex;
+  color: var(--warn);
+  position: relative;
+}
+
+.standings-status {
+  display: inline-flex;
+  position: relative;
+  color: var(--idle);
+}
+
+.standings-status[data-kind="ok"] {
+  color: var(--ok);
+}
+
+.standings-status[data-kind="bad"] {
+  color: var(--bad);
+}
+
+.standings-status[data-kind="warn"] {
+  color: var(--warn);
+}
+
+.standings-progress {
+  display: block;
+  width: 74px;
+  height: 5px;
+  border-radius: 2px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.standings-progress span {
+  display: block;
+  height: 100%;
+  background: var(--text-2);
+}
+
+.standings-progress span[data-kind="ok"] {
+  background: var(--ok-fill);
+}
+
+.standings-progress span[data-kind="bad"] {
+  background: var(--bad-fill);
+}
+
+.standings-progress span[data-kind="warn"] {
+  background: var(--warn-fill);
+}
+
+.standings-progress span[data-kind="idle"] {
+  background: var(--idle-fill);
+}
+
+/* ── Compact (drawer) ────────────────────────────────────────────────────────────── */
+
+.env-compact {
+  position: relative;
+  height: 100%;
+  min-height: 220px;
+  background: var(--w-grass);
+}
+
+.env-compact-hud {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: var(--hud-bg);
+  border: 1px solid var(--hud-border);
+  color: var(--hud-text);
+  font-size: 12px;
+}
+
+.env-compact-hud .chip {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--hud-text);
+}
+
+/* ── Narrow ──────────────────────────────────────────────────────────────────────── */
+
+/* The strip sheds its least urgent groups as the stage narrows (they stay in the drawer). */
+@container (max-width: 1120px) {
+  .tele-fit {
+    display: none;
+  }
+}
+
+@container (max-width: 900px) {
+  .tele-rays {
+    display: none;
+  }
+}
+
+@container (max-width: 740px) {
+  .tele-progress,
+  .tele-clock {
+    display: none;
+  }
+}
+
+@media (max-width: 860px) {
+  .scenario {
+    display: none;
+  }
+
+  .minimap,
+  .stage-legend {
+    display: none;
+  }
+
+  .telemetry {
+    flex-wrap: wrap;
+  }
+
+  .tele-progress,
+  .tele-clock {
+    display: none;
+  }
+
+  .tele-actions {
+    min-width: 100%;
+    order: 5;
+    border-left: 0;
+    border-top: 1px solid var(--hud-border);
+  }
+
+  .tele-row {
+    grid-template-columns: 52px minmax(60px, 1fr) 40px;
+  }
+
+  .tele-word {
+    display: none;
+  }
+
+  .trailstrip {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+
+  .trailstrip-end {
+    display: none;
+  }
+
+  .hudbar .segmented button {
+    padding: 0 6px;
+  }
+
+  .stage-top {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .stage-top-right {
+    align-items: flex-start;
+  }
+}

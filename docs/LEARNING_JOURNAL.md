@@ -1881,3 +1881,47 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
   checkpoint and which budget should Phase 8 use when it compares evolution with imitation, given
   that `best_unit` favours training-loop speed over generality? Would the GA's advantage over
   random search appear at a smaller budget, before random search saturates?
+
+### 2026-11-16 — Task S0: groundwork for the 2D redesign, no visual change (ADR-063)
+- Built: the migration's decisions recorded (ADR-063: in place, world selector in S2, IBM Plex and a theme setting in S1, one branch per view group); the stylesheet split into `web/src/styles/` (tokens, base, one per view) in the original order; the redesign's shared controls with test-id props (unused yet); the Network view's two server lookups in `hooks.ts`; one `/ws/runs` hook with a guard, `historyFor`, used by the Timeline and Training tools.
+- Learned: a *refactoring* is proved by what does *not* change; for a user interface that needs a *golden-image comparison* as well as the tests, because the tests check behaviour, not looks. CSS is order-sensitive: equal-weight rules on the same element are decided by which comes later, so a split must keep the order. A *stale read* lasts exactly one render in React: the render with the new value runs before the effect that resets the old state, so only a check during the render can guard it.
+- Key equation(s) in words: none (plumbing). The guard: if the stored history belongs to the run asked for, use it; otherwise use an empty history for that run, keeping every run's status.
+- What we observed: switching runs in the Timeline 16 times made the original code fetch 8 exam cards of the wrong run (all 404, nothing wrong on screen); the new code fetched none. The shipped CSS was identical up to the three intended edits.
+- Surprise or difficulty: the screenshot check first passed a planted one-level colour change, because Playwright forgives small colour differences per pixel by default. At zero tolerance, unchanged code photographed twice already differs in up to 88 edge pixels by 1–2 levels (anti-aliasing), so "zero different pixels" is impossible; the honest criterion is "the same noise as unchanged code", backed by a byte comparison of the built CSS.
+- Open question: should the golden-image comparison become a permanent check for the visual steps (with a stored baseline per step), or stay a scratch tool, given that every later step changes the pictures on purpose?
+
+### 2026-11-16 — Task S1: identity for the 2D redesign (palette, type, top bar, breadcrumb, theme, drawer)
+- Built: the redesign's tokens (IBM Plex bundled, a type and space scale, the dark chrome, a light and a dark page palette chosen by `<html data-theme>`); a dark top bar with the brand mark, tabs with icons, a breadcrumb of the shared selection (`crumbsFor`), Layout and Theme switches and a connection pill; a theme setting (light, dark, follow the system) remembered in the layout store; the drawer as a panel with a header and a collapsed rail.
+- Learned: *semantic colour roles*: one colour per meaning (violet = selected, blue ↔ orange = positive ↔ negative, green / amber / red = how a drive ended); before, one blue meant selected, positive and pressed at once. A restyle can keep one part fixed on purpose by giving it its own tokens: the track reads `--w-*` tokens holding its old colours, so this step changes the frame and not the picture. Hiding text with `display: none` also removes it from the accessible name, which screen readers and the browser tests both rely on; clipping hides it from sight only.
+- Key equation(s) in words: none (plumbing). The theme shown is the setting itself when it is light or dark; on "auto" it is dark exactly when the system asks for dark.
+- What we observed: the track canvas, read pixel for pixel without the HUD over it, was identical in a centred crop for the keyboard driver; with 20 cars it differed only along line edges, from a half-pixel shift of the centre (the canvas height changed from odd to even), with no new colour. The sign pair and the dark series and ramp passed the dataviz validator on the new dark surface. 79 existing browser tests passed unchanged.
+- Surprise or difficulty: a screenshot of the canvas element also photographs the HUD laid over it, so the first comparison "found" the new green of the status chip; reading the canvas's own pixels separated the two. On a phone the new top bar first took three rows.
+- Open question: when E1 gives the track its world palette, should the canvas follow the page theme (a night track in dark mode, as the prototype does) or stay one look in both themes like the top bar?
+
+### 2026-11-16 — Task S2: the world selector (no visual change)
+- Built: `web/src/state/world.ts`, one pure answer to "what is on screen for the selected car right now" (`buildWorld`), from the live store, the playback clock and the selection; a derived store that rebuilds it only when an input changed, read with `useWorld()` by components and `getWorld()` by the canvas loop; 17 unit tests. Nothing imports it yet: the Environment and Network steps switch to it.
+- Learned: a *selector* (derived state): the stores hold facts, the selector draws the conclusion every screen needs, once. Rebuilding only on a changed input, compared by identity, works because the stores never edit a message in place: a new frame is a new object, so "same object" means "same facts". Caching the per-car poses per frame object lets a canvas that redraws 60 times a second reuse one list.
+- Key equation(s) in words: none (plumbing). The look back is shown only when a step is looked at and the server's answer is about that step of the car on screen; a what-if answer applies only while an input is changed and only to the car and step it was asked about.
+- What we observed: removing the car check from either rule failed exactly one test, the one named after that case; 234 web tests passed.
+- Surprise or difficulty: the prototype's world also carried the network's origin, fetched by REST inside the source; keeping it out was needed for the selector to stay pure, and production already fetches it in `views/network/hooks.ts`.
+- Open question: when the four components switch over, should their old per-component checks (`activeGhost`, the what-if check in `WhatIfPanel.tsx`) be deleted in the same step, or kept as thin wrappers over the world until the whole view group is done?
+
+### 2026-11-16 — Redesign shell group complete (tag `phase-visual-shell`)
+- What was built: the 2D redesign prototype, run on the real server through production's own
+  client code, with its migration audit and plan, and the decisions D1–D5 (ADR-063); S0, the
+  groundwork with no visual change (the stylesheet split into tokens, base and one file per view,
+  the shared controls, the Network view's REST hooks, one `/ws/runs` hook with a stale-read
+  guard); S1, the identity (IBM Plex bundled, the redesign's palette with one colour per meaning,
+  a dark top bar with icons and a breadcrumb of the shared selection, a light / dark / system theme
+  setting remembered per browser, the drawer with a header and a rail, the track kept in its old
+  colours on its own tokens); S2, the world selector, one tested answer to "what is on screen for
+  the selected car". At the gate 2,113 Python tests (one skipped without PyTorch), 234 web unit
+  tests and all 81 browser tests passed, and so did every pre-commit hook.
+- What was learned: a refactor of a user interface is proved by tests and pictures together, and
+  a picture comparison needs an honest noise floor (unchanged code differs from itself by up to
+  ~100 anti-aliased edge pixels), checked by planting a small change it must catch. Colour carries
+  meaning only if each colour means one thing. Rules that several screens apply (which moment is
+  shown, whether a what-if answer applies) belong in one pure selector with its own tests.
+- Open questions: when E1 restyles the track, should the canvas follow the page theme or keep
+  one look? Should the golden-image check become a stored per-step baseline? When the views switch
+  to the world selector, are their old per-component checks deleted in the same step?

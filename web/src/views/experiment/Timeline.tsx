@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import type { RunSummary, StartShift } from "../../api/generated";
 import { fetchExamCard, fetchRuns } from "../../api/rest";
-import { connectLive, type LiveConnection } from "../../api/ws";
 import { useLive } from "../../state/live";
-import { applyRunsMessage, defaultMetric, initialRunsWatch, plottableKeys, series, watchRun } from "../../state/runsWatch";
+import { useRunsSocket } from "../../state/runsSocket";
+import { defaultMetric, plottableKeys, series } from "../../state/runsWatch";
 import { useSelection } from "../../state/selection";
 import { defaultGhost } from "../environment/population";
 import { formatNumber, shortName } from "./charts";
@@ -59,13 +59,10 @@ export function Timeline({ headerExtra }: { headerExtra?: ReactNode }) {
   const [index, setIndex] = useState<number | null>(null);
   const [card, setCard] = useState<{ key: string; tracks: CardTrack[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [watch, setWatch] = useState(initialRunsWatch);
   // Perturbed starts (task 6.5, ADR-048): every exam start moved sideways and turned.
   const [shiftM, setShiftM] = useState(0);
   const [shiftDeg, setShiftDeg] = useState(0);
   const shift = startShift(shiftM, shiftDeg);
-  const socket = useRef<LiveConnection | null>(null);
-  const watched = useRef<string | null>(null);
 
   const loadScenario = useLive((s) => s.loadScenario);
   const send = useLive((s) => s.send);
@@ -90,28 +87,10 @@ export function Timeline({ headerExtra }: { headerExtra?: ReactNode }) {
   }
   useEffect(loadRuns, []);
 
-  // The run's metrics, checkpoints and exam headlines over /ws/runs (task 5.8).
-  useEffect(() => {
-    const connection = connectLive(
-      (status) => {
-        if (status === "connected" && watched.current !== null)
-          socket.current?.send(JSON.stringify({ type: "watch", run_id: watched.current }));
-      },
-      (message) => setWatch((s) => applyRunsMessage(s, message)),
-      "/ws/runs",
-    );
-    socket.current = connection;
-    return () => {
-      socket.current = null;
-      connection.stop();
-    };
-  }, []);
-  useEffect(() => {
-    watched.current = runId;
-    setWatch((s) => watchRun(s, runId));
-    setIndex(null);
-    socket.current?.send(JSON.stringify({ type: "watch", run_id: runId }));
-  }, [runId]);
+  // The run's metrics, checkpoints and exam headlines over /ws/runs (task 5.8); never the previous
+  // run's in the render after a switch (task S0). A new run starts at its newest checkpoint.
+  const { watch } = useRunsSocket(runId);
+  useEffect(() => setIndex(null), [runId]);
 
   const units = watch.checkpoints;
   const at = units.length === 0 ? null : Math.min(index ?? units.length - 1, units.length - 1);

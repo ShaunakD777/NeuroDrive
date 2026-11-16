@@ -7,15 +7,18 @@ simulator with three linked views: **Environment**, **Neural Network** and **Exp
 > decisions, and what can their successes and failures teach us about AI?
 
 ## Status
-Phase 7 ("Genetic algorithm") complete, tagged `phase-7`: a genome with a named address for every
+The 2D redesign's shell group (S0–S2: the stylesheet split, the new identity with IBM Plex, a dark
+top bar, a breadcrumb and a light / dark / system theme setting, and the world selector) is merged,
+tagged `phase-visual-shell`; the Environment, Network and Experiment groups follow
+(`prototypes/2d-redesign/IMPLEMENTATION_ROADMAP.md`). Phase 7 ("Genetic algorithm") complete, tagged `phase-7`: a genome with a named address for every
 gene, tournament and rank selection, Gaussian mutation, uniform crossover, elitism, a population mode
 that races a whole generation, evolution charts, exact lineage with a mutation diff, and Study S6 on the
 GA against random search, its settings, fitness ablations and a documented fitness exploit. Phase 6
 ("Supervised imitation") is tagged `phase-6`, Phase 5 ("The Driving Exam, baselines and training
 infrastructure") `phase-5`, Phase 4 ("Optimisers and experiment basics") `phase-4`, Phase 3
 ("Backpropagation (toy lab)") `phase-3`, Phase 2 ("Multilayer network and Network view") `phase-2`,
-Phase 1 ("One neuron can drive") `phase-1` and Phase 0 (foundations) `phase-0`. Next: Phase 8,
-"Imitation vs evolution" (see `docs/CHECKLIST.md`).
+Phase 1 ("One neuron can drive") `phase-1` and Phase 0 (foundations) `phase-0`. Next: the redesign's Environment
+group (E1–E3) and Phase 8, "Imitation vs evolution" (see `docs/CHECKLIST.md`).
 
 ## Prerequisites
 - [uv](https://docs.astral.sh/uv/) for Python. It downloads Python 3.12 by itself; your system

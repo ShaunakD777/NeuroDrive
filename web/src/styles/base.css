@@ -1,0 +1,765 @@
+/* The page itself: reset and type, the top bar (brand, tabs, breadcrumb, switches, connection),
+   workspace and layouts, view cards, the drawer, the shared buttons and segmented control,
+   tooltips, narrow screens and reduced motion. Task S1 gave it the redesign's look
+   (prototypes/2d-redesign/src/theme/base.css, DESIGN_SPEC.md §5 and §6); the view stylesheets
+   keep their own rules until each view's step. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color var(--dur-2) var(--ease);
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+/* A number: the mono face with figures of equal width, so columns of numbers line up. */
+.num {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* A small capital label: the name of a quantity, never a sentence. */
+.eyebrow {
+  font-family: var(--font-label);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.icon {
+  flex-shrink: 0;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ── Top bar: dark in both themes, like an instrument's bezel ───────────────────── */
+
+.topbar {
+  display: flex;
+  align-items: stretch;
+  gap: var(--sp-4);
+  height: 48px;
+  padding: 0 var(--sp-4);
+  background: var(--chrome-bg);
+  color: var(--chrome-text);
+  border-bottom: 1px solid var(--chrome-border);
+  flex-shrink: 0;
+}
+
+.topbar :focus-visible {
+  outline-color: var(--chrome-accent);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding-right: var(--sp-2);
+  font-size: inherit;
+}
+
+/* The mark: three kerb blocks, red, white, red. */
+.brand-mark {
+  display: grid;
+  grid-template-columns: repeat(3, 6px);
+  height: 16px;
+  transform: skewX(-14deg);
+}
+
+.brand-mark i:nth-child(odd) {
+  background: var(--chrome-kerb-red);
+}
+
+.brand-mark i:nth-child(2) {
+  background: var(--chrome-kerb-white);
+}
+
+.brand-name {
+  font-family: var(--font-label);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.brand-name b {
+  font-weight: 600;
+  color: var(--chrome-accent);
+}
+
+.viewtabs {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+}
+
+.viewtab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 var(--sp-3);
+  color: var(--chrome-muted);
+  text-decoration: none;
+  font-weight: 500;
+  transition: color var(--dur-1) var(--ease);
+}
+
+.viewtab:hover {
+  color: var(--chrome-text);
+}
+
+.viewtab[aria-current="page"] {
+  color: #ffffff;
+}
+
+/* The current view's underline: 3 px of violet, grown from the middle. */
+.viewtab::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 0;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: var(--chrome-accent);
+  transform: scaleX(0);
+  transition: transform var(--dur-2) var(--ease);
+}
+
+.viewtab[aria-current="page"]::after {
+  transform: scaleX(1);
+}
+
+/* The shared selection, always visible: Run › Generation › Start › Car › Neuron › Moment. */
+.crumbs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.crumb-item {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.crumb {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: 34px;
+  padding: 0 var(--sp-2);
+  border: 0;
+  border-radius: var(--r-1);
+  background: transparent;
+  color: var(--chrome-text);
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  min-width: 0;
+  transition: background-color var(--dur-1) var(--ease);
+}
+
+.crumb:hover {
+  background: var(--chrome-raised);
+}
+
+.crumb .eyebrow {
+  color: var(--chrome-muted);
+  font-size: 9.5px;
+  line-height: 1.1;
+}
+
+.crumb-value {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.25;
+}
+
+.crumb[data-empty="true"] .crumb-value {
+  color: var(--chrome-muted);
+  font-weight: 400;
+}
+
+.crumb-sep {
+  display: flex;
+  color: var(--chrome-muted);
+  opacity: 0.6;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding-left: var(--sp-2);
+}
+
+/* The connection pill: whether the browser is talking to the Python server. */
+.conn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--chrome-border);
+  border-radius: 999px;
+  font-size: 11.5px;
+  color: var(--chrome-muted);
+  white-space: nowrap;
+}
+
+.conn-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--chrome-warn);
+}
+
+.conn[data-status="connected"] {
+  color: var(--chrome-text);
+}
+
+.conn[data-status="connected"] .conn-dot {
+  background: var(--chrome-ok);
+  box-shadow: 0 0 0 3px rgba(74, 209, 127, 0.18);
+}
+
+.conn[data-status="connecting"] .conn-dot {
+  animation: conn-blink 1s ease-in-out infinite;
+}
+
+.conn[data-status="disconnected"] .conn-dot {
+  background: var(--chrome-bad);
+}
+
+@keyframes conn-blink {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* ── Workspace and layouts ─────────────────────────────────────────────────────── */
+
+.workspace {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.panels {
+  flex: 1;
+  min-height: 0;
+  padding: var(--sp-2);
+}
+
+.panel-current .view {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.page {
+  flex: 1;
+  display: flex;
+  gap: var(--sp-2);
+  min-width: 0;
+  padding: var(--sp-2);
+}
+
+.page-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.separator {
+  width: var(--sp-2);
+  border-radius: var(--r-1);
+  background: transparent;
+  transition: background-color var(--dur-1) var(--ease);
+}
+
+.separator:hover,
+.separator:focus-visible,
+.separator[data-separator="active"] {
+  background: var(--accent);
+  outline: none;
+}
+
+/* ── View cards ────────────────────────────────────────────────────────────────── */
+
+.view {
+  height: 100%;
+  padding: var(--sp-4);
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-3);
+  box-shadow: var(--shadow-1);
+  transition:
+    background-color var(--dur-2) var(--ease),
+    border-color var(--dur-2) var(--ease);
+}
+
+.view-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  min-height: 32px;
+  margin: 0 0 var(--sp-3);
+  padding-bottom: var(--sp-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.view h2 {
+  margin: 0;
+  font-size: var(--fs-title);
+  font-weight: 600;
+}
+
+.view-compact h2 {
+  font-size: var(--fs-body);
+}
+
+.view p {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+/* The view picker beside the second view in Split. */
+.picker select {
+  height: 28px;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-2);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--fs-small);
+  cursor: pointer;
+}
+
+/* ── Drawer: the linked view, compact, beside the page ─────────────────────────── */
+
+.drawer {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: min(340px, 32%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-3);
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
+}
+
+.drawer[data-open="false"] {
+  width: 36px;
+}
+
+.drawer-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 40px;
+  padding: var(--sp-1) var(--sp-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.drawer[data-open="false"] .drawer-head {
+  flex: 1;
+  padding: 0;
+  border-bottom: 0;
+}
+
+.drawer-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-2);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease);
+}
+
+.drawer-toggle:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+/* Collapsed, the whole rail is the button. */
+.drawer[data-open="false"] .drawer-toggle {
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: var(--sp-2);
+  width: 100%;
+  height: 100%;
+  padding: var(--sp-2) 0;
+  border-radius: 0;
+}
+
+.drawer-vertical {
+  writing-mode: vertical-rl;
+  font-family: var(--font-label);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.drawer-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drawer-body {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* The drawer is the panel; the compact view inside it needs no frame of its own. */
+.drawer-body .view {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* ── Buttons (components/ui/controls.tsx Button) ────────────────────────────────── */
+
+.btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-2);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-1) var(--ease),
+    border-color var(--dur-1) var(--ease),
+    transform var(--dur-1) var(--ease);
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--surface-3);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn-icon {
+  width: 30px;
+  padding: 0;
+}
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.btn-ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-2);
+}
+
+.btn-ghost:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.btn[aria-pressed="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* On a dark ground (the top bar, later the panels floating over the track). */
+.btn-hud {
+  background: transparent;
+  border-color: transparent;
+  color: var(--hud-text);
+}
+
+.btn-hud:hover:not(:disabled) {
+  background: var(--hud-hover);
+}
+
+.btn-hud[aria-pressed="true"] {
+  background: rgba(167, 144, 255, 0.26);
+  border-color: transparent;
+  color: #ffffff;
+}
+
+/* ── Segmented control: one choice out of a few, side by side ──────────────────── */
+
+.segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--r-2);
+  background: var(--surface-3);
+}
+
+.segmented button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: var(--fs-small);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease);
+}
+
+.segmented button:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.segmented button[aria-pressed="true"] {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow:
+    0 1px 2px rgba(16, 20, 28, 0.16),
+    0 0 0 1px var(--border);
+}
+
+.segmented button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.segmented-hud {
+  background: var(--hud-ground);
+}
+
+.segmented-hud button {
+  color: var(--hud-muted);
+}
+
+.segmented-hud button:hover:not(:disabled) {
+  color: var(--hud-text);
+}
+
+.segmented-hud button[aria-pressed="true"] {
+  background: var(--hud-pressed);
+  color: #ffffff;
+  box-shadow: none;
+}
+
+/* ── Tooltips: short hints on controls (data-tip) ──────────────────────────────── */
+
+[data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 7px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  padding: 5px 9px;
+  border-radius: 6px;
+  background: var(--tip-bg);
+  color: var(--tip-text);
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  line-height: 1.35;
+  white-space: nowrap;
+  box-shadow: var(--shadow-2);
+  pointer-events: none;
+  animation: tip var(--dur-1) var(--ease) 350ms both;
+}
+
+/* The top bar's last hints open to the left, so they stay on screen. */
+.topbar-right [data-tip]:hover::after {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
+@keyframes tip {
+  from {
+    opacity: 0;
+  }
+}
+
+/* ── Narrow windows: the top bar gives up words before the breadcrumb ──────────── */
+
+@media (max-width: 1560px) {
+  /* Hidden from sight only: the words stay the buttons' accessible names. */
+  .topbar-right .seg-text,
+  .conn-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .conn {
+    padding: 0 var(--sp-2);
+  }
+}
+
+@media (max-width: 1300px) {
+  .crumb-item[data-optional="true"] {
+    display: none;
+  }
+}
+
+@media (max-width: 1120px) {
+  .crumbs {
+    display: none;
+  }
+
+  .topbar-right {
+    margin-left: auto;
+  }
+}
+
+/* Phone width: the tabs take a row of their own, the drawer stays slim beside the view. */
+@media (max-width: 760px) {
+  .topbar {
+    flex-wrap: wrap;
+    height: auto;
+    gap: var(--sp-1) var(--sp-3);
+    padding: 6px var(--sp-3);
+  }
+
+  .brand {
+    height: 34px;
+  }
+
+  .viewtabs {
+    order: 3;
+    width: 100%;
+    height: 38px;
+  }
+
+  .viewtab {
+    flex: 1;
+    justify-content: center;
+    padding: 0 6px;
+  }
+
+  .drawer[data-open="true"] {
+    width: 45%;
+  }
+}
+
+/* A phone: the mark stands for the name, so the switches fit beside it on one row. */
+@media (max-width: 560px) {
+  .brand-name {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
+
+/* ── Reduced motion: no transitions or animations when the system asks for less ─ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

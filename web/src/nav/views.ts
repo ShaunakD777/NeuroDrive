@@ -1,11 +1,17 @@
 // The three views of NeuroDrive (docs/ARCHITECTURE.md §8.0). Every place that lists, names or
 // links the views reads this table, so adding a detail here updates the tabs, pages and drawers.
 
+import type { IconName } from "../components/ui/Icon";
+
 export type ViewId = "environment" | "network" | "experiment";
 
 export interface ViewInfo {
   id: ViewId;
   title: string;
+  /** The question the view answers (PROJECT_CONCEPT.md §2), shown as the tab's tooltip. */
+  question: string;
+  /** The tab's icon. */
+  icon: IconName;
   /** Which roadmap task replaces the placeholder with the real view. */
   comingIn: string;
   /** The linked view shown compactly in this page's side drawer. */
@@ -13,16 +19,27 @@ export interface ViewInfo {
 }
 
 export const VIEWS: readonly ViewInfo[] = [
-  { id: "environment", title: "Environment", comingIn: "task 1.8", companion: "network" },
+  {
+    id: "environment",
+    title: "Environment",
+    question: "What does the car do?",
+    icon: "track",
+    comingIn: "task 1.8",
+    companion: "network",
+  },
   {
     id: "network",
     title: "Network",
+    question: "Why did it do that?",
+    icon: "network",
     comingIn: "task 1.9 and Phase 2",
     companion: "environment",
   },
   {
     id: "experiment",
     title: "Experiment",
+    question: "How did it come to do that?",
+    icon: "flask",
     comingIn: "task 3.8 (toy lab; runs, sweeps and the timeline in Phases 4 and 5)",
     companion: "environment",
   },

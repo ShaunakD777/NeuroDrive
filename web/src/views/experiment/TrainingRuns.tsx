@@ -1,18 +1,9 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 
 import type { ConfigInfo, LaunchRequest } from "../../api/generated";
 import { fetchConfigs, launchRun, stopRun } from "../../api/rest";
-import { connectLive, type ConnectionStatus, type LiveConnection } from "../../api/ws";
-import {
-  applyRunsMessage,
-  defaultMetric,
-  initialRunsWatch,
-  plottableKeys,
-  runsNewestFirst,
-  series,
-  statusLabel,
-  watchRun,
-} from "../../state/runsWatch";
+import { useRunsSocket } from "../../state/runsSocket";
+import { defaultMetric, plottableKeys, runsNewestFirst, series, statusLabel } from "../../state/runsWatch";
 import { formatNumber, shortName } from "./charts";
 import { LiveChart } from "./LiveChart";
 
@@ -37,11 +28,11 @@ export function TrainingRuns({ headerExtra }: { headerExtra?: ReactNode }) {
   const [length, setLength] = useState("");
   const [launching, setLaunching] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [watch, setWatch] = useState(initialRunsWatch);
-  const [connection, setConnection] = useState<ConnectionStatus>("connecting");
   const [metric, setMetric] = useState<string | null>(null);
-  const socket = useRef<LiveConnection | null>(null);
-  const watched = useRef<string | null>(null);
+  // The run whose chart and exams are shown; every run's status and its history arrive over
+  // /ws/runs (task S0: one hook, shared with the Timeline).
+  const [watched, setWatched] = useState<string | null>(null);
+  const { watch, status: connection } = useRunsSocket(watched);
 
   useEffect(() => {
     fetchConfigs()
@@ -53,32 +44,9 @@ export function TrainingRuns({ headerExtra }: { headerExtra?: ReactNode }) {
       .catch((e: Error) => setError(e.message));
   }, []);
 
-  useEffect(() => {
-    const connection = connectLive(
-      (status) => {
-        setConnection(status);
-        // After a reconnect the server knows nothing of this page: ask for the history again.
-        if (status === "connected" && watched.current !== null) send(watched.current);
-      },
-      (message) => setWatch((s) => applyRunsMessage(s, message)),
-      "/ws/runs",
-    );
-    socket.current = connection;
-    return () => {
-      socket.current = null;
-      connection.stop();
-    };
-  }, []);
-
-  function send(runId: string | null) {
-    socket.current?.send(JSON.stringify({ type: "watch", run_id: runId }));
-  }
-
   function show(runId: string) {
-    watched.current = runId;
-    setWatch((s) => watchRun(s, runId));
+    setWatched(runId);
     setMetric(null);
-    send(runId);
   }
 
   const config = configs?.find((c) => c.name === configName) ?? null;
