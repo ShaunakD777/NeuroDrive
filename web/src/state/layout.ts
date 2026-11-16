@@ -12,6 +12,9 @@ export type LayoutMode = "page" | "split" | "all";
 /** The theme setting: always light, always dark, or follow the operating system ("auto"). */
 export type ThemeChoice = "light" | "dark" | "auto";
 
+/** Which tab the Environment page's drawer shows: the compact network or the standings (task E3). */
+export type DrawerTab = "network" | "standings";
+
 export interface LayoutState {
   mode: LayoutMode;
   /** The view shown next to the current one in Split mode. */
@@ -20,6 +23,8 @@ export interface LayoutState {
   drawerOpen: Record<ViewId, boolean>;
   /** Light, dark or follow the system (task S1). */
   theme: ThemeChoice;
+  /** The Environment page's drawer tab (task E3). */
+  drawerTab: DrawerTab;
 }
 
 export interface LayoutActions {
@@ -27,6 +32,7 @@ export interface LayoutActions {
   setSplitPartner: (view: ViewId) => void;
   toggleDrawer: (view: ViewId) => void;
   setTheme: (theme: ThemeChoice) => void;
+  setDrawerTab: (tab: DrawerTab) => void;
 }
 
 export const STORAGE_KEY = "neurodrive.layout.v1";
@@ -36,10 +42,12 @@ export const defaultLayout: LayoutState = {
   splitPartner: "network",
   drawerOpen: { environment: true, network: true, experiment: true },
   theme: "auto",
+  drawerTab: "network",
 };
 
 const LAYOUT_MODES: readonly LayoutMode[] = ["page", "split", "all"];
 const THEMES: readonly ThemeChoice[] = ["light", "dark", "auto"];
+const DRAWER_TABS: readonly DrawerTab[] = ["network", "standings"];
 
 /** Keep only well-formed saved values; anything missing or odd falls back to the default. */
 export function sanitizeLayout(raw: unknown): LayoutState {
@@ -58,6 +66,9 @@ export function sanitizeLayout(raw: unknown): LayoutState {
     splitPartner: isViewId(saved.splitPartner) ? saved.splitPartner : defaultLayout.splitPartner,
     drawerOpen,
     theme: THEMES.includes(saved.theme as ThemeChoice) ? (saved.theme as ThemeChoice) : defaultLayout.theme,
+    drawerTab: DRAWER_TABS.includes(saved.drawerTab as DrawerTab)
+      ? (saved.drawerTab as DrawerTab)
+      : defaultLayout.drawerTab,
   };
 }
 
@@ -107,10 +118,10 @@ function loadLayout(): LayoutState {
 
 function saveLayout(state: LayoutState): void {
   try {
-    const { mode, splitPartner, drawerOpen, theme } = state;
+    const { mode, splitPartner, drawerOpen, theme, drawerTab } = state;
     globalThis.localStorage?.setItem(
       STORAGE_KEY,
-      JSON.stringify({ mode, splitPartner, drawerOpen, theme }),
+      JSON.stringify({ mode, splitPartner, drawerOpen, theme, drawerTab }),
     );
   } catch {
     // Storage unavailable: the layout still works, it just is not remembered.
@@ -124,6 +135,7 @@ export const useLayout = create<LayoutState & LayoutActions>()((set) => ({
   toggleDrawer: (view) =>
     set((s) => ({ drawerOpen: { ...s.drawerOpen, [view]: !s.drawerOpen[view] } })),
   setTheme: (theme) => set({ theme }),
+  setDrawerTab: (drawerTab) => set({ drawerTab }),
 }));
 
 useLayout.subscribe(saveLayout);

@@ -1,7 +1,6 @@
 /* The Network view: Neuron view, diagram, car stepper, compact network, output inspector and
-   what-if, car picker. Two Environment rules still sit here because the cascade order must not
-   change in task S0: the stage legends (restyled in task E2) and the decision
-   trail (task 2.11); step E3 moves them to environment.css when it restyles them. */
+   what-if, car picker. (The stage legends and the decision trail, kept here by task S0, moved to
+   environment.css in task E3.) */
 
 /* ── Neuron view ──────────────────────────────────────────────── */
 
@@ -684,134 +683,6 @@
   font-weight: 500;
 }
 
-.stage-legends {
-  position: absolute;
-  right: 10px;
-  bottom: 10px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
-  max-width: min(360px, calc(100% - 20px));
-  pointer-events: none; /* the box around the legends: clicks reach the track (task 7.6) */
-}
-
-/* The legends float over the track as dark stage panels, the same in both themes (task E2,
-   DESIGN_SPEC §6.6): each swatch has the shape of the mark it explains. */
-.stage-legend {
-  pointer-events: auto;
-  padding: 5px 10px;
-  border: 1px solid var(--hud-border);
-  border-radius: var(--r-2);
-  background: var(--hud-bg);
-  color: var(--hud-muted);
-  font-size: 11.5px;
-  line-height: 1.5;
-}
-
-/* A legend with nothing to click lets clicks through to the cars under it (task 7.6). */
-.stage-legend.stage-legend-passthrough {
-  pointer-events: none;
-}
-
-.stage-legend-groups {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px 14px;
-}
-
-.stage-legend-group {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0 6px;
-}
-
-.stage-legend b {
-  font-family: var(--font-label);
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--hud-text);
-}
-
-.rank-ramp {
-  display: inline-flex;
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.rank-ramp i {
-  width: 12px;
-  height: 10px;
-}
-
-.stage-legend i[class^="legend-"] {
-  display: inline-block;
-  vertical-align: middle;
-}
-
-.legend-ring {
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  border: 2px solid var(--car-elite);
-}
-
-.legend-ghost {
-  width: 14px;
-  height: 8px;
-  border-radius: 2px;
-  border: 1.5px dashed #e3e6eb;
-  background: rgba(255, 255, 255, 0.2);
-}
-
-.legend-faded {
-  width: 14px;
-  height: 8px;
-  border-radius: 2px;
-  background: var(--car-rank-3);
-  opacity: 0.42;
-}
-
-.legend-line {
-  width: 16px;
-  height: 3px;
-  border-radius: 2px;
-}
-
-.legend-dash {
-  width: 16px;
-  height: 0;
-  border-top: 2px dashed #e3e6eb;
-}
-
-.stage-legend .ray-legend-pos {
-  color: var(--track-pos);
-}
-
-.stage-legend .ray-legend-neg {
-  color: var(--track-neg);
-}
-
-.hud-race {
-  padding-bottom: 4px;
-  margin-bottom: 4px;
-  border-bottom: 1px solid var(--border);
-}
-
-.ray-legend-pos {
-  color: var(--pos);
-  font-weight: 600;
-}
-
-.ray-legend-neg {
-  color: var(--neg);
-  font-weight: 600;
-}
-
-
 /* ── Car picker in the Network view header ───────────────────── */
 
 .car-stepper select {
@@ -830,42 +701,6 @@
   outline-offset: 2px;
 }
 
-/* ── Decision trail timeline (task 2.11) ─────────────────────── */
-
-.trail-panel {
-  margin-top: 8px;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
-  font-size: 0.85rem;
-}
-
-.trail-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-}
-
-.trail-slider {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  gap: 8px;
-  min-width: 200px;
-}
-
-.trail-slider input {
-  flex: 1;
-  min-width: 0;
-}
-
-.trail-readout,
-.trail-legend {
-  margin: 6px 0 0 !important;
-}
-
 .past-banner {
   display: flex;
   flex-wrap: wrap;
@@ -877,13 +712,4 @@
   border-radius: 6px;
   background: var(--surface);
   font-size: 0.85rem;
-}
-
-.hud-past {
-  border-color: var(--accent);
-}
-
-.hud-past-note {
-  color: var(--accent);
-  font-weight: 600;
 }

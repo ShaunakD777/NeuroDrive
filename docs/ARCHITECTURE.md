@@ -788,6 +788,23 @@ them (`npm run gen:types`), so the two sides cannot drift apart.
   linked view (for example a mini network beside the track), so cause and effect stay visible.
   The compact network (task 2.8) is a summary built for a narrow column, not a shrunken diagram:
   input bars, one strip of coloured cells per hidden layer, output bars with words, all clickable.
+  On the Environment page the drawer has two tabs (task E3): that network, and the **standings**,
+  every car in race order (by progress) with its body colour, status and, in a GA race, its F; a
+  row click selects the car. The tab is `drawerTab` in the layout store, remembered per browser.
+- **Environment page (task E3):** the scenario (track, driver, cars, start, the selected car, a
+  race's generation, start and ghost) in the view header; on the stage, floating dark bars for
+  play, step, reset and speed (top left, with the record bar under it for the keyboard driver) and
+  for the camera (top right, with a minimap of the circuit while not showing the whole track); along
+  the bottom, the status banner, the legends and the telemetry strip (`Telemetry.tsx`, the former
+  HUD with the same test ids and text formats); under the stage the look-back strip, the selected
+  car's steer and throttle over the remembered steps with the slider laid over them. The camera
+  glides between targets (`geometry.ts` `easeCamera`, 450 ms, ease-out; none with reduced
+  motion, which the browser tests set), looks ahead of a followed car (`lookAhead`), and keeps
+  Whole track and the followed point in the area the panels leave free (`fitCamera` margins per
+  side, `marginShift`; the bottom margin is the measured height of the bottom panels, and
+  `clampMargins` lets the panels take at most half the stage's height and width, so a followed car
+  stays on a small stage). A narrow view (≤ 600 px, a column of All) makes its stage at least
+  420 px tall and scrolls instead (a container query on the view).
 - **Layout switch:** Page (default), Split (any two views side by side, resizable) and All (the
   three panels). The choice is remembered per browser.
 - **Top bar (task S1):** dark in both themes; the brand mark, the view tabs (links, each with its
@@ -893,7 +910,7 @@ rank band (`views/environment/population.ts`: q = r/(N − 1), band = min(4, ⌊
 surfaces), rings the elites, fades stopped cars, outlines the selected car, and draws the ghost
 see-through and dashed with a label; a legend explains the colours (clicks pass through it to the
 cars). Its controls add a row for the generation (1 … `last_unit`), the start (1 … S) and the
-ghost's generation (0 = none); cars, random start and track are fixed. The HUD shows the selected
+ghost's generation (0 = none); cars, random start and track are fixed. The HUD (since task E3 the telemetry strip) shows the selected
 car's role (row, rank, elite or child, champion, or the ghost), F with its finished and crashed
 starts, and, after the race, f on this start. Clicking any car selects it and the Network view
 shows its network, as for the random-networks driver.

@@ -107,6 +107,9 @@ test("looking back at a step shows exactly the trace the network had then; Back 
 
 test("clicking a point on the trail jumps the views to that step", async ({ page }) => {
   await randomNetworksCar5(page);
+  // the whole width for the stage: in a column of All, its floating bars cover the trail behind a
+  // followed car (task E3)
+  await page.getByRole("group", { name: "Layout" }).getByRole("button", { name: "Page" }).click();
   await page.getByTestId("select-speed").selectOption("4");
   await page.getByTestId("btn-play").click();
   await page.waitForTimeout(1500); // about 180 steps
@@ -120,9 +123,18 @@ test("clicking a point on the trail jumps the views to that step", async ({ page
   expect(box).not.toBeNull();
   const cars = ((await canvas.getAttribute("data-cars")) ?? "").split(",").map((p) => p.split(":").map(Number));
   const points = await trailPoints(canvas);
-  // a trail point well inside the picture and well away from every car (a click on a car picks it)
+  // the canvas where nothing floats over it (the stage's bars and panels, task E3)
+  await canvas.scrollIntoViewIfNeeded();
+  const shown = (await canvas.boundingBox())!;
+  const open = await page.evaluate(
+    ([pts, x0, y0]) => pts.map((p) => document.elementFromPoint(x0 + p.x, y0 + p.y)?.tagName === "CANVAS"),
+    [points, shown.x, shown.y] as const,
+  );
+  // a trail point well inside the picture, not under a panel, and well away from every car (a click
+  // on a car picks it)
   const target = points.find(
-    (p) =>
+    (p, i) =>
+      open[i] &&
       p.x > 20 &&
       p.y > 20 &&
       p.x < box!.width - 20 &&

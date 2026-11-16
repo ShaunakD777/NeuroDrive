@@ -4,10 +4,18 @@ import { useLive } from "../../state/live";
 import { activeMoment, useMoment, usePlayback } from "../../state/playback";
 import { raysFor, useSelection } from "../../state/selection";
 import { activeGhost, ghostGap, raySensitivity } from "../network/inspect";
+import { viewInfo } from "../../nav/views";
+import { CameraBar } from "./CameraBar";
 import {
   type Camera,
+  clampMargins,
+  easeCamera,
+  easeOut,
   fitCamera,
   followCamera,
+  lookAhead,
+  type Margins,
+  marginShift,
   nearestCar,
   panBy,
   scaleLimits,
@@ -16,9 +24,12 @@ import {
   worldToScreen,
   zoomAt,
 } from "./geometry";
+import { Minimap } from "./Minimap";
+import { RecordBar } from "./RecordBar";
+import { ScenarioBar } from "./ScenarioBar";
 import { drawScene, readTheme } from "./scene";
-import { Hud } from "./Hud";
-import { Controls } from "./Controls";
+import { StageBanners, Telemetry } from "./Telemetry";
+import { Transport } from "./Transport";
 import { useDrivingKeys } from "./useDrivingKeys";
 import { TrailPanel } from "./Trail";
 import { nearestTrailStep, trailValues } from "./trailLayout";
@@ -31,6 +42,18 @@ const DEFAULT_ZOOM = 6; // pixels per metre when following the car
 const COMPACT_ZOOM = 4;
 const DRAG_THRESHOLD = 4; // pixels the pointer must move before a press counts as a drag, not a click
 const FOLLOW_ZOOM = { min: 1, max: 40 }; // zoom range while following (as the +/− buttons had)
+const TRANSITION_MS = 450; // a camera glide (task E3), the --dur-3 of tokens.css
+/**
+ * Whole track keeps clear of the floating bars (top) and the telemetry and legends (bottom). The
+ * bottom margin is at least this, and grows to the measured height of the bottom panels plus 24 px
+ * (a race's legend or a banner makes them taller).
+ */
+const FIT_MARGINS: Margins = { top: 70, right: 28, bottom: 164, left: 28 };
+const PANEL_GAP = 24;
+const COMPACT_FIT_MARGIN = 24;
+
+/** No glides for people who asked their system for less motion (and in the browser tests). */
+const reducedMotion = () => globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 
 /**
  * The Environment view: the track, the cars and the selected car's rays drawn on a canvas, with
@@ -64,6 +87,13 @@ export function EnvironmentView({
   modeRef.current = mode;
   const scheduleRef = useRef<() => void>(() => {});
   const pressRef = useRef<{ x: number; y: number; start: Camera; dragging: boolean } | null>(null);
+  // A camera glide in progress (task E3): where it started and when; and what the camera was
+  // looking at last frame, so a change of mode, car, moment or track starts a glide.
+  const transitionRef = useRef<{ from: Camera; start: number } | null>(null);
+  const viewKeyRef = useRef("");
+  // The floating panels along the bottom of the stage, and their height (CSS pixels).
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const bottomHeightRef = useRef(0);
   const [dragging, setDragging] = useState(false);
 
   const geometry = useLive((s) => s.geometry);
@@ -98,6 +128,18 @@ export function EnvironmentView({
     return () => observer.disconnect();
   }, []);
 
+  // Measure the bottom panels, so Whole track and the followed car stay clear of them.
+  useEffect(() => {
+    const panels = bottomRef.current;
+    if (panels === null) return;
+    const observer = new ResizeObserver(([entry]) => {
+      bottomHeightRef.current = Math.ceil(entry.contentRect.height);
+      scheduleRef.current();
+    });
+    observer.observe(panels);
+    return () => observer.disconnect();
+  }, [compact]);
+
   // Match the canvas's pixel buffer to its size on screen (sharp on high-density displays).
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -121,18 +163,52 @@ export function EnvironmentView({
     const sensitivityRays = raySensitivity(moment === null ? frame?.selected?.explain : moment.explain, output);
     const car = frame === null ? null : frame.cars;
     const trail = live.trail !== null && live.trail.car === selected ? live.trail : null;
-    // Follow the selected car, or the place it was at while an earlier step is looked at; or show
-    // the whole track; or keep the view the mouse left (free).
-    const fit = fitCamera(fitPoints, size);
+    // Follow the selected car a little ahead of it (task E3), or the place it was at while an
+    // earlier step is looked at; or show the whole track clear of the floating panels; or keep the
+    // view the mouse left (free).
+    const margins: number | Margins = compact
+      ? COMPACT_FIT_MARGIN
+      : clampMargins(
+          { ...FIT_MARGINS, bottom: Math.max(FIT_MARGINS.bottom, bottomHeightRef.current + PANEL_GAP) },
+          size,
+        ); // on a small stage the panels give up space, so the car and the track stay on it
+    const fit = fitCamera(fitPoints, size, margins);
     fitScaleRef.current = fit.scale;
-    const camera =
+    // The followed point shows in the middle of the area the panels leave free (task E3).
+    const ahead = (x: number, y: number, psi: number, v: number) => {
+      const [lx, ly] = lookAhead(x, y, psi, v, zoom, size);
+      const [dx, dy] = marginShift(margins, zoom);
+      return followCamera(lx + dx, ly + dy, zoom);
+    };
+    const following = mode === "follow" && (moment !== null || (car !== null && car.x.length > selected));
+    const target =
       mode === "free"
         ? freeRef.current
         : mode === "follow" && moment !== null
-          ? followCamera(moment.x, moment.y, zoom)
+          ? ahead(moment.x, moment.y, moment.psi, 0) // a still moment: 2 m ahead
           : mode === "follow" && car !== null && car.x.length > selected
-            ? followCamera(car.x[selected], car.y[selected], zoom)
+            ? ahead(car.x[selected], car.y[selected], car.psi[selected], car.v[selected] ?? 0)
             : fit;
+    // A change of what the camera looks at glides there instead of jumping: the mode, the car,
+    // the moment or (within one track) nothing else. Not in a free view (the mouse moves it) and
+    // not with reduced motion.
+    const now = performance.now();
+    const key = `${track?.name ?? ""}:${following ? `follow:${selected}:${moment?.step ?? ""}` : mode}`;
+    if (key !== viewKeyRef.current) {
+      const sameTrack = viewKeyRef.current.startsWith(`${track?.name ?? ""}:`);
+      transitionRef.current =
+        viewKeyRef.current !== "" && sameTrack && mode !== "free" && !reducedMotion()
+          ? { from: cameraRef.current, start: now }
+          : null;
+      viewKeyRef.current = key;
+    }
+    let camera = target;
+    const glide = transitionRef.current;
+    if (glide !== null) {
+      const u = (now - glide.start) / TRANSITION_MS;
+      if (u >= 1) transitionRef.current = null;
+      else camera = easeCamera(glide.from, target, easeOut(u));
+    }
     cameraRef.current = camera;
     const ratio = window.devicePixelRatio || 1;
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
@@ -181,6 +257,8 @@ export function EnvironmentView({
         : car.x
             .map((x, i) => worldToScreen(camera, size, x, car.y[i]).map((v) => Math.round(v)).join(":"))
             .join(",");
+    // While a glide runs, draw again next display frame even if nothing else changes.
+    if (transitionRef.current !== null) scheduleRef.current();
   }, [size, mode, zoom, compact, fitPoints]);
 
   // Redraw when anything the picture depends on changes, at most once per display frame.
@@ -250,6 +328,7 @@ export function EnvironmentView({
       setDragging(true);
     }
     freeRef.current = panBy(press.start, dx, dy);
+    transitionRef.current = null;
     if (modeRef.current !== "free") setMode("free");
     scheduleRef.current();
   };
@@ -301,6 +380,8 @@ export function EnvironmentView({
     scheduleRef.current(); // already free: the mode does not change, so ask for the redraw
   };
 
+  const keyboard = useLive((s) => s.scenario?.policy === "keyboard");
+
   return (
     <section
       className={compact ? "view view-compact env-view" : "view env-view"}
@@ -308,16 +389,10 @@ export function EnvironmentView({
     >
       <div className="view-header">
         <h2>{compact ? "Environment (compact)" : "Environment"}</h2>
+        {!compact && <span className="view-question">{viewInfo("environment").question}</span>}
         {headerExtra}
+        {!compact && <ScenarioBar />}
       </div>
-      {!compact && (
-        <Controls
-          mode={mode}
-          onModeChange={setMode}
-          onZoomIn={() => zoomBy(1.25)}
-          onZoomOut={() => zoomBy(0.8)}
-        />
-      )}
       <div className="env-stage" ref={boxRef}>
         <canvas
           ref={canvasRef}
@@ -337,81 +412,108 @@ export function EnvironmentView({
           aria-label="Top-down view of the track and the cars"
           role="img"
         />
-        <Hud compact={compact} />
-        {compact && mode !== "follow" && (
-          <button
-            type="button"
-            className="env-recenter"
-            data-testid="compact-follow"
-            onClick={() => setMode("follow")}
-          >
-            Follow car
-          </button>
-        )}
-        {!compact && (ghost !== null || sensitivityRow !== null || race !== null) && (
-          <div className="stage-legends">
-            {race !== null && (
-              <div className="stage-legend stage-legend-passthrough stage-legend-groups" data-testid="race-legend">
-                <span className="stage-legend-group">
-                  <b>Generation {race.unit}</b> {race.size} networks from start {race.start + 1}
-                </span>
-                <span className="stage-legend-group">
-                  Colour = the GA&apos;s fitness rank (F over all {race.n_starts} starts)
-                  <span className="rank-ramp" aria-hidden="true">
-                    {[1, 2, 3, 4, 5].map((k) => (
-                      <i key={k} style={{ background: `var(--car-rank-${k})` }} />
-                    ))}
-                  </span>
-                  best fifth → worst
-                </span>
-                <span className="stage-legend-group">
-                  <i className="legend-ring" aria-hidden="true" /> elite (last generation&apos;s best, unchanged)
-                </span>
-                <span className="stage-legend-group">
-                  <i className="legend-faded" aria-hidden="true" /> faded = stopped
-                </span>
-                {race.ghost_unit !== null && (
-                  <span className="stage-legend-group">
-                    <i className="legend-ghost" aria-hidden="true" /> dashed see-through = ghost, generation{" "}
-                    {race.ghost_unit}&apos;s champion
-                  </span>
+        {compact ? (
+          <>
+            <Telemetry compact />
+            <div className="stage-bottom stage-bottom-compact">
+              <StageBanners compact />
+            </div>
+            {mode !== "follow" && (
+              <button
+                type="button"
+                className="env-recenter"
+                data-testid="compact-follow"
+                onClick={() => setMode("follow")}
+              >
+                Follow car
+              </button>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="stage-top">
+              <div className="stage-top-left">
+                <Transport />
+                {keyboard && <RecordBar />}
+              </div>
+              <div className="stage-top-right">
+                <CameraBar
+                  mode={mode}
+                  onModeChange={setMode}
+                  onZoomIn={() => zoomBy(1.25)}
+                  onZoomOut={() => zoomBy(0.8)}
+                />
+                {mode !== "fit" && <Minimap />}
+              </div>
+            </div>
+            <div className="stage-bottom" ref={bottomRef}>
+              <StageBanners compact={false} />
+              {(ghost !== null || sensitivityRow !== null || race !== null) && (
+              <div className="stage-legends">
+                {race !== null && (
+                  <div className="stage-legend stage-legend-passthrough stage-legend-groups" data-testid="race-legend">
+                    <span className="stage-legend-group">
+                      <b>Generation {race.unit}</b> {race.size} networks from start {race.start + 1}
+                    </span>
+                    <span className="stage-legend-group">
+                      Colour = the GA&apos;s fitness rank (F over all {race.n_starts} starts)
+                      <span className="rank-ramp" aria-hidden="true">
+                        {[1, 2, 3, 4, 5].map((k) => (
+                          <i key={k} style={{ background: `var(--car-rank-${k})` }} />
+                        ))}
+                      </span>
+                      best fifth → worst
+                    </span>
+                    <span className="stage-legend-group">
+                      <i className="legend-ring" aria-hidden="true" /> elite (last generation&apos;s best, unchanged)
+                    </span>
+                    <span className="stage-legend-group">
+                      <i className="legend-faded" aria-hidden="true" /> faded = stopped
+                    </span>
+                    {race.ghost_unit !== null && (
+                      <span className="stage-legend-group">
+                        <i className="legend-ghost" aria-hidden="true" /> dashed see-through = ghost, generation{" "}
+                        {race.ghost_unit}&apos;s champion
+                      </span>
+                    )}
+                  </div>
+                )}
+                {ghost !== null && (
+                  <div className="stage-legend" data-testid="ghost-legend">
+                    <b>What-if ghost</b> where car {(frame?.selected?.index ?? 0) + 1} would be in{" "}
+                    {ghost.seconds} s holding the what-if action{" "}
+                    <i className="legend-line" style={{ background: "var(--track-select)" }} aria-hidden="true" /> (solid
+                    line, see-through car) instead of its real action{" "}
+                    <i className="legend-dash" aria-hidden="true" /> (dashed); the two endings are{" "}
+                    <span data-testid="ghost-gap">{ghostGap(ghost).toFixed(1)}</span> m apart. Held actions only: the
+                    network would really decide again every step.
+                  </div>
+                )}
+                {sensitivityRow !== null && (
+                  <div className="stage-legend" data-testid="ray-legend">
+                    Rays coloured by how {output} reacts to them:{" "}
+                    <i className="legend-line" style={{ background: "var(--track-pos)" }} aria-hidden="true" />{" "}
+                    <span className="ray-legend-pos">blue</span> = a longer ray pushes {output}{" "}
+                    {output === "steer" ? "right" : "up (accelerate)"},{" "}
+                    <i className="legend-line" style={{ background: "var(--track-neg)" }} aria-hidden="true" />{" "}
+                    <span className="ray-legend-neg">orange</span> = {output === "steer" ? "left" : "down (brake)"};
+                    thicker = stronger.
+                  </div>
                 )}
               </div>
             )}
-            {ghost !== null && (
-              <div className="stage-legend" data-testid="ghost-legend">
-                <b>What-if ghost</b> where car {(frame?.selected?.index ?? 0) + 1} would be in{" "}
-                {ghost.seconds} s holding the what-if action{" "}
-                <i className="legend-line" style={{ background: "var(--track-select)" }} aria-hidden="true" /> (solid
-                line, see-through car) instead of its real action{" "}
-                <i className="legend-dash" aria-hidden="true" /> (dashed); the two endings are{" "}
-                <span data-testid="ghost-gap">{ghostGap(ghost).toFixed(1)}</span> m apart. Held actions only: the
-                network would really decide again every step.
-              </div>
-            )}
-            {sensitivityRow !== null && (
-              <div className="stage-legend" data-testid="ray-legend">
-                Rays coloured by how {output} reacts to them:{" "}
-                <i className="legend-line" style={{ background: "var(--track-pos)" }} aria-hidden="true" />{" "}
-                <span className="ray-legend-pos">blue</span> = a longer ray pushes {output}{" "}
-                {output === "steer" ? "right" : "up (accelerate)"},{" "}
-                <i className="legend-line" style={{ background: "var(--track-neg)" }} aria-hidden="true" />{" "}
-                <span className="ray-legend-neg">orange</span> = {output === "steer" ? "left" : "down (brake)"};
-                thicker = stronger.
-              </div>
-            )}
-          </div>
+
+              <Telemetry compact={false} />
+            </div>
+          </>
         )}
       </div>
       {!compact && <TrailPanel />}
       {!compact && (
         <p className="env-hint">
-          Drive with the arrow keys or W A S D (up accelerates, down brakes). Press Play first: the
-          car only moves while the simulation runs. Scroll over the track to zoom, drag to move the
-          view, double-click to follow the car again. Click a car to select it: the Network page
-          and the drawer then show that car. While paused, click a point on its trail (or drag Look
-          back) to see the network at that earlier step. With the Neuron driver, set its weights on the
-          Network page.
+          Arrow keys or W A S D drive (press Play first) · scroll to zoom · drag to move the view ·
+          double-click to follow the car · click a car to select it · while paused, click its trail to
+          look back. Hover a control for what it does.
         </p>
       )}
     </section>

@@ -87,7 +87,8 @@ test("full view: while following, the wheel changes only the zoom level", async 
   await ready(page, canvas);
   const before = await cameraOf(canvas);
   const box = (await canvas.boundingBox())!;
-  await page.mouse.move(box.x + box.width * 0.8, box.y + box.height * 0.2);
+  // off the car, over open track (the camera bar and minimap float in the top right, task E3)
+  await page.mouse.move(box.x + box.width * 0.8, box.y + box.height * 0.55);
   await page.mouse.wheel(0, 100); // one notch out
   await expect.poll(async () => (await cameraOf(canvas)).scale).toBeLessThan(before.scale);
   await expect(canvas).toHaveAttribute("data-camera-mode", "follow");

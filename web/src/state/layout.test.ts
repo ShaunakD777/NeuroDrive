@@ -23,6 +23,13 @@ describe("sanitizeLayout", () => {
     expect(sanitizeLayout({ theme: "sepia" }).theme).toBe("auto");
     expect(sanitizeLayout({ theme: 1 }).theme).toBe("auto");
   });
+
+  it("keeps a saved drawer tab and falls back to the network (task E3)", () => {
+    expect(defaultLayout.drawerTab).toBe("network");
+    expect(sanitizeLayout({ drawerTab: "standings" }).drawerTab).toBe("standings");
+    expect(sanitizeLayout({ drawerTab: "charts" }).drawerTab).toBe("network");
+    expect(sanitizeLayout({}).drawerTab).toBe("network");
+  });
 });
 
 describe("resolveTheme", () => {
@@ -65,6 +72,13 @@ describe("layout store", () => {
     useLayout.getState().setSplitPartner("experiment");
     expect(useLayout.getState().mode).toBe("all");
     expect(useLayout.getState().splitPartner).toBe("experiment");
+  });
+
+  it("changes the Environment drawer's tab", () => {
+    useLayout.getState().setDrawerTab("standings");
+    expect(useLayout.getState().drawerTab).toBe("standings");
+    useLayout.getState().setDrawerTab("network");
+    expect(useLayout.getState().drawerTab).toBe("network");
   });
 
   it("changes the theme setting", () => {

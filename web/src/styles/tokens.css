@@ -220,6 +220,7 @@
 :root {
   --hud-bg: rgba(15, 18, 24, 0.9); /* floating panels over the track, ray and name pills */
   --hud-border: rgba(255, 255, 255, 0.12);
+  --hud-track: rgba(255, 255, 255, 0.14); /* gauge and lap-bar tracks on those panels (task E3) */
   /* Car bodies in a GA race by rank band, best fifth first (on dark asphalt the best is lightest) */
   --car-rank-1: #cde2fb;
   --car-rank-2: #9ec5f4;
