@@ -1949,3 +1949,28 @@ Claude Code drafts each entry; the user may edit or add notes in their own words
 - What we observed: the first full browser run had 11 failures. Six were the test setup (`/api/runs` took 3 s through a Windows folder mounted into the container; with `runs/` copied into it, 0.03 s, and they passed). Five were E3: in the All layout at 1280 × 720 the stage was 390 × 260 px, the panels covered it, and the followed car was drawn 113 px above the canvas; and three specs aimed at places E3 had covered or added buttons to. After the fix (cap the margins, a 420 px stage for a narrow view) and the three re-aimed specs: 81/81, the click-a-car specs 80/80 in 20 repetitions, 283 web unit tests, and Whole track clear of the panels on all six tracks.
 - Surprise or difficulty: a container query rule placed above the base rule it should override silently loses, because both have the same specificity and the later one wins; the computed style (`min-height: 260px`) showed it at once.
 - Open question: in the All layout the Environment column is still crowded (legends, telemetry and bars over a 420 px stage); should R1 give that column a compact telemetry, as the drawer has?
+
+### 2026-11-16 — Redesign Environment group complete (tag `phase-visual-environment`)
+- What was built: E1, the track as a place (grass, verge, sand, asphalt with a rubbered line,
+  kerbs, edge lines exactly where the rays end, arrows, a chequered start, distance boards) with a
+  day and a night palette that follow the page theme (ADR-064); E2, the cars as race cars with
+  every state (crashed, finished, stalled, out of time, selected, elite, ghost, look-back,
+  what-if), car numbers for up to ten cars of one driver (ADR-065), ray fans with placed label
+  pills and a cased trail; E3, the stage: floating bars, a minimap, a one-row telemetry strip, a
+  look-back strip, a camera that glides and looks ahead, margins measured from the real panels and
+  capped at half the stage, and a Standings tab in the drawer. At the gate three small faults were
+  fixed (hints cut at the stage's edges, ray distances reading as one number, ray labels leaving
+  the canvas), and 2,113 Python tests (one skipped without PyTorch), 284 web unit tests, all 81
+  browser tests and every pre-commit hook passed; every Environment function of `UI_AUDIT.md` §4
+  was exercised, the server-error banner by sending the server a command it rejects.
+- What was learned: a canvas can be drawn in world units once a transform carries the camera, and
+  shapes drawn once in their own coordinates can be placed anywhere by one more transform. Layout
+  numbers measured from the page beat fixed ones, but every measured margin needs a cap, because a
+  small window makes the panels bigger than the space they float over. A stage that clips its
+  edges must also keep its own hints and labels inside. The Python backend could be checked in a
+  Linux container when the development machine blocked a compiled library, and copying the data
+  onto the container's own disk was what made it fast enough for the browser tests.
+- Open questions: R1 has to decide what a very small stage gives up (at 390 px with the drawer
+  open the camera bar wraps under the transport); should ray label pills also avoid the floating
+  panels, not just the canvas edge; and should the telemetry in the All layout become the compact
+  one the drawer uses?

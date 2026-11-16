@@ -9,7 +9,10 @@ simulator with three linked views: **Environment**, **Neural Network** and **Exp
 ## Status
 The 2D redesign's shell group (S0–S2: the stylesheet split, the new identity with IBM Plex, a dark
 top bar, a breadcrumb and a light / dark / system theme setting, and the world selector) is merged,
-tagged `phase-visual-shell`; the Environment, Network and Experiment groups follow
+tagged `phase-visual-shell`, and so is its Environment group (E1–E3: the track as a place with a
+day and a night palette, race cars with every car state, ray fans and trails, and the stage with
+floating bars, a minimap, a telemetry strip, a look-back strip, a gliding camera and a Standings
+tab), tagged `phase-visual-environment`; the Network and Experiment groups follow
 (`prototypes/2d-redesign/IMPLEMENTATION_ROADMAP.md`). Phase 7 ("Genetic algorithm") complete, tagged `phase-7`: a genome with a named address for every
 gene, tournament and rank selection, Gaussian mutation, uniform crossover, elitism, a population mode
 that races a whole generation, evolution charts, exact lineage with a mutation diff, and Study S6 on the
@@ -17,8 +20,8 @@ GA against random search, its settings, fitness ablations and a documented fitne
 ("Supervised imitation") is tagged `phase-6`, Phase 5 ("The Driving Exam, baselines and training
 infrastructure") `phase-5`, Phase 4 ("Optimisers and experiment basics") `phase-4`, Phase 3
 ("Backpropagation (toy lab)") `phase-3`, Phase 2 ("Multilayer network and Network view") `phase-2`,
-Phase 1 ("One neuron can drive") `phase-1` and Phase 0 (foundations) `phase-0`. Next: the redesign's Environment
-group (E1–E3) and Phase 8, "Imitation vs evolution" (see `docs/CHECKLIST.md`).
+Phase 1 ("One neuron can drive") `phase-1` and Phase 0 (foundations) `phase-0`. Next: the redesign's Network
+group (N1–N3) and Phase 8, "Imitation vs evolution" (see `docs/CHECKLIST.md`).
 
 ## Prerequisites
 - [uv](https://docs.astral.sh/uv/) for Python. It downloads Python 3.12 by itself; your system
