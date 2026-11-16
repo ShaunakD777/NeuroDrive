@@ -196,7 +196,10 @@ export const PILL_PUSHES = [12, 26, 40];
  * are less than 17 + 2 px apart in y and their x ranges, widened by 2 px, meet. A ray pointing
  * right (ûx > 0.35) has the pill's left edge there, one pointing left (ûx < −0.35) its right edge,
  * one pointing up or down its middle. Order: emphasised rays first, then from the centre ray
- * outwards; in the compact drawer only emphasised rays get a label.
+ * outwards; in the compact drawer only emphasised rays get a label. With `bounds` (the canvas, w × h
+ * px) each tried spot is first moved inside it, 2 px from every edge (Environment gate): x into
+ * [2, w − w_k − 2], y into [8.5 + 2, h − 8.5 − 2]. Example: a 46 px pill tried at x = 380 on a
+ * 400 px canvas moves to x = 352, so its right edge is at 398.
  */
 export function placeRayLabels(
   start: [number, number],
@@ -204,6 +207,7 @@ export function placeRayLabels(
   widths: number[],
   highlight: number[],
   compact: boolean,
+  bounds?: { w: number; h: number },
 ): ({ x: number; y: number } | null)[] {
   const placed: { x: number; y: number; w: number }[] = [];
   const overlaps = (x: number, y: number, w: number) =>
@@ -227,8 +231,12 @@ export function placeRayLabels(
     const w = widths[k];
     const shift = ux > 0.35 ? 0 : ux < -0.35 ? -w : -w / 2;
     for (const push of PILL_PUSHES) {
-      const x = ex + ux * push + shift;
-      const y = ey + uy * push;
+      let x = ex + ux * push + shift;
+      let y = ey + uy * push;
+      if (bounds !== undefined) {
+        x = Math.max(PILL_GAP, Math.min(x, bounds.w - w - PILL_GAP));
+        y = Math.max(PILL_HEIGHT / 2 + PILL_GAP, Math.min(y, bounds.h - PILL_HEIGHT / 2 - PILL_GAP));
+      }
       if (!overlaps(x, y, w)) {
         placed.push({ x, y, w });
         result[k] = { x, y };

@@ -202,6 +202,32 @@
   width: 28px;
 }
 
+/* Hints on the stage's bars (Environment gate): the stage clips what leaves it, so a hint hangs
+   from its whole bar, not its button, opens inwards (the left bars' to the right, the right bars'
+   to the left) and wraps at the stage's inner width (100cqw is the stage's width, the nearest
+   size container). */
+.stage-top .hudbar {
+  position: relative;
+}
+
+.stage-top .hudbar .btn,
+.stage-top .hudbar .segmented button {
+  position: static;
+}
+
+.stage-top .hudbar [data-tip]:hover::after {
+  left: 0;
+  transform: none;
+  width: max-content;
+  max-width: min(300px, calc(100cqw - 24px));
+  white-space: normal;
+}
+
+.stage-top-right .hudbar [data-tip]:hover::after {
+  left: auto;
+  right: 0;
+}
+
 .hudbar-sep {
   width: 1px;
   height: 18px;
@@ -794,10 +820,15 @@
 
 .tele-raynums {
   display: grid;
-  grid-template-columns: repeat(5, 30px);
+  grid-template-columns: repeat(5, 32px);
   font-size: 10.5px;
   text-align: center;
   color: var(--hud-text);
+}
+
+/* A thin line between two distances, so "13.7 6.3" never reads as one number (Environment gate). */
+.tele-raynums > span + span {
+  border-left: 1px solid var(--hud-border);
 }
 
 .tele-raynums [data-dim="true"] {
@@ -1233,8 +1264,15 @@
     min-width: 0;
   }
 
+  /* Each distance as wide as its text, so a 4-character one ("16.6") never runs into the next. */
   .tele-raynums {
-    grid-template-columns: repeat(5, minmax(26px, 1fr));
+    grid-template-columns: repeat(5, auto);
+    justify-content: start;
+    font-size: 10px;
+  }
+
+  .tele-raynums > span {
+    padding: 0 3px;
   }
 
   .tele-actions {

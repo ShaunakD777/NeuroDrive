@@ -133,7 +133,7 @@ export function drawRays(ctx: CanvasRenderingContext2D, theme: Theme, scene: Sce
   });
   ctx.font = NUMBER_FONT;
   const widths = labels.map((label) => Math.ceil(ctx.measureText(label).width) + 10);
-  const spots = placeRayLabels([sx, sy], ends, widths, scene.highlight, scene.compact);
+  const spots = placeRayLabels([sx, sy], ends, widths, scene.highlight, scene.compact, scene.size);
   spots.forEach((spot, k) => {
     if (spot === null) return;
     ctx.globalAlpha = scene.highlight.length > 0 && !scene.highlight.includes(k) ? 0.28 : 1;

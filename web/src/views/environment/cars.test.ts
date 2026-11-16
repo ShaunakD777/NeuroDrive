@@ -217,6 +217,18 @@ describe("ray label placement", () => {
     expect(spots[1]).toBeNull(); // now A is the one pushed out
   });
 
+  it("keeps a pill inside the canvas (the docstring's example)", () => {
+    // One ray pointing right, ending at x = 368: the pill is tried 12 px out, at x = 380, but a
+    // 46 px pill there would end at 426 on a 400 px canvas, so it moves to 400 − 46 − 2 = 352.
+    // A ray ending 3 px from the top has its pill moved down to 17/2 + 2 = 10.5.
+    const right = placeRayLabels([300, 100], [[368, 100]], [46], [], false, { w: 400, h: 200 });
+    expect(right[0]).toEqual({ x: 352, y: 100 });
+    const top = placeRayLabels([100, 100], [[100, 3]], [30], [], false, { w: 400, h: 200 });
+    expect(top[0]).toEqual({ x: 85, y: 10.5 });
+    // Without bounds the old placement stands.
+    expect(placeRayLabels([300, 100], [[368, 100]], [46], [], false)[0]).toEqual({ x: 380, y: 100 });
+  });
+
   it("pushes a pill further out when the first spot is taken", () => {
     // Two rays along the same line, ends 14 px apart: the second tries 12, then 26 px out.
     const spots = placeRayLabels(
