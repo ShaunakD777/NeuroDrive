@@ -1,6 +1,6 @@
 /* The Network view: Neuron view, diagram, car stepper, compact network, output inspector and
    what-if, car picker. Two Environment rules still sit here because the cascade order must not
-   change in task S0: `.stage-legend-passthrough` (with the rank swatches) and the decision
+   change in task S0: the stage legends (restyled in task E2) and the decision
    trail (task 2.11); step E3 moves them to environment.css when it restyles them. */
 
 /* ── Neuron view ──────────────────────────────────────────────── */
@@ -696,14 +696,17 @@
   pointer-events: none; /* the box around the legends: clicks reach the track (task 7.6) */
 }
 
+/* The legends float over the track as dark stage panels, the same in both themes (task E2,
+   DESIGN_SPEC §6.6): each swatch has the shape of the mark it explains. */
 .stage-legend {
   pointer-events: auto;
-  padding: 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--text);
-  font-size: 0.8rem;
+  padding: 5px 10px;
+  border: 1px solid var(--hud-border);
+  border-radius: var(--r-2);
+  background: var(--hud-bg);
+  color: var(--hud-muted);
+  font-size: 11.5px;
+  line-height: 1.5;
 }
 
 /* A legend with nothing to click lets clicks through to the cars under it (task 7.6). */
@@ -711,18 +714,85 @@
   pointer-events: none;
 }
 
-.rank-swatches {
+.stage-legend-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+}
+
+.stage-legend-group {
   display: inline-flex;
-  gap: 2px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 6px;
+}
+
+.stage-legend b {
+  font-family: var(--font-label);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--hud-text);
+}
+
+.rank-ramp {
+  display: inline-flex;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.rank-ramp i {
+  width: 12px;
+  height: 10px;
+}
+
+.stage-legend i[class^="legend-"] {
+  display: inline-block;
   vertical-align: middle;
 }
 
-.rank-swatch {
-  display: inline-block;
-  width: 12px;
-  height: 10px;
+.legend-ring {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 2px solid var(--car-elite);
+}
+
+.legend-ghost {
+  width: 14px;
+  height: 8px;
   border-radius: 2px;
-  border: 1px solid var(--border);
+  border: 1.5px dashed #e3e6eb;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.legend-faded {
+  width: 14px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--car-rank-3);
+  opacity: 0.42;
+}
+
+.legend-line {
+  width: 16px;
+  height: 3px;
+  border-radius: 2px;
+}
+
+.legend-dash {
+  width: 16px;
+  height: 0;
+  border-top: 2px dashed #e3e6eb;
+}
+
+.stage-legend .ray-legend-pos {
+  color: var(--track-pos);
+}
+
+.stage-legend .ray-legend-neg {
+  color: var(--track-neg);
 }
 
 .hud-race {

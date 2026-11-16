@@ -7,14 +7,18 @@
 //   WORLD, drawn in metres    grass → verge → sand → asphalt → rubber line → kerbs → edge lines →
 //                             centre dashes → arrows → start line            (drawWorld.ts)
 //   BOARDS, in pixels         distance boards every 100 m                     (drawWorld.ts)
-//   DATA, in pixels           decision trail → rays → what-if paths           (drawOverlays.ts)
-//   CARS, in pixels           cars → race ghost → look-back car → what-if car (drawCars.ts)
+//   DATA, in pixels           decision trail → sensor fan and rays → what-if paths (drawOverlays.ts)
+//   CARS, drawn in metres     shadows and cars, worst rank first → race ghost → the selected car →
+//                             look-back car → what-if car                     (drawCars.ts, task E2)
+//   LABELS, in pixels         elite rings, status badges, the selection reticle, name tags
+//                                                                             (drawCars.ts, task E2)
 //
 // Rule of the scene: decoration never sits above data, and everything a car or a ray can touch is
-// inside the two white edge lines. Cars and data layers keep their pre-redesign shapes until E2.
+// inside the two white edge lines. Cars, rays and labels have one set of colours in both themes,
+// because the asphalt under them is dark in both (DESIGN_SPEC §2.4).
 
 import type { FrameMessage, GhostPaths, ScenarioMessage, TrackGeometry } from "../../api/generated";
-import { drawCars, drawGhostCar, drawMoment, drawRaceGhost } from "./drawCars";
+import { drawCarLabels, drawCars } from "./drawCars";
 import { drawGhostPaths, drawRays, drawTrail } from "./drawOverlays";
 import { drawBoards, drawWorld } from "./drawWorld";
 import type { Camera, Size } from "./geometry";
@@ -39,19 +43,52 @@ export interface Theme {
   marking: string;
   board: string;
   boardInk: string;
-  // Cars and data layers, the pre-redesign roles in light-on-dark colours until E2.
-  edge: string;
-  text: string;
-  muted: string;
-  accent: string;
-  ok: string;
-  warn: string;
-  bad: string;
-  /** The GA rank bands, best fifth first (task 7.6). */
+  /** Car shadows (day and night). */
+  shadow: string;
+  // Cars, rays and labels: the same in both themes (task E2, DESIGN_SPEC §2.4).
+  /** The GA rank bands, best fifth first (task 7.6), lightest = best. */
   rank: string[];
+  /** Ten liveries for the cars of other drivers (DESIGN_SPEC §7.2). */
+  livery: string[];
+  /** One car alone, or the selected one in a crowd. */
+  solo: string;
+  /** Every car of a crowd of more than ten. */
+  plain: string;
+  /** A race's ghost (see-through). */
+  ghostBody: string;
+  elite: string;
+  rayClear: string;
+  rayNear: string;
+  rayDanger: string;
+  rayNone: string;
+  /** The sign pair on asphalt: an output rises (pos) or falls (neg). */
+  pos: string;
+  neg: string;
+  /** The selection colour on asphalt. */
+  select: string;
+  hudBg: string;
+  hudText: string;
+  hudMuted: string;
+  /** The status badges of stopped cars. */
+  crashed: string;
+  finished: string;
+  stalled: string;
+  timeout: string;
 }
 
 const RANK_FALLBACK = ["#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf"];
+const LIVERY_FALLBACK = [
+  "#3987e5",
+  "#d95926",
+  "#199e70",
+  "#c98500",
+  "#d55181",
+  "#008300",
+  "#9085e9",
+  "#e66767",
+  "#f4f5f7",
+  "#b4bac4",
+];
 
 /** Read the colours from the CSS variables in effect on `el` (read again on every draw). */
 export function readTheme(el: Element): Theme {
@@ -77,14 +114,27 @@ export function readTheme(el: Element): Theme {
     night,
     key: `${night}|${Object.values(world).join("|")}`,
     ...world,
-    edge: get("--w-edge", "#9aa3b2"),
-    text: get("--w-text", "#e8ebf0"),
-    muted: get("--w-muted", "rgba(255, 255, 255, 0.34)"),
-    accent: get("--w-accent", "#6aa0ff"),
-    ok: get("--w-ok", "#4ade80"),
-    warn: get("--w-warn", "#fbbf24"),
-    bad: get("--w-bad", "#f87171"),
+    shadow: get("--w-shadow", "rgba(8, 12, 10, 0.34)"),
     rank: RANK_FALLBACK.map((fallback, k) => get(`--car-rank-${k + 1}`, fallback)),
+    livery: LIVERY_FALLBACK.map((fallback, k) => get(`--car-livery-${k + 1}`, fallback)),
+    solo: get("--car-solo", "#f4f5f7"),
+    plain: get("--car-plain", "#c9ccd2"),
+    ghostBody: get("--car-ghost", "rgba(240, 242, 246, 0.5)"),
+    elite: get("--car-elite", "#f2c230"),
+    rayClear: get("--ray-clear", "#4ad17f"),
+    rayNear: get("--ray-near", "#f5b83d"),
+    rayDanger: get("--ray-danger", "#ff6b5e"),
+    rayNone: get("--ray-none", "rgba(255, 255, 255, 0.34)"),
+    pos: get("--track-pos", "#6aa2ff"),
+    neg: get("--track-neg", "#ff9a4a"),
+    select: get("--track-select", "#b9a6ff"),
+    hudBg: get("--hud-bg", "rgba(15, 18, 24, 0.9)"),
+    hudText: get("--hud-text", "#f1f3f6"),
+    hudMuted: get("--hud-muted", "#a3acba"),
+    crashed: get("--car-status-crashed", "#ff6b5e"),
+    finished: get("--car-status-finished", "#4ad17f"),
+    stalled: get("--car-status-stalled", "#f5b83d"),
+    timeout: get("--car-status-timeout", "#a3acba"),
   };
 }
 
@@ -102,8 +152,8 @@ export interface Scene {
   highlight: number[];
   /**
    * The selected output's sensitivity to each of the five rays (task 2.10), or null. When set,
-   * each ray is coloured by its sign (accent = the output rises as the ray gets longer, warn = it
-   * falls) and drawn thicker the stronger it is, instead of the usual distance colours.
+   * each ray is coloured by its sign (`--track-pos` = the output rises as the ray gets longer,
+   * `--track-neg` = it falls) and drawn thicker the stronger it is, instead of the distance colours.
    */
   raySensitivity: number[] | null;
   /**
@@ -203,7 +253,10 @@ function drawWorldCached(ctx: CanvasRenderingContext2D, base: DOMMatrix, theme: 
   ctx.restore();
 }
 
-/** Draw the whole scene: the world, the boards, then the selected car's data and every car. */
+/**
+ * Draw the whole scene: the world, the boards, the selected car's data, every car (in metres,
+ * under the same world transform as the track) and the labels on top (in pixels).
+ */
 export function drawScene(ctx: CanvasRenderingContext2D, theme: Theme, scene: Scene): void {
   const base = ctx.getTransform(); // CSS pixels → device pixels, set by the caller
   ctx.fillStyle = theme.grass;
@@ -215,8 +268,9 @@ export function drawScene(ctx: CanvasRenderingContext2D, theme: Theme, scene: Sc
   drawTrail(ctx, theme, scene);
   drawRays(ctx, theme, scene);
   drawGhostPaths(ctx, theme, scene);
+  ctx.save();
+  ctx.setTransform(base.multiply(new DOMMatrix(worldTransform(scene.camera, scene.size))));
   drawCars(ctx, theme, scene);
-  drawRaceGhost(ctx, theme, scene);
-  drawMoment(ctx, theme, scene);
-  drawGhostCar(ctx, theme, scene);
+  ctx.restore();
+  drawCarLabels(ctx, theme, scene);
 }

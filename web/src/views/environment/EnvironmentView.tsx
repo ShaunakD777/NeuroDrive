@@ -351,34 +351,53 @@ export function EnvironmentView({
         {!compact && (ghost !== null || sensitivityRow !== null || race !== null) && (
           <div className="stage-legends">
             {race !== null && (
-              <div className="stage-legend stage-legend-passthrough" data-testid="race-legend">
-                <strong>Generation {race.unit}</strong>, {race.size} networks from start {race.start + 1}. Colour = the
-                GA&apos;s fitness rank (F over all {race.n_starts} starts):{" "}
-                <span className="rank-swatches" aria-hidden="true">
-                  {[1, 2, 3, 4, 5].map((k) => (
-                    <span key={k} className="rank-swatch" style={{ background: `var(--car-rank-${k})` }} />
-                  ))}
-                </span>{" "}
-                best fifth → worst fifth. Ringed = elite (last generation&apos;s best, unchanged); faded = stopped
-                {race.ghost_unit !== null && <>; dashed see-through = ghost, generation {race.ghost_unit}&apos;s champion</>}.
+              <div className="stage-legend stage-legend-passthrough stage-legend-groups" data-testid="race-legend">
+                <span className="stage-legend-group">
+                  <b>Generation {race.unit}</b> {race.size} networks from start {race.start + 1}
+                </span>
+                <span className="stage-legend-group">
+                  Colour = the GA&apos;s fitness rank (F over all {race.n_starts} starts)
+                  <span className="rank-ramp" aria-hidden="true">
+                    {[1, 2, 3, 4, 5].map((k) => (
+                      <i key={k} style={{ background: `var(--car-rank-${k})` }} />
+                    ))}
+                  </span>
+                  best fifth → worst
+                </span>
+                <span className="stage-legend-group">
+                  <i className="legend-ring" aria-hidden="true" /> elite (last generation&apos;s best, unchanged)
+                </span>
+                <span className="stage-legend-group">
+                  <i className="legend-faded" aria-hidden="true" /> faded = stopped
+                </span>
+                {race.ghost_unit !== null && (
+                  <span className="stage-legend-group">
+                    <i className="legend-ghost" aria-hidden="true" /> dashed see-through = ghost, generation{" "}
+                    {race.ghost_unit}&apos;s champion
+                  </span>
+                )}
               </div>
             )}
             {ghost !== null && (
               <div className="stage-legend" data-testid="ghost-legend">
-                <strong>What-if ghost:</strong> where car {(frame?.selected?.index ?? 0) + 1} would
-                be in {ghost.seconds} s holding the what-if action (solid line, see-through car)
-                instead of its real action (dashed); the two endings are{" "}
-                <span data-testid="ghost-gap">{ghostGap(ghost).toFixed(1)}</span> m apart. Held
-                actions only: the network would really decide again every step.
+                <b>What-if ghost</b> where car {(frame?.selected?.index ?? 0) + 1} would be in{" "}
+                {ghost.seconds} s holding the what-if action{" "}
+                <i className="legend-line" style={{ background: "var(--track-select)" }} aria-hidden="true" /> (solid
+                line, see-through car) instead of its real action{" "}
+                <i className="legend-dash" aria-hidden="true" /> (dashed); the two endings are{" "}
+                <span data-testid="ghost-gap">{ghostGap(ghost).toFixed(1)}</span> m apart. Held actions only: the
+                network would really decide again every step.
               </div>
             )}
             {sensitivityRow !== null && (
               <div className="stage-legend" data-testid="ray-legend">
                 Rays coloured by how {output} reacts to them:{" "}
+                <i className="legend-line" style={{ background: "var(--track-pos)" }} aria-hidden="true" />{" "}
                 <span className="ray-legend-pos">blue</span> = a longer ray pushes {output}{" "}
                 {output === "steer" ? "right" : "up (accelerate)"},{" "}
-                <span className="ray-legend-neg">orange</span> ={" "}
-                {output === "steer" ? "left" : "down (brake)"}; thicker = stronger.
+                <i className="legend-line" style={{ background: "var(--track-neg)" }} aria-hidden="true" />{" "}
+                <span className="ray-legend-neg">orange</span> = {output === "steer" ? "left" : "down (brake)"};
+                thicker = stronger.
               </div>
             )}
           </div>

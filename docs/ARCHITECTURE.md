@@ -807,8 +807,17 @@ them (`npm run gen:types`), so the two sides cannot drift apart.
   draws in layers, bottom to top: the world in metres under one canvas transform built on the
   caller's (`drawWorld.ts`: grass, verge, sand, asphalt, rubber line, kerbs, white edge lines
   exactly on the edges the rays and the crash test use, centre dashes, arrows, chequered start),
-  the distance boards in pixels, then the selected car's trail, rays and what-if paths
-  (`drawOverlays.ts`) and the cars (`drawCars.ts`). The decoration (`trackArt.ts`) is worked out
+  the distance boards in pixels, then the selected car's trail, sensor fan, rays and what-if paths
+  in pixels, each cased in dark (`drawOverlays.ts`), the cars in metres under the same world
+  transform, and last the labels in pixels: elite rings, status badges, the selection reticle and
+  name tags (`drawCars.ts`, task E2). Each car is one sprite drawn in its own frame and placed by
+  `cars.ts` `carTransform` (position, heading, the scenario's car size); below 4.2 px per metre it
+  is a dart never shorter than 10 px. `cars.ts` also decides each car's body (the GA's rank band in
+  a race, otherwise white alone, a livery each up to ten cars, grey in a crowd), whether the cars
+  carry their numbers (2–10 liveried cars at ≥ 3.2 px/m, ADR-065), the drawing order,
+  the badges from `frame.cars.status` and where ray labels go. Everything on the asphalt uses one
+  set of colours in both themes (`--car-*`, `--ray-*`, `--track-*`, `--hud-bg`). The decoration
+  (`trackArt.ts`) is worked out
   once per track from the geometry the server sends (curvature → kerbs and sand outside the edges,
   arrows, boards every 100 m) and is not data. The still world is kept as a picture per canvas
   while the camera does not move. The Datasets map draws the old plain road (`drawMap`).

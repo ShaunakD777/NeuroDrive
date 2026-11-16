@@ -130,6 +130,7 @@
   --w-marking: rgba(255, 255, 255, 0.3); /* centre dashes, arrows */
   --w-board: #f3f4f1;
   --w-board-ink: #1b1f27;
+  --w-shadow: rgba(8, 12, 10, 0.34); /* car shadows */
 
   /* The Datasets view's track map keeps the plain look it had before the redesign (task E1,
      drawWorld.ts drawMap); task X4 decides its new look. */
@@ -204,6 +205,7 @@
   --w-marking: rgba(255, 255, 255, 0.2);
   --w-board: #c9ccc8;
   --w-board-ink: #14171c;
+  --w-shadow: rgba(0, 0, 0, 0.5);
 
   --map-bg: #12151a;
   --map-road: #1b1f27;
@@ -212,22 +214,46 @@
   --map-muted: #2f3541;
 }
 
-/* Cars, rays, trail and ghosts on the track until task E2 restyles them: their old shapes, in
-   light-on-dark colours that read on the dark asphalt of both themes (task E1). The rank bands are
-   the prototype's car ramp, the lightest the best. */
+/* Everything drawn on the track, and the panels that float over it: one set of values in both
+   themes, because the asphalt is dark by day and by night (task E2, DESIGN_SPEC §2.4). They are
+   brighter than their page versions because they are thin marks on a textured mid-dark surface. */
 :root {
-  --w-edge: #9aa3b2;
-  --w-text: #e8ebf0;
-  --w-muted: rgba(255, 255, 255, 0.34);
-  --w-accent: #6aa0ff;
-  --w-ok: #4ade80;
-  --w-warn: #fbbf24;
-  --w-bad: #f87171;
+  --hud-bg: rgba(15, 18, 24, 0.9); /* floating panels over the track, ray and name pills */
+  --hud-border: rgba(255, 255, 255, 0.12);
+  /* Car bodies in a GA race by rank band, best fifth first (on dark asphalt the best is lightest) */
   --car-rank-1: #cde2fb;
   --car-rank-2: #9ec5f4;
   --car-rank-3: #6da7ec;
   --car-rank-4: #3987e5;
   --car-rank-5: #256abf;
+  --car-elite: #f2c230; /* the elite ring: gold, used for nothing else */
+  --car-ghost: rgba(240, 242, 246, 0.5); /* a race's ghost, see-through */
+  /* Other drivers: up to ten cars, one livery each (the dark-surface series, then white and a light grey) */
+  --car-livery-1: #3987e5;
+  --car-livery-2: #d95926;
+  --car-livery-3: #199e70;
+  --car-livery-4: #c98500;
+  --car-livery-5: #d55181;
+  --car-livery-6: #008300;
+  --car-livery-7: #9085e9;
+  --car-livery-8: #e66767;
+  --car-livery-9: #f4f5f7;
+  --car-livery-10: #b4bac4; /* a light grey: graphite #5d6573 had 1.89:1 on day asphalt (task E2) */
+  --car-solo: #f4f5f7; /* one car alone, or the selected one in a crowd */
+  --car-plain: #c9ccd2; /* every car of a crowd of more than ten */
+  /* Badges of stopped cars */
+  --car-status-crashed: #ff6b5e;
+  --car-status-finished: #4ad17f;
+  --car-status-stalled: #f5b83d;
+  --car-status-timeout: #a3acba;
+  /* Rays by distance: over half the range / under half / under a fifth / no hit */
+  --ray-clear: #4ad17f;
+  --ray-near: #f5b83d;
+  --ray-danger: #ff6b5e;
+  --ray-none: rgba(255, 255, 255, 0.34);
+  --track-pos: #6aa2ff; /* the sign pair on asphalt */
+  --track-neg: #ff9a4a;
+  --track-select: #b9a6ff; /* the selection on asphalt: reticle, helmet, trail, what-if */
 }
 
 /* Names from before the redesign, still used by the view stylesheets, DatasetView.tsx and
