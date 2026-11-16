@@ -158,7 +158,7 @@ neurodrive/
 │  ├─ scripts/                   gen-types.mjs: Pydantic JSON Schema → TypeScript (`npm run gen:types`)
 │  ├─ src/api/                   REST client, WebSocket client, generated types (committed)
 │  ├─ src/nav/                   the views table and hash routing (#/environment, #/network, #/experiment)
-│  ├─ src/state/                 selection store, layout store (Page/Split/All, drawers, theme), playback clock, runs watch + `/ws/runs` hook
+│  ├─ src/state/                 selection store, layout store (Page/Split/All, drawers, theme), playback clock, runs watch + `/ws/runs` hook, world selector (task S2)
 │  ├─ src/views/environment/     canvas renderer, trails, HUD, population mode
 │  ├─ src/views/network/         SVG diagram, output inspector, what-if panel, diff
 │  ├─ src/views/experiment/      toy lab (ToyLab, LossChart, ...), Compare runs (CompareRuns, RunList, CompareChart), Training (TrainingRuns, LiveChart; task 5.8), Timeline (task 5.9), Datasets (DatasetView; task 6.2)
@@ -822,6 +822,24 @@ copied into `carId` (the server resets it to 0 on every scenario load), and a ne
 neuron and a connection replace each other, and an output neuron also sets `output`. Rays to
 emphasise come from `raysFor(selection, frame.selected)`: input k < 5 (or a weight leaving it) is
 ray k; the neuron driver's selected neuron gives its two rays.
+
+*As built (task S2, `web/src/state/world.ts`, ADR-063 D2):* the **world selector** is the one
+answer to "what is on screen for the selected car right now". A pure function `buildWorld` reads
+the live store (scenario, geometry, frame, network, what-if answer, trail, moment, episode end),
+the playback clock's `viewStep` and the selection's what-if overrides, and returns the `World`:
+the track, the scenario, step, time, playing, speed, whether the episode ended, every car's pose
+(the frame's columns as one row per car, the same list for the same frame), the selected car, and
+`shown`, that car at the moment on screen. Three rules of §8.2 are decided there once (the four components that
+apply them today keep their own copies until they switch):
+the look-back `moment` replaces the present only for the step looked at and the car on screen
+(`activeMoment`, then `lookStep` is that step); a what-if answer counts only while an input is
+changed and only for the car and step it was asked about; the trail and the network weights only
+when they are the selected car's. A derived store, subscribed once to the three stores, rebuilds the
+world only when one of these inputs is a different object; components read it with `useWorld()`,
+the canvas loop with `getWorld()`. It leaves out the network's origin (lineage, checkpoint change),
+which stays in `views/network/hooks.ts` because it comes from REST. Components switch to it as the
+redesign rebuilds them (`Hud.tsx`, `EnvironmentView.tsx`, `NetworkView.tsx`, `WhatIfPanel.tsx`
+in steps E1–E3, N1–N3); until then nothing imports it.
 
 ### 8.2 Linking behaviour
 
